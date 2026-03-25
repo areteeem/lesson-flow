@@ -1,0 +1,192 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color: #111111;
+  background: #f7f7f5;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+}
+
+html {
+  font-size: clamp(14px, 0.3vw + 13px, 18px);
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f7f7f5;
+  color: #111111;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  touch-action: manipulation;
+}
+
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Scrollbar hide utility */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.prose p {
+  margin: 0 0 0.9rem;
+  line-height: 1.75;
+}
+
+.prose ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.prose li {
+  margin: 0.2rem 0;
+}
+
+.prose strong {
+  font-weight: 600;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+@keyframes soft-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-soft-rise {
+  animation: soft-rise 320ms ease-out;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.85); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.player-shell {
+  --player-max-width: min(92rem, calc(100vw - 2rem));
+}
+
+.player-frame {
+  width: min(var(--player-max-width), 100%);
+}
+
+.player-nav-button {
+  min-height: 2.875rem;
+}
+
+.task-shell > div {
+  padding: clamp(1.1rem, 1rem + 1vw, 2rem);
+}
+
+@media (max-width: 1024px) {
+  .player-shell {
+    --player-max-width: calc(100vw - 1rem);
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1180px) {
+  .player-shell {
+    --player-max-width: min(80rem, calc(100vw - 1.5rem));
+  }
+}
+
+@media (pointer: coarse) {
+  .player-nav-button,
+  .task-shell button,
+  .task-shell select,
+  .task-shell input,
+  .task-shell textarea {
+    min-height: 2.875rem;
+  }
+
+  /* Tablet/touch: larger touch targets everywhere */
+  button {
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+  }
+
+  /* Wider spacing for touch scrolling */
+  .space-y-1\.5 > * + * {
+    margin-top: 0.625rem;
+  }
+
+  .space-y-3 > * + * {
+    margin-top: 1rem;
+  }
+
+  /* Better select/input sizing on touch */
+  select, input[type="text"], textarea {
+    min-height: 2.75rem;
+    font-size: 16px; /* prevents iOS zoom */
+  }
+
+  /* Larger tappable block cards */
+  [draggable="true"] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+@media print {
+  body {
+    background: white;
+  }
+}

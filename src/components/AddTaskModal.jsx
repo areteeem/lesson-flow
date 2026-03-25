@@ -1,0 +1,284 @@
+import { useEffect, useMemo, useState } from 'react';
+import { TASK_REGISTRY, getTaskDefinition } from '../config/taskRegistry';
+import TaskRenderer from './TaskRenderer';
+import BlockEditorForm from './BlockEditorForm';
+import { createDefaultBlock, getTaskCategories, getTaskDslExample } from '../utils/builder';
+import useFavorites from '../hooks/useFavorites';
+
+function MiniTaskTypePreview({ definition }) {
+  if (definition.kind === 'choice') {
+    return (
+      <div className="border border-zinc-200 bg-white p-2">
+        <div className="mb-2 h-2 w-1/2 bg-zinc-900" />
+        <div className="space-y-2">
+          {[0, 1, 2].map((index) => (
+            <div key={index} className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded-full border border-zinc-400" />
+              <div className="h-2 flex-1 bg-zinc-200" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (definition.kind === 'text') {
+    return (
+      <div className="border border-zinc-200 bg-white p-2">
+        <div className="mb-2 h-2 w-1/2 bg-zinc-900" />
+        <div className="mb-3 h-2 w-full bg-zinc-200" />
+        <div className="space-y-2">
+          {[0, 1, 2].map((index) => <div key={index} className="h-7 border border-zinc-300 bg-zinc-50" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (definition.kind === 'pairs') {
+    return (
+      <div className="grid grid-cols-2 gap-2 border border-zinc-200 bg-white p-2">
+        {[0, 1, 2, 3].map((index) => <div key={index} className="h-8 border border-zinc-200 bg-zinc-50" />)}
+      </div>
+    );
+  }
+
+  if (definition.kind === 'collection') {
+    return (
+      <div className="border border-zinc-200 bg-white p-2">
+        <div className="mb-2 h-2 w-1/2 bg-zinc-900" />
+        <div className="flex flex-wrap gap-2">
+          {[0, 1, 2, 3].map((index) => <div key={index} className="h-6 w-[calc(50%-0.25rem)] border border-zinc-200 bg-zinc-50" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (definition.kind === 'grid') {
+    return (
+      <div className="grid h-24 grid-cols-3 gap-1 border border-zinc-200 bg-white p-2">
+        {Array.from({ length: 9 }).map((_, index) => <div key={index} className="border border-zinc-200 bg-zinc-50" />)}
+      </div>
+    );
+  }
+
+  if (definition.kind === 'media') {
+    return (
+      <div className="grid h-24 grid-cols-[1.1fr_0.9fr] gap-2 border border-zinc-200 bg-white p-2">
+        <div className="border border-zinc-200 bg-zinc-50" />
+        <div className="space-y-2">
+          <div className="h-2 w-1/2 bg-zinc-900" />
+          <div className="h-2 w-full bg-zinc-200" />
+          <div className="h-2 w-5/6 bg-zinc-200" />
+          <div className="mt-3 h-7 border border-zinc-300 bg-zinc-50" />
+        </div>
+      </div>
+    );
+  }
+
+  if (definition.kind === 'branch') {
+    return (
+      <div className="border border-zinc-200 bg-white p-2">
+        <div className="mb-2 h-2 w-1/2 bg-zinc-900" />
+        <div className="space-y-2">
+          <div className="h-8 border border-zinc-200 bg-zinc-50" />
+          <div className="h-8 border border-zinc-200 bg-zinc-50" />
+          <div className="h-8 border border-dashed border-zinc-300 bg-white" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-zinc-200 bg-white p-2">
+      <div className="mb-2 h-2 w-1/2 bg-zinc-900" />
+      <div className="space-y-2">
+        <div className="h-2 w-full bg-zinc-200" />
+        <div className="h-2 w-5/6 bg-zinc-200" />
+        <div className="h-2 w-2/3 bg-zinc-200" />
+      </div>
+    </div>
+  );
+}
+
+function MiniPreview({ definition, selectedOrder }) {
+  return (
+    <div className="border border-zinc-200 bg-white p-3 text-left transition group-hover:border-zinc-900">
+      <div className="mb-3 overflow-hidden">
+        <MiniTaskTypePreview definition={definition} />
+      </div>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{definition.category}</div>
+          <div className="mt-1 text-sm font-medium text-zinc-900">{definition.label}</div>
+        </div>
+        {selectedOrder > 0 && <span className="flex h-6 w-6 items-center justify-center border border-zinc-900 bg-zinc-900 text-xs font-semibold text-white">{selectedOrder}</span>}
+      </div>
+      <div className="text-xs text-zinc-600">{definition.description}</div>
+    </div>
+  );
+}
+
+export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType = 'multiple_choice' }) {
+  const categories = useMemo(() => ['All', '★ Favorites', ...getTaskCategories()], []);
+  const { favorites, toggle: toggleFavorite, isFavorite } = useFavorites();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('All');
+  const [queue, setQueue] = useState([initialType]);
+  const [activeType, setActiveType] = useState(initialType);
+  const [drafts, setDrafts] = useState(() => ({ [initialType]: createDefaultBlock(initialType) }));
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setQuery('');
+    setCategory('All');
+    setQueue([initialType]);
+    setActiveType(initialType);
+    setDrafts({ [initialType]: createDefaultBlock(initialType) });
+  }, [initialType, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
+  const filtered = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return TASK_REGISTRY.filter((entry) => {
+      if (entry.hiddenFromLibrary) return false;
+      const matchesCategory = category === 'All' || (category === '★ Favorites' ? favorites.includes(entry.type) : entry.category === category);
+      const haystack = [entry.label, entry.type, entry.category, ...(entry.keywords || [])].join(' ').toLowerCase();
+      const matchesQuery = !normalizedQuery || haystack.includes(normalizedQuery);
+      return matchesCategory && matchesQuery;
+    });
+  }, [category, favorites, query]);
+
+  const activeDraft = drafts[activeType] || createDefaultBlock(activeType);
+
+  if (!isOpen) return null;
+
+  const updateDraft = (type, nextBlock) => {
+    setDrafts((current) => ({ ...current, [type]: nextBlock }));
+  };
+
+  const toggleType = (type) => {
+    setDrafts((current) => current[type] ? current : { ...current, [type]: createDefaultBlock(type) });
+    setQueue((current) => current.includes(type) ? current.filter((entry) => entry !== type) : [...current, type]);
+    setActiveType(type);
+  };
+
+  const handleConfirm = () => {
+    const blocks = queue.map((type) => drafts[type] || createDefaultBlock(type));
+    onConfirm(blocks);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 p-4 backdrop-blur-sm">
+      <div className="mx-auto grid h-[calc(100vh-2rem)] max-w-7xl grid-cols-1 overflow-hidden border border-zinc-900 bg-[#f7f7f5] xl:grid-cols-[420px_minmax(0,1fr)]">
+        <div className="flex min-h-0 flex-col border-b border-zinc-200 bg-white xl:border-b-0 xl:border-r">
+          <div className="border-b border-zinc-200 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Task Library</div>
+                <div className="mt-1 text-lg font-semibold text-zinc-950">Add Question</div>
+              </div>
+              <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700">Close</button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or category" className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              <div className="flex flex-wrap gap-2">
+                {categories.map((entry) => (
+                  <button key={entry} type="button" onClick={() => setCategory(entry)} className={category === entry ? 'border border-zinc-900 bg-zinc-900 px-3 py-1 text-xs font-medium text-white' : 'border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-700'}>{entry}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {filtered.map((entry) => {
+                const order = queue.indexOf(entry.type) + 1;
+                return (
+                  <div key={entry.type} className="group relative">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(entry.type); }}
+                      className={`absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center text-sm transition ${isFavorite(entry.type) ? 'text-amber-500' : 'text-zinc-300 opacity-0 group-hover:opacity-100'}`}
+                      title={isFavorite(entry.type) ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      {isFavorite(entry.type) ? '★' : '☆'}
+                    </button>
+                    <button type="button" draggable onDragStart={(event) => event.dataTransfer.setData('application/x-task-type', entry.type)} onClick={() => toggleType(entry.type)} className={[
+                      'w-full border text-left transition',
+                      activeType === entry.type ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 bg-white hover:border-zinc-900',
+                    ].join(' ')}>
+                      <MiniPreview definition={entry} selectedOrder={order} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="border-t border-zinc-200 p-4">
+            <div className="mb-3 flex items-center justify-between text-sm text-zinc-700">
+              <span>{queue.length} selected</span>
+              <span>{getTaskDefinition(activeType).label}</span>
+            </div>
+            <button type="button" onClick={handleConfirm} className="w-full border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm font-medium text-white">Add Selected Tasks</button>
+          </div>
+        </div>
+
+        <div className="grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-h-0 overflow-auto border-r border-zinc-200 bg-[#fcfcfb] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Selected Type</div>
+                <h3 className="mt-1 text-2xl font-semibold text-zinc-950">{getTaskDefinition(activeType).label}</h3>
+                <p className="mt-2 max-w-2xl text-sm text-zinc-600">{getTaskDefinition(activeType).description}</p>
+              </div>
+              <div className="border border-zinc-200 px-3 py-2 text-xs text-zinc-600">#{queue.indexOf(activeType) + 1 || 1}</div>
+            </div>
+            <div className="mt-5 border border-zinc-200 bg-white p-5">
+              <TaskRenderer block={activeDraft} onComplete={() => {}} />
+            </div>
+            <div className="mt-5 grid gap-5 xl:grid-cols-2">
+              <section className="border border-zinc-200 bg-white p-4">
+                <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Task Fields</div>
+                <BlockEditorForm block={activeDraft} compact onChange={(nextBlock) => updateDraft(activeType, nextBlock)} />
+              </section>
+              <section className="border border-zinc-200 bg-white p-4">
+                <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">DSL Example</div>
+                <pre className="overflow-auto whitespace-pre-wrap bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{getTaskDslExample(activeType)}</pre>
+              </section>
+            </div>
+          </div>
+
+          <aside className="min-h-0 overflow-auto bg-white p-5">
+            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Selection Queue</div>
+            <div className="mt-4 space-y-3">
+              {queue.map((type, index) => {
+                const definition = getTaskDefinition(type);
+                return (
+                  <button key={`${type}-${index}`} type="button" onClick={() => setActiveType(type)} className={activeType === type ? 'w-full border border-zinc-900 bg-zinc-900 p-3 text-left text-white' : 'w-full border border-zinc-200 p-3 text-left text-zinc-700'}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] opacity-70">{definition.category}</div>
+                        <div className="mt-1 text-sm font-medium">{definition.label}</div>
+                      </div>
+                      <span className="border border-current px-2 py-0.5 text-[10px]">{index + 1}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
