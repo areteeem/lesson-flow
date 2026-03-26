@@ -4,6 +4,20 @@ import TaskRenderer from './TaskRenderer';
 import BlockEditorForm from './BlockEditorForm';
 import { createDefaultBlock, getTaskCategories, getTaskDslExample } from '../utils/builder';
 import useFavorites from '../hooks/useFavorites';
+import { TaskTypeIcon, KindChoiceIcon, KindTextIcon, KindPairsIcon, KindCollectionIcon, KindGridIcon, KindMediaIcon, KindBranchIcon } from './Icons';
+
+function MiniTaskTypeIcon({ kind, taskType }) {
+  if (taskType) return <TaskTypeIcon taskType={taskType} width={16} height={16} className="h-4 w-4 text-zinc-500" />;
+  const cls = 'h-4 w-4 text-zinc-500';
+  if (kind === 'choice') return <KindChoiceIcon className={cls} />;
+  if (kind === 'text') return <KindTextIcon className={cls} />;
+  if (kind === 'pairs') return <KindPairsIcon className={cls} />;
+  if (kind === 'collection') return <KindCollectionIcon className={cls} />;
+  if (kind === 'grid') return <KindGridIcon className={cls} />;
+  if (kind === 'media') return <KindMediaIcon className={cls} />;
+  if (kind === 'branch') return <KindBranchIcon className={cls} />;
+  return <KindTextIcon className={cls} />;
+}
 
 function MiniTaskTypePreview({ definition }) {
   if (definition.kind === 'choice') {
@@ -176,10 +190,91 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 p-4 backdrop-blur-sm">
-      <div className="mx-auto grid h-[calc(100vh-2rem)] max-w-7xl grid-cols-1 overflow-hidden border border-zinc-900 bg-[#f7f7f5] xl:grid-cols-[420px_minmax(0,1fr)]">
-        <div className="flex min-h-0 flex-col border-b border-zinc-200 bg-white xl:border-b-0 xl:border-r">
+  const handleInstantAdd = (type) => {
+    onConfirm([createDefaultBlock(type)]);
+    onClose();
+  };
+
+  /* ───── Mobile bottom sheet (<sm) ───── */
+  const mobileSheet = (
+    <div className="fixed inset-0 z-50 sm:hidden" role="dialog" aria-modal="true" aria-label="Add task">
+      <button type="button" onClick={onClose} className="absolute inset-0 bg-black/40" />
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col border-t border-zinc-900 bg-white animate-slide-up [padding-bottom:env(safe-area-inset-bottom)]">
+        {/* Drag handle */}
+        <div className="flex justify-center py-2">
+          <div className="h-1 w-10 bg-zinc-300" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 pb-3">
+          <div className="text-sm font-semibold text-zinc-900">Task Library</div>
+          <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700">Close</button>
+        </div>
+
+        {/* Search */}
+        <div className="border-b border-zinc-200 px-4 py-2">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search tasks…"
+            className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+          />
+        </div>
+
+        {/* Horizontal scrolling category tabs */}
+        <div className="scrollbar-none flex gap-1.5 overflow-x-auto border-b border-zinc-200 px-4 py-2.5">
+          {categories.map((entry) => (
+            <button
+              key={entry}
+              type="button"
+              onClick={() => setCategory(entry)}
+              className={`shrink-0 px-4 py-2.5 text-sm font-medium whitespace-nowrap ${category === entry ? 'border border-zinc-900 bg-zinc-900 text-white' : 'border border-zinc-200 text-zinc-600'}`}
+            >
+              {entry}
+            </button>
+          ))}
+        </div>
+
+        {/* Task list — compact single column */}
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-2">
+          {filtered.length === 0 && <div className="py-8 text-center text-xs text-zinc-400">No tasks found</div>}
+          <div className="space-y-1.5">
+            {filtered.map((entry) => (
+              <div key={entry.type} className="flex items-center gap-3 border border-zinc-200 bg-white p-3 active:bg-zinc-50">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-zinc-200 bg-zinc-50">
+                  <MiniTaskTypeIcon kind={entry.kind} taskType={entry.type} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-zinc-900">{entry.label}</div>
+                  <div className="truncate text-[11px] text-zinc-500">{entry.category}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { toggleFavorite(entry.type); }}
+                  className={`shrink-0 text-sm ${isFavorite(entry.type) ? 'text-amber-500' : 'text-zinc-300'}`}
+                >
+                  {isFavorite(entry.type) ? '★' : '☆'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleInstantAdd(entry.type)}
+                  className="shrink-0 border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"
+                >
+                  Add
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* ───── Desktop full-screen modal (sm+) ───── */
+  const desktopModal = (
+    <div className="fixed inset-0 z-50 hidden bg-black/40 p-2 backdrop-blur-sm sm:block sm:p-4" role="dialog" aria-modal="true" aria-label="Add task">
+      <div className="mx-auto grid h-[calc(100vh-1rem)] max-w-7xl grid-cols-1 overflow-hidden border border-zinc-900 bg-[#f7f7f5] sm:h-[calc(100vh-2rem)] lg:grid-cols-[380px_minmax(0,1fr)]">
+        <div className="flex min-h-0 flex-col border-b border-zinc-200 bg-white lg:border-b-0 lg:border-r">
           <div className="border-b border-zinc-200 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -233,7 +328,7 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
           </div>
         </div>
 
-        <div className="grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-h-0 overflow-auto border-r border-zinc-200 bg-[#fcfcfb] p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -246,7 +341,7 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
             <div className="mt-5 border border-zinc-200 bg-white p-5">
               <TaskRenderer block={activeDraft} onComplete={() => {}} />
             </div>
-            <div className="mt-5 grid gap-5 xl:grid-cols-2">
+            <div className="mt-5 grid gap-5 lg:grid-cols-2">
               <section className="border border-zinc-200 bg-white p-4">
                 <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Task Fields</div>
                 <BlockEditorForm block={activeDraft} compact onChange={(nextBlock) => updateDraft(activeType, nextBlock)} />
@@ -280,5 +375,12 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {mobileSheet}
+      {desktopModal}
+    </>
   );
 }

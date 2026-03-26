@@ -81,7 +81,7 @@ export default function WordFamilyBuilderTask({ block, onComplete }) {
   const root = (rootWord.match(/\b\w{3,}\b/) || [''])[0];
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950">
         <Md text={block.title || 'Word Family Builder'} />
       </div>

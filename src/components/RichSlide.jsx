@@ -2,7 +2,7 @@ import { FormattedTextBlock } from './FormattedText';
 
 export default function RichSlide({ block }) {
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       {block.title && <h2 className="mb-4 text-2xl font-semibold text-zinc-950">{block.title}</h2>}
       {block.instruction && <p className="mb-4 text-sm text-zinc-500">{block.instruction}</p>}
       <FormattedTextBlock text={block.content || block.text || ''} />

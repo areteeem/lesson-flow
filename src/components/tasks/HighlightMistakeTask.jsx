@@ -17,7 +17,7 @@ export default function HighlightMistakeTask({ block, onComplete, existingResult
   const submit = () => {
     if (!selected) return;
     const [, ...rest] = selected.split('-');
-    const word = rest.join('-').replace(/[^a-zA-Z0-9'-]/g, '').toLowerCase();
+    const word = rest.join('-').replace(/[^\p{L}\p{N}'-]/gu, '').toLowerCase();
     const isCorrect = word === correctAnswer;
     setSubmitted(true);
     onComplete?.({
@@ -30,7 +30,7 @@ export default function HighlightMistakeTask({ block, onComplete, existingResult
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950">
         <Md text={block.question || block.instruction || 'Highlight the mistake'} />
       </div>
@@ -41,7 +41,7 @@ export default function HighlightMistakeTask({ block, onComplete, existingResult
           if (/^\s+$/.test(word)) return <span key={index}>&nbsp;</span>;
           const key = `${index}-${word}`;
           const isSelected = selected === key;
-          const clean = word.replace(/[^a-zA-Z0-9'-]/g, '').toLowerCase();
+          const clean = word.replace(/[^\p{L}\p{N}'-]/gu, '').toLowerCase();
           const isAnswer = submitted && clean === correctAnswer;
           const isWrong = submitted && isSelected && clean !== correctAnswer;
           return (
@@ -70,7 +70,7 @@ export default function HighlightMistakeTask({ block, onComplete, existingResult
       {submitted && (
         <div className={[
           'mt-4 rounded-2xl border px-4 py-3 text-sm',
-          selected && words[Number(selected.split('-')[0])]?.replace(/[^a-zA-Z0-9'-]/g, '').toLowerCase() === correctAnswer
+          selected && words[Number(selected.split('-')[0])]?.replace(/[^\p{L}\p{N}'-]/gu, '').toLowerCase() === correctAnswer
             ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
             : 'border-red-300 bg-red-50 text-red-800',
         ].join(' ')}>

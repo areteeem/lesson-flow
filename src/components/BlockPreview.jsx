@@ -13,6 +13,7 @@ export default function BlockPreview({ block }) {
   if (block.type === 'structure') return <StructureSlide block={block} />;
   if (block.type === 'table') return <TableSlide block={block} />;
   if (block.type === 'group') return <GroupBlock block={block} results={{}} onCompleteChild={() => {}} />;
+  if (block.type === 'split_group') return <GroupBlock block={{ ...block, layout: 'split' }} results={{}} onCompleteChild={() => {}} />;
   if (block.type === 'task') return <TaskRenderer block={block} onComplete={() => {}} />;
   return <GenericSlide block={block} />;
 }

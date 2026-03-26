@@ -8,9 +8,9 @@ const PANELS = [
 
 export default function StructureSlide({ block }) {
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       {block.title && <h2 className="mb-5 text-2xl font-semibold text-zinc-950">{block.title}</h2>}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {PANELS.map((panel) => (
           <div key={panel.key} className={`rounded-2xl border p-4 ${panel.tone}`}>
             <div className="mb-2 text-xs font-medium uppercase tracking-[0.2em]">{panel.label}</div>

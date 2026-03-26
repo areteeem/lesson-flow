@@ -44,19 +44,19 @@ export default function SplitView({ left, right, layout = 'side-by-side' }) {
         <button
           type="button"
           onClick={() => setCollapsed((c) => c === 'left' ? null : 'left')}
-          className="flex h-6 w-6 items-center justify-center border border-zinc-200 bg-white text-[10px] text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"
+          className="flex h-8 w-8 items-center justify-center border border-zinc-200 bg-white text-xs text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"
           title={collapsed === 'left' ? 'Expand left' : 'Collapse left'}
         >
           {collapsed === 'left' ? '▸' : '◂'}
         </button>
         <div
           onPointerDown={() => { dragging.current = true; }}
-          className="w-1.5 flex-1 cursor-col-resize bg-zinc-100 transition hover:bg-zinc-300"
+          className="w-2 flex-1 cursor-col-resize bg-zinc-100 transition hover:bg-zinc-300"
         />
         <button
           type="button"
           onClick={() => setCollapsed((c) => c === 'right' ? null : 'right')}
-          className="flex h-6 w-6 items-center justify-center border border-zinc-200 bg-white text-[10px] text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"
+          className="flex h-8 w-8 items-center justify-center border border-zinc-200 bg-white text-xs text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"
           title={collapsed === 'right' ? 'Expand right' : 'Collapse right'}
         >
           {collapsed === 'right' ? '◂' : '▸'}

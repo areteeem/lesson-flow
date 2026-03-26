@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { FormattedText, Md } from '../FormattedText';
 import { getTranslateUrl, getAvailableLanguages } from '../../utils/translate';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
+import { PASS_SCORE } from '../../config/constants';
 
 function TranslateButton({ text }) {
   const [open, setOpen] = useState(false);
@@ -24,7 +26,7 @@ function TranslateButton({ text }) {
 }
 
 export default function CardsTask({ block, onComplete, existingResult }) {
-  const [shuffleSeed] = useState(() => crypto.randomUUID());
+  const shuffleSeed = useShuffleSeed();
   const cards = useMemo(() => {
     const source = block.cards?.length ? block.cards : block.pairs?.length ? block.pairs.map((pair) => ({ front: pair.left, back: pair.right })) : block.items?.length ? block.items.map((item) => ({ front: item, back: '' })) : [];
     if (block.shuffle === false) return source;
@@ -66,7 +68,7 @@ export default function CardsTask({ block, onComplete, existingResult }) {
   const reportProgress = () => {
     const quizCorrect = Object.values(quizResults).filter((v) => v === 'correct').length;
     const score = mode === 'quiz' ? quizCorrect / Math.max(cards.length, 1) : seenCount / Math.max(cards.length, 1);
-    onComplete?.({ submitted: true, correct: score >= 0.8, score, response: { mode, seen: seenCount, quizResults }, feedback: 'Cards reviewed.' });
+    onComplete?.({ submitted: true, correct: score >= PASS_SCORE, score, response: { mode, seen: seenCount, quizResults }, feedback: 'Cards reviewed.' });
   };
 
   if (cards.length === 0) {
@@ -74,7 +76,7 @@ export default function CardsTask({ block, onComplete, existingResult }) {
   }
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       {/* Header */}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -105,7 +107,7 @@ export default function CardsTask({ block, onComplete, existingResult }) {
                 <div className="max-w-lg text-2xl font-medium leading-relaxed text-zinc-900"><Md text={current.front} /></div>
               </div>
               {/* Back face */}
-              <div className="absolute inset-0 flex items-center justify-center border border-zinc-200 bg-white p-8 text-center" style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
+              <div className="absolute inset-0 flex items-center justify-center border border-zinc-200 bg-white p-5 md:p-6 xl:p-8 text-center" style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
                 <div className="absolute left-4 top-4 border border-zinc-200 bg-white px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Definition</div>
                 <div className="absolute right-4 top-4 text-xs text-zinc-400">{index + 1}/{cards.length}</div>
                 <div className="relative max-w-lg">

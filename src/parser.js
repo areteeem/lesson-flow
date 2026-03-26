@@ -3,6 +3,16 @@ import { slideRegexEntries } from './config/slideRegistry';
 import { taskRegexEntries } from './config/taskRegistry';
 import { validateBlockSchema, applySchemaFixes } from './config/dslSchema';
 
+const MAX_DSL_SIZE = 512_000; // 500KB limit
+
+/** Sanitize a URL field — reject javascript: and data: URIs */
+function sanitizeUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (/^\s*(javascript|data|vbscript)\s*:/i.test(trimmed)) return '';
+  return trimmed;
+}
+
 /** Matches all blank marker forms: {}, ___, [blank], [1], [2], etc. */
 const BLANK_MARKER_RE = /(\{\}|_{3,}|\[blank\]|\[\d+\])/gi;
 
@@ -10,6 +20,8 @@ const BLOCK_PATTERNS = [
   { regex: /^#LESSON$/i, type: 'lesson' },
   { regex: /^#SLIDE$/i, type: 'slide' },
   { regex: /^#GROUP$/i, type: 'group' },
+  { regex: /^#SPLIT[_\s-]*GROUP$/i, type: 'split_group' },
+  { regex: /^#SLIDE:\s*SPLIT[_\s-]*GROUP$/i, type: 'split_group' },
   { regex: /^#LINK$/i, type: 'link' },
   ...slideRegexEntries(),
   ...taskRegexEntries(),
@@ -41,9 +53,9 @@ function preprocessDsl(raw) {
   // Collapse 3+ consecutive blank lines into 1
   text = text.replace(/\n{4,}/g, '\n\n\n');
   // Fix common AI mistake: "# TASK:" or "# SLIDE:" with space after #
-  text = text.replace(/^#\s+(TASK|SLIDE|LESSON|GROUP|LINK)\b/gim, '#$1');
+  text = text.replace(/^#\s+(TASK|SLIDE|LESSON|GROUP|SPLIT_GROUP|LINK)\b/gim, '#$1');
   // Fix numbered block markers like "1. #TASK: MULTIPLE_CHOICE" or "- #SLIDE"
-  text = text.replace(/^(?:\d+[.)]\s*|[-*+]\s+)(#(?:TASK|SLIDE|LESSON|GROUP|LINK)\b)/gim, '$1');
+  text = text.replace(/^(?:\d+[.)]\s*|[-*+]\s+)(#(?:TASK|SLIDE|LESSON|GROUP|SPLIT_GROUP|LINK)\b)/gim, '$1');
   return text;
 }
 
@@ -133,7 +145,7 @@ function parseRefs(items = []) {
   return items
     .flatMap((item) => item.toString().split(/[,|\s]+/))
     .map((item) => item.trim())
-    .filter((item) => item && !/^#(TASK|SLIDE|GROUP|LINK)/i.test(item));
+    .filter((item) => item && !/^#(TASK|SLIDE|GROUP|SPLIT_GROUP|LINK)/i.test(item));
 }
 
 function sanitizeContent(text) {
@@ -242,11 +254,9 @@ function validateBlock(block, warnings) {
 
     // --- Fill typing / dialogue completion: blank count ---
     if (['fill_typing', 'dialogue_completion', 'dialogue_fill'].includes(block.taskType)) {
-      if (block.text && !BLANK_MARKER_RE.test(block.text)) {
-        BLANK_MARKER_RE.lastIndex = 0;
+      if (block.text && block.text.search(BLANK_MARKER_RE) === -1) {
         warnings.push(`Task "${label}" (${block.taskType}) text has no inline blanks (___, {}, [blank], or [1],[2]…).`);
       }
-      BLANK_MARKER_RE.lastIndex = 0;
       if (block.text) {
         const blankCount = (block.text.match(BLANK_MARKER_RE) || []).length;
         const answerStr = (Array.isArray(block.answer) ? block.answer.join('|') : block.answer || '').toString();
@@ -643,10 +653,10 @@ function buildBlock(definition, rawData, index, warnings) {
     block.steps = toList(rawData.steps || rawData.items);
     block.keywords = toList(rawData.keywords);
     block.taskRefs = parseRefs(toList(rawData.taskrefs || []));
-    block.media = rawData.media || rawData.image || rawData.video || rawData.audio || rawData.src || rawData.url || '';
-    block.image = rawData.image || '';
-    block.video = rawData.video || '';
-    block.audio = rawData.audio || '';
+    block.media = sanitizeUrl(rawData.media || rawData.image || rawData.video || rawData.audio || rawData.src || rawData.url || '');
+    block.image = sanitizeUrl(rawData.image || '');
+    block.video = sanitizeUrl(rawData.video || '');
+    block.audio = sanitizeUrl(rawData.audio || '');
     block.cards = parseCards(toList(rawData.cards || rawData.pairs));
     block.revealMode = toBoolean(rawData.revealmode, false);
   }
@@ -665,8 +675,8 @@ function buildBlock(definition, rawData, index, warnings) {
     block.rows = rawData.rows ? parseRows(rawData.rows) : [];
   }
 
-  if (definition.type === 'group') {
-    block.layout = rawData.layout || 'stack';
+  if (definition.type === 'group' || definition.type === 'split_group') {
+    block.layout = definition.type === 'split_group' ? 'split' : (rawData.layout || 'stack');
     block.itemRefs = parseRefs(toList(rawData.items || rawData.contains || rawData.blocks));
     block.children = [];
   }
@@ -692,10 +702,10 @@ function buildBlock(definition, rawData, index, warnings) {
     block.pairs = parsePairs(toList(rawData.pairs));
     block.cards = parseCards(toList(rawData.cards || rawData.pairs));
     block.explanation = rawData.explanation || '';
-    block.media = rawData.media || rawData.image || rawData.video || rawData.audio || rawData.src || rawData.url || '';
-    block.image = rawData.image || '';
-    block.video = rawData.video || '';
-    block.audio = rawData.audio || '';
+    block.media = sanitizeUrl(rawData.media || rawData.image || rawData.video || rawData.audio || rawData.src || rawData.url || '');
+    block.image = sanitizeUrl(rawData.image || '');
+    block.video = sanitizeUrl(rawData.video || '');
+    block.audio = sanitizeUrl(rawData.audio || '');
     block.rows = rawData.rows ? parseRows(rawData.rows) : [];
     block.columns = toList(rawData.columns);
     block.steps = toList(rawData.steps || rawData.items);
@@ -742,8 +752,7 @@ function buildBlock(definition, rawData, index, warnings) {
     // --- Drag-to-blank / type-in-blank: deduplicate blanks into unique pool with index tracking ---
     if (['drag_to_blank', 'type_in_blank'].includes(block.taskType)) {
       // If text has blanks but blanks array is empty, try to extract from answer
-      if (block.blanks.length === 0 && block.text && BLANK_MARKER_RE.test(block.text)) {
-        BLANK_MARKER_RE.lastIndex = 0;
+      if (block.blanks.length === 0 && block.text && block.text.search(BLANK_MARKER_RE) !== -1) {
         if (Array.isArray(block.answer)) {
           block.blanks = block.answer;
         } else if (typeof block.answer === 'string' && block.answer.includes('|')) {
@@ -815,8 +824,8 @@ function attachLinks(blocks, linkBlocks) {
 }
 
 function normalizeGroups(blocks) {
-  const explicitGroups = blocks.filter((block) => block.type === 'group');
-  const nonGroups = blocks.filter((block) => block.type !== 'group');
+  const explicitGroups = blocks.filter((block) => block.type === 'group' || block.type === 'split_group');
+  const nonGroups = blocks.filter((block) => block.type !== 'group' && block.type !== 'split_group');
   const map = new Map(blocks.map((block) => [block.ref, block]));
   const consumed = new Set();
 
@@ -856,7 +865,7 @@ function normalizeGroups(blocks) {
   const normalized = [];
   blocks.forEach((block) => {
     if (block.type === 'link') return;
-    if (block.type === 'group') {
+    if (block.type === 'group' || block.type === 'split_group') {
       if (consumed.has(block.id)) return;
       normalized.push(block);
       return;
@@ -929,6 +938,10 @@ export function parseLesson(dsl, existingBlocks) {
     return { title: 'Untitled Lesson', settings: { showHints: true, showExplanations: true }, lesson: { title: 'Untitled Lesson', slides: [], tasks: [] }, blocks: [], warnings: [] };
   }
 
+  if (dsl.length > MAX_DSL_SIZE) {
+    return { title: 'Untitled Lesson', settings: { showHints: true, showExplanations: true }, lesson: { title: 'Untitled Lesson', slides: [], tasks: [] }, blocks: [], warnings: [`DSL input exceeds maximum size of ${Math.round(MAX_DSL_SIZE / 1024)}KB.`] };
+  }
+
   const cleaned = preprocessDsl(dsl);
   const warnings = [];
   const lines = cleaned.split('\n');
@@ -994,8 +1007,8 @@ export function parseLesson(dsl, existingBlocks) {
     settings,
     lesson: {
       title,
-      slides: blocks.filter((block) => block.type !== 'task' && block.type !== 'group'),
-      tasks: blocks.flatMap((block) => block.type === 'group' ? block.children : [block]).filter((block) => block.type === 'task'),
+      slides: blocks.filter((block) => block.type !== 'task' && block.type !== 'group' && block.type !== 'split_group'),
+      tasks: blocks.flatMap((block) => (block.type === 'group' || block.type === 'split_group') ? block.children : [block]).filter((block) => block.type === 'task'),
     },
     blocks,
     warnings,
@@ -1020,8 +1033,9 @@ export function generateDSL(lesson) {
 
   const emitBlock = (block, groupRef = '') => {
     if (block.type === 'slide') lines.push('#SLIDE');
-    if (block.type !== 'slide' && block.type !== 'task' && block.type !== 'group') lines.push(`#SLIDE: ${block.type.toUpperCase()}`);
+    if (block.type !== 'slide' && block.type !== 'task' && block.type !== 'group' && block.type !== 'split_group') lines.push(`#SLIDE: ${block.type.toUpperCase()}`);
     if (block.type === 'group') lines.push('#GROUP');
+    if (block.type === 'split_group') lines.push('#SPLIT_GROUP');
     if (block.type === 'task') lines.push(`#TASK: ${block.taskType.toUpperCase()}`);
 
     if (block.title) lines.push(`Title: ${block.title}`);
@@ -1074,7 +1088,7 @@ export function generateDSL(lesson) {
       pushList(lines, 'Rows', (block.rows || []).map((row) => row.join(' | ')));
     }
 
-    if (block.type === 'group') {
+    if (block.type === 'group' || block.type === 'split_group') {
       pushList(lines, 'Items', (block.children || []).map((child) => child.ref));
     }
 
@@ -1139,7 +1153,7 @@ export function generateDSL(lesson) {
     }
 
     lines.push('');
-    if (block.type === 'group' && block.children?.length) {
+    if ((block.type === 'group' || block.type === 'split_group') && block.children?.length) {
       block.children.forEach((child) => emitBlock(child, block.ref));
     }
   };

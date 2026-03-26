@@ -69,7 +69,7 @@ export default function YouTubeTask({ block, onComplete, existingResult }) {
 
   if (!videoId) {
     return (
-      <div className="border border-zinc-200 bg-white p-8">
+      <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction || 'YouTube Video'} /></div>
         <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           No valid YouTube URL found. Add a YouTube link in the Media or Video field.
@@ -82,7 +82,7 @@ export default function YouTubeTask({ block, onComplete, existingResult }) {
   const embedUrl = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&rel=0&modestbranding=1`;
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction || 'Watch the video'} /></div>
 
       {/* Video embed */}

@@ -9,6 +9,8 @@ import SplitView from './SplitView';
 import StructureSlide from './StructureSlide';
 import TableSlide from './TableSlide';
 import TaskRenderer from './TaskRenderer';
+import { HamburgerIcon, FullscreenIcon, ExitFullscreenIcon } from './Icons';
+import FontSettingsPanel, { loadFontSettings, getFontCSSVars } from './FontSettingsPanel';
 
 function useSwipe(onSwipeLeft, onSwipeRight) {
   const touchRef = useRef(null);
@@ -34,8 +36,8 @@ function useSwipe(onSwipeLeft, onSwipeRight) {
 
 function normalizeBlocks(blocks = []) {
   return getVisibleBlocks(blocks)
-    .map((block) => block.type === 'group' ? { ...block, children: normalizeBlocks(block.children || []) } : block)
-    .filter((block) => block.type !== 'group' || block.children.length > 0);
+    .map((block) => (block.type === 'group' || block.type === 'split_group') ? { ...block, children: normalizeBlocks(block.children || []) } : block)
+    .filter((block) => (block.type !== 'group' && block.type !== 'split_group') || block.children.length > 0);
 }
 
 export default function LessonPlayer({ lesson, onExit }) {
@@ -52,6 +54,35 @@ export default function LessonPlayer({ lesson, onExit }) {
   const [showGrading, setShowGrading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [studentName, setStudentName] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fontSettings, setFontSettings] = useState(loadFontSettings);
+  const [showFontPanel, setShowFontPanel] = useState(false);
+  const shellRef = useRef(null);
+
+  // Enter fullscreen on mount
+  useEffect(() => {
+    const el = shellRef.current || document.documentElement;
+    if (el.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen().catch(() => {});
+    }
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      const el = shellRef.current || document.documentElement;
+      el.requestFullscreen?.().catch(() => {});
+    }
+  };
+
+  const handleExit = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    onExit();
+  };
 
   // Persist results + index to sessionStorage so navigating back/forward preserves answers
   useEffect(() => {
@@ -102,8 +133,8 @@ export default function LessonPlayer({ lesson, onExit }) {
     if (block.type === 'rich') return <RichSlide block={block} />;
     if (block.type === 'structure') return <StructureSlide block={block} />;
     if (block.type === 'table') return <TableSlide block={block} />;
-    if (!['slide', 'rich', 'structure', 'table', 'group', 'task'].includes(block.type)) return <GenericSlide block={block} />;
-    if (block.type === 'group') return <GroupBlock block={block} results={results} onCompleteChild={saveResult} />;
+    if (!['slide', 'rich', 'structure', 'table', 'group', 'split_group', 'task'].includes(block.type)) return <GenericSlide block={block} />;
+    if (block.type === 'group' || block.type === 'split_group') return <GroupBlock block={block} results={results} onCompleteChild={saveResult} />;
     if (block.type === 'task') return <TaskRenderer block={block} onComplete={(result) => saveResult(block.id, result)} existingResult={results[block.id]} />;
     return null;
   };
@@ -113,15 +144,15 @@ export default function LessonPlayer({ lesson, onExit }) {
   }
 
   if (showGrading) {
-    return <GradingScreen lesson={lesson} blocks={blocks} results={results} studentName={studentName} onStudentNameChange={setStudentName} onRestart={() => { setResults({}); setCurrentIndex(0); setShowGrading(false); }} onExit={onExit} />;
+    return <GradingScreen lesson={lesson} blocks={blocks} results={results} studentName={studentName} onStudentNameChange={setStudentName} onRestart={() => { setResults({}); setCurrentIndex(0); setShowGrading(false); }} onExit={handleExit} />;
   }
 
-  const useSplit = linkedBlock && current.type !== 'group' && (
+  const shouldSplitView = linkedBlock && current.type !== 'group' && current.type !== 'split_group' && (
     (current.type === 'task' && linkedBlock.type !== 'task') ||
     (current.type !== 'task' && linkedBlock.type === 'task')
   );
 
-  const content = useSplit ? (
+  const content = shouldSplitView ? (
     current.type === 'task'
       ? <SplitView left={renderStandalone(linkedBlock)} right={renderStandalone(current)} />
       : <SplitView left={renderStandalone(current)} right={renderStandalone(linkedBlock)} />
@@ -132,7 +163,7 @@ export default function LessonPlayer({ lesson, onExit }) {
   const completedCount = blocks.filter(isComplete).length;
 
   return (
-    <div className="player-shell flex min-h-screen bg-[#f7f7f5]">
+    <div ref={shellRef} className="player-shell flex min-h-screen bg-[#f7f7f5]" style={getFontCSSVars(fontSettings)}>
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex">
           <button type="button" onClick={() => setSidebarOpen(false)} className="absolute inset-0 bg-black/20" />
@@ -161,7 +192,7 @@ export default function LessonPlayer({ lesson, onExit }) {
       <div className="flex min-h-screen w-full flex-col">
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4 md:px-5">
           <div className="player-frame mx-auto flex items-center gap-2 md:gap-3">
-            <button type="button" onClick={() => setSidebarOpen(true)} className="player-nav-button border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50" title="Lesson map">☰</button>
+            <button type="button" onClick={() => setSidebarOpen(true)} className="player-nav-button border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50" title="Lesson map"><HamburgerIcon /></button>
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="truncate text-sm font-semibold text-zinc-900 md:text-base">{lesson.title}</span>
@@ -171,7 +202,14 @@ export default function LessonPlayer({ lesson, onExit }) {
                 <div className="h-full bg-zinc-900 transition-all duration-500" style={{ width: `${(completedCount / blocks.length) * 100}%` }} />
               </div>
             </div>
-            <button type="button" onClick={onExit} className="player-nav-button border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50">Exit</button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <div className="relative">
+                <button type="button" onClick={() => setShowFontPanel(v => !v)} className="border border-zinc-200 px-2.5 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50" title="Font settings">Aa</button>
+                {showFontPanel && <FontSettingsPanel settings={fontSettings} onChange={setFontSettings} onClose={() => setShowFontPanel(false)} />}
+              </div>
+              <button type="button" onClick={toggleFullscreen} className="hidden border border-zinc-200 px-2.5 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50 sm:block" title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>{isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}</button>
+              <button type="button" onClick={handleExit} className="player-nav-button border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50">Exit</button>
+            </div>
           </div>
         </header>
 
@@ -180,7 +218,7 @@ export default function LessonPlayer({ lesson, onExit }) {
             <div className="player-frame mx-auto">
               <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-400">{current.taskType || current.type}</span>
               {current.type === 'task' && !results[current.id] && (
-                <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" title="Not answered yet" />
+                <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full dot-round bg-amber-400" title="Not answered yet" />
               )}
             </div>
           </div>

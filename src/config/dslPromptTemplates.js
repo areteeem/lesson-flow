@@ -18,6 +18,7 @@ export const DSL_CORE_SPEC = `
 - #SLIDE: TYPE — typed slide (e.g. #SLIDE: TABLE, #SLIDE: STRUCTURE)
 - #TASK: TYPE — task block (e.g. #TASK: MULTIPLE_CHOICE)
 - #GROUP — groups child blocks together
+- #SPLIT_GROUP — two tasks displayed side by side
 - #LINK — connects blocks (From/To fields)
 
 ### Field syntax

@@ -7,39 +7,23 @@ import useFavorites from '../hooks/useFavorites';
 import { Md } from './FormattedText';
 import AddTaskModal from './AddTaskModal';
 import BlockEditorForm from './BlockEditorForm';
+import { DragHandleIcon as DragHandleIconSharp, PlusIcon as PlusIconSharp, TrashIcon as TrashIconSharp, ChevronUpIcon, ChevronDownIcon } from './Icons';
 const BlockPreview = lazy(() => import('./BlockPreview'));
 
 function DragHandleIcon({ className = '' }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-      <path d="M5 3.5h.01M5 8h.01M5 12.5h.01M11 3.5h.01M11 8h.01M11 12.5h.01" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <DragHandleIconSharp className={className} />;
 }
 
 function PlusIcon({ className = '' }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <path d="M8 3.25v9.5M3.25 8h9.5" strokeLinecap="round" />
-    </svg>
-  );
+  return <PlusIconSharp className={className} width={16} height={16} />;
 }
 
 function TrashIcon({ className = '' }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <path d="M2.75 4.25h10.5M6.25 2.75h3.5M5.25 6.25v5.5M8 6.25v5.5M10.75 6.25v5.5M4.5 4.25l.5 8h6l.5-8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <TrashIconSharp className={className} width={16} height={16} />;
 }
 
 function ChevronIcon({ direction = 'up', className = '' }) {
-  const path = direction === 'up' ? 'M4 10 8 6l4 4' : 'M4 6l4 4 4-4';
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <path d={path} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return direction === 'up' ? <ChevronUpIcon className={className} width={16} height={16} /> : <ChevronDownIcon className={className} width={16} height={16} />;
 }
 
 function IconActionButton({ title, onClick, children, className = '', disabled = false }) {
@@ -83,7 +67,7 @@ const SLIDE_GROUPS = {
   Split: ['two_column_text_task', 'step_by_step', 'group_task_slide'],
   Media: ['image_task', 'video_task', 'map_diagram'],
   Visual: ['table', 'flashcard_slide', 'scenario', 'carousel'],
-  Containers: ['group'],
+  Containers: ['group', 'split_group'],
 };
 
 function renderBlockPreview(block) {
@@ -302,7 +286,7 @@ function PaletteCard({ entry, label, kind = 'task', onAdd, isFavorite, onToggleF
         className="w-full text-left"
       >
         <div className="p-3">
-          {kind === 'slide' && <div className="mb-2 overflow-hidden"><MiniSlidePreview layout={entry.layout || (entry.type === 'group' ? 'group' : 'single')} /></div>}
+          {kind === 'slide' && <div className="mb-2 overflow-hidden"><MiniSlidePreview layout={entry.layout || ((entry.type === 'group' || entry.type === 'split_group') ? 'group' : 'single')} /></div>}
           {kind === 'task' && <div className="mb-2 overflow-hidden"><MiniTaskPreview entry={entry} /></div>}
           <div className="mb-1.5 flex items-center gap-1.5">
             <span className={`inline-flex h-4 w-4 items-center justify-center border text-[9px] ${meta.accent}`}>{kind === 'slide' ? '□' : meta.icon}</span>
@@ -424,15 +408,15 @@ function BlockNavigator({ blocks, selectedId, onSelect }) {
 
 function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenModalForGroup, onDropBuilder, onDragOverTarget, onDragLeaveTarget, onCombineHover, onCombineLeave, onCombineDrop, dropTarget, onDeleteChild, onMoveChild, onUngroupChild, onBeginMobileDrag, onEndMobileDragPress, onMobileDropGroup, mobileDragItem, level = 0 }) {
   return (
-    <div className="space-y-3 border border-zinc-200 bg-zinc-50 p-4" style={{ marginLeft: level > 0 ? `${level * 12}px` : 0 }}>
+    <div className="space-y-2 border border-zinc-200 bg-zinc-50 p-2 sm:space-y-3 sm:p-4" style={{ marginLeft: level > 0 ? `${level * 12}px` : 0 }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500"><DragHandleIcon /> <span>Group</span></div>
           <div className="text-sm font-medium text-zinc-900">{block.title || 'Nested group'}</div>
         </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => onOpenModalForGroup(block.id)} className="inline-flex items-center gap-2 border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white"><PlusIcon /> Add Task</button>
-          <button type="button" onClick={() => onUpdateChild(addGroupPlaceholder(block))} className="inline-flex items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700"><PlusIcon /> Add Group</button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" onClick={() => onOpenModalForGroup(block.id)} className="inline-flex items-center justify-center gap-2 border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white"><PlusIcon /> Add Task</button>
+          <button type="button" onClick={() => onUpdateChild(addGroupPlaceholder(block))} className="inline-flex items-center justify-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700"><PlusIcon /> Add Group</button>
         </div>
       </div>
       <div className="space-y-2">
@@ -467,13 +451,13 @@ function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenMod
                 onDragLeave={() => onCombineLeave(block.id, child.id)}
                 onDrop={(event) => onCombineDrop(event, block.id, child.id)}
                 onClick={() => onSelect(child.id)}
-                className={selectedId === child.id ? 'w-full border border-zinc-900 bg-zinc-900 p-3 text-left text-white' : dropTarget?.scope === 'group-combine' && dropTarget.groupId === block.id && dropTarget.targetId === child.id ? 'w-full border-2 border-zinc-900 bg-zinc-100 p-3 text-left text-zinc-900' : mobileDragItem?.childId === child.id ? 'w-full border-2 border-zinc-900 bg-zinc-100 p-3 text-left text-zinc-900' : 'w-full border border-zinc-200 bg-white p-3 text-left text-zinc-900'}
+                className={selectedId === child.id ? 'w-full border border-zinc-900 bg-zinc-900 p-2 text-left text-white sm:p-3' : dropTarget?.scope === 'group-combine' && dropTarget.groupId === block.id && dropTarget.targetId === child.id ? 'w-full border-2 border-zinc-900 bg-zinc-100 p-2 text-left text-zinc-900 sm:p-3' : mobileDragItem?.childId === child.id ? 'w-full border-2 border-zinc-900 bg-zinc-100 p-2 text-left text-zinc-900 sm:p-3' : 'w-full border border-zinc-200 bg-white p-2 text-left text-zinc-900 sm:p-3'}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] opacity-70"><DragHandleIcon className="text-current/70" /> <span>{child.type === 'task' ? getTaskDefinition(child.taskType).category : child.type}</span></div>
                     <div className="mt-1 text-sm font-semibold">{getBlockLabel(child, index)}</div>
-                    <div className="mt-1 text-xs opacity-80">{child.instruction || child.text || child.content || (child.type === 'task' ? getTaskDefinition(child.taskType).description : 'Nested group')}</div>
+                    <div className="mt-1 hidden text-xs opacity-80 sm:block">{child.instruction || child.text || child.content || (child.type === 'task' ? getTaskDefinition(child.taskType).description : 'Nested group')}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="border border-current px-2 py-0.5 text-[10px] uppercase">{index + 1}</span>
@@ -484,7 +468,7 @@ function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenMod
                 </div>
               </button>
               {selectedId === child.id && child.type !== 'group' && (
-                <div className="border border-zinc-200 bg-white p-4">
+                <div className="border border-zinc-200 bg-white p-2 sm:p-4">
                   <InlineQuickFields block={child} onChange={onUpdateChild} />
                   <div className="mt-3">
                     <BlockEditorForm block={child} onChange={onUpdateChild} compact />
@@ -494,7 +478,7 @@ function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenMod
                   </div>
                 </div>
               )}
-              {child.type === 'group' && (
+              {(child.type === 'group' || child.type === 'split_group') && (
                 <GroupNodeEditor
                   block={child}
                   selectedId={selectedId}
@@ -553,7 +537,7 @@ function createAdHocGroup(children, title = 'New Group') {
   return group;
 }
 
-export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLesson, onAddBlock, onDeleteBlock }) {
+export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLesson, onAddBlock, onDeleteBlock, onOpenGuide }) {
   const { favorites, toggle: toggleFavorite, isFavorite } = useFavorites();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
@@ -561,9 +545,10 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalTargetGroupId, setModalTargetGroupId] = useState(null);
   const [previewWidth, setPreviewWidth] = useState(36);
+  const [showMobileFab, setShowMobileFab] = useState(false);
   const [showSlideLibrary, setShowSlideLibrary] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [compactMode, setCompactMode] = useState(false);
+
   const [collapsedLibrarySections, setCollapsedLibrarySections] = useState(() => {
     const initial = {};
     return initial;
@@ -861,7 +846,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     const sourceIndex = blocks.findIndex((block) => block.id === blockId);
     if (sourceIndex === -1) return;
     const source = blocks[sourceIndex];
-    if (source.type === 'group') return;
+    if (source.type === 'group' || source.type === 'split_group') return;
     const group = createDefaultBlock('group');
     group.title = `${getBlockLabel(source, sourceIndex)} Group`;
     group.instruction = 'Grouped for multi-step practice.';
@@ -891,7 +876,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
       const sourceIndex = (group.children || []).findIndex((child) => child.id === childId);
       if (sourceIndex === -1) return group;
       const source = group.children[sourceIndex];
-      if (source.type === 'group') return group;
+      if (source.type === 'group' || source.type === 'split_group') return group;
       const nestedGroup = createDefaultBlock('group');
       nestedGroup.title = `${getBlockLabel(source, sourceIndex)} Group`;
       nestedGroup.instruction = 'Grouped for multi-step practice.';
@@ -1155,23 +1140,15 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
 
         <section className="flex min-w-0 flex-1 flex-col lg:flex-row" style={{ '--preview-width': `${previewWidth}%` }}>
           <div className="flex min-w-0 flex-1 flex-col">
-            {/* Mobile quick-add bar */}
-            <div className="border-b border-zinc-200 px-3 py-2 lg:hidden">
-              <div className="flex gap-1.5">
-                <button type="button" onClick={() => setIsModalOpen(true)} className="flex flex-1 items-center justify-center gap-1 border border-zinc-900 bg-zinc-900 px-2 py-1.5 text-[11px] font-medium text-white"><PlusIcon /> Task</button>
-                <button type="button" onClick={() => setShowSlideLibrary(true)} className="flex items-center justify-center gap-1 border border-zinc-200 px-2 py-1.5 text-[11px] text-zinc-700"><PlusIcon /> Slide</button>
-                <button type="button" onClick={() => addBlockAndTrack(createDefaultBlock('group', { blank: true }))} className="flex items-center justify-center gap-1 border border-zinc-200 px-2 py-1.5 text-[11px] text-zinc-700"><PlusIcon /> Group</button>
-              </div>
-            </div>
+            {/* Mobile quick-add bar — replaced with FAB, see bottom of component */}
 
             <div className="min-h-0 flex-1 overflow-auto">
-              <div className="mx-auto max-w-3xl space-y-3 p-4 pb-8">
+              <div className="mx-auto max-w-3xl space-y-2 p-2 pb-6 sm:space-y-3 sm:p-4 sm:pb-8">
                 {/* Sticky header with navigator + add buttons */}
-                <div className="sticky top-0 z-10 -mx-4 border-b border-zinc-200 bg-white/95 px-4 py-2 backdrop-blur-sm">
+                <div className="sticky top-0 z-10 -mx-2 border-b border-zinc-200 bg-white/95 px-2 py-2 backdrop-blur-sm sm:-mx-4 sm:px-4">
                   <div className="flex flex-wrap items-center justify-between gap-1.5">
                     <div className="flex items-center gap-2">
                       <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-400">{blocks.length} block{blocks.length !== 1 ? 's' : ''}</span>
-                      <button type="button" onClick={() => setCompactMode((v) => !v)} className={compactMode ? 'border border-zinc-900 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-medium text-white' : 'border border-zinc-200 px-1.5 py-0.5 text-[9px] text-zinc-400 hover:border-zinc-400'} title="Toggle compact mode">{compactMode ? 'Compact ✓' : 'Compact'}</button>
                     </div>
                     <div className="hidden items-center gap-1 lg:flex">
                       <button type="button" onClick={() => setShowSlideLibrary(true)} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900"><PlusIcon /> Slide</button>
@@ -1187,7 +1164,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
 
                 {/* Recently used quick strip */}
                 {recentTypes.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="hidden flex-wrap gap-1.5 sm:flex">
                     <span className="self-center text-[9px] font-medium uppercase tracking-[0.16em] text-zinc-300">Recent:</span>
                     {recentTypes.slice(0, 4).map((type) => {
                       const def = getTaskDefinition(type);
@@ -1201,7 +1178,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
 
                 {/* Smart suggestions */}
                 {suggestions.length > 0 && !mobileDragItem && (
-                  <div className="space-y-1.5">
+                  <div className="hidden space-y-1.5 sm:block">
                     {suggestions.map((tip, i) => (
                       <div key={i} className="flex items-center justify-between gap-2 border border-dashed border-zinc-300 bg-zinc-50 px-3 py-2">
                         <span className="text-[11px] text-zinc-500">💡 {tip.text}</span>
@@ -1222,7 +1199,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                 {blocks.map((block, index) => {
                   const definition = block.type === 'task' ? getTaskDefinition(block.taskType) : null;
                   const selectedTopLevel = selected?.id === block.id;
-                  const catMeta = CATEGORY_META[definition?.category] || { icon: block.type === 'group' ? '▤' : '□', accent: 'border-zinc-300 text-zinc-600' };
+                  const catMeta = CATEGORY_META[definition?.category] || { icon: (block.type === 'group' || block.type === 'split_group') ? '▤' : '□', accent: 'border-zinc-300 text-zinc-600' };
                   return (
                     <div
                       key={block.id}
@@ -1265,66 +1242,50 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                         <button
                           type="button"
                           onClick={() => onSelect(block.id)}
-                          className={compactMode && !selectedTopLevel ? 'flex w-full items-center gap-2 px-3 py-2 text-left' : 'flex w-full items-start gap-3 p-3 text-left'}
+                          className="flex w-full items-start gap-2 p-2 text-left sm:gap-3 sm:p-3"
                         >
                           {/* Left: Index + drag handle */}
-                          <div className={compactMode && !selectedTopLevel ? 'flex shrink-0 items-center gap-1' : 'flex shrink-0 flex-col items-center gap-1 pt-0.5'}>
+                          <div className="flex shrink-0 flex-col items-center gap-1 pt-0.5">
                             <span className={selectedTopLevel ? 'flex h-6 w-6 items-center justify-center bg-zinc-900 text-[10px] font-semibold text-white' : 'flex h-6 w-6 items-center justify-center border border-zinc-200 text-[10px] font-semibold text-zinc-500'}>{index + 1}</span>
-                            {(!compactMode || selectedTopLevel) && <DragHandleIcon className="text-zinc-300" />}
+                            <DragHandleIcon className="hidden text-zinc-300 sm:block" />
                           </div>
                           {/* Center: Content */}
                           <div className="min-w-0 flex-1">
-                            {(!compactMode || selectedTopLevel) && (
-                              <div className="flex items-center gap-2">
-                                <span className={`inline-flex h-4 items-center gap-1 px-1.5 text-[9px] font-medium uppercase tracking-[0.1em] ${selectedTopLevel ? 'bg-zinc-900 text-white' : `border ${catMeta.accent} bg-white`}`}>
-                                  {catMeta.icon} {definition?.category || block.type}
-                                </span>
-                                {!block.enabled && <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-400">Disabled</span>}
-                              </div>
-                            )}
-                            <div className={compactMode && !selectedTopLevel ? 'flex items-center gap-2 text-xs' : `mt-1.5 text-sm font-semibold ${selectedTopLevel ? 'text-zinc-950' : 'text-zinc-800'}`}>
-                              {compactMode && !selectedTopLevel && <span className="text-[9px] text-zinc-400">{catMeta.icon}</span>}
-                              <span className={compactMode && !selectedTopLevel ? 'truncate font-medium text-zinc-700' : ''}>{getBlockLabel(block, index)}</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex h-4 items-center gap-1 px-1.5 text-[9px] font-medium uppercase tracking-[0.1em] ${selectedTopLevel ? 'bg-zinc-900 text-white' : `border ${catMeta.accent} bg-white`}`}>
+                                {catMeta.icon} {definition?.category || block.type}
+                              </span>
+                              {!block.enabled && <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-400">Disabled</span>}
                             </div>
-                            {(!compactMode || selectedTopLevel) && <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500"><Md text={block.instruction || block.content || block.text || block.question || definition?.description || ''} /></div>}
+                            <div className={selectedTopLevel ? 'hidden' : 'mt-1 text-sm font-semibold text-zinc-800'}>
+                              {getBlockLabel(block, index)}
+                            </div>
+                            {!selectedTopLevel && <div className="mt-1 hidden line-clamp-2 text-xs leading-relaxed text-zinc-500 sm:block"><Md text={block.instruction || block.content || block.text || block.question || definition?.description || ''} /></div>}
                           </div>
-                          {/* Right: Quick actions */}
-                          {(!compactMode || selectedTopLevel) && (
-                            <div className="flex shrink-0 flex-col gap-1">
-                              <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, -1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="up" /></IconActionButton>
-                              <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, 1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="down" /></IconActionButton>
-                              <IconActionButton title="Duplicate" onClick={(event) => { event.stopPropagation(); duplicateTopLevelBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-xs">⧉</span></IconActionButton>
-                              <IconActionButton title="Delete" onClick={(event) => { event.stopPropagation(); onDeleteBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-red-600"><TrashIcon /></IconActionButton>
-                            </div>
-                          )}
+                          {/* Right: Quick actions — horizontal row */}
+                          <div className={`shrink-0 flex-row gap-1 ${selectedTopLevel ? 'flex' : 'hidden sm:flex'}`}>
+                            <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, -1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="up" /></IconActionButton>
+                            <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, 1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="down" /></IconActionButton>
+                            <IconActionButton title="Duplicate" onClick={(event) => { event.stopPropagation(); duplicateTopLevelBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-xs">⧉</span></IconActionButton>
+                            <IconActionButton title="Delete" onClick={(event) => { event.stopPropagation(); onDeleteBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-red-600"><TrashIcon /></IconActionButton>
+                          </div>
                         </button>
-
-                        {/* Mobile gesture action bar — shown when selected on touch */}
-                        {selectedTopLevel && prefersCoarsePointer && (
-                          <div className="flex border-t border-zinc-200 lg:hidden">
-                            <button type="button" onClick={(e) => { e.stopPropagation(); moveTopLevelBlock(block.id, -1); }} className="flex flex-1 items-center justify-center gap-1 border-r border-zinc-200 py-2.5 text-[10px] text-zinc-500 active:bg-zinc-100">↑ Up</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); moveTopLevelBlock(block.id, 1); }} className="flex flex-1 items-center justify-center gap-1 border-r border-zinc-200 py-2.5 text-[10px] text-zinc-500 active:bg-zinc-100">↓ Down</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); duplicateTopLevelBlock(block.id); }} className="flex flex-1 items-center justify-center gap-1 border-r border-zinc-200 py-2.5 text-[10px] text-zinc-500 active:bg-zinc-100">⧉ Clone</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); wrapTopLevelBlockInGroup(block.id); }} className="flex flex-1 items-center justify-center gap-1 border-r border-zinc-200 py-2.5 text-[10px] text-zinc-500 active:bg-zinc-100">▤ Group</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); onDeleteBlock(block.id); }} className="flex flex-1 items-center justify-center gap-1 py-2.5 text-[10px] text-rose-500 active:bg-rose-50">✕ Delete</button>
-                          </div>
-                        )}
 
                         {/* Expanded editor — shown when selected */}
                         {selectedTopLevel && block.type !== 'group' && (
-                          <div className="border-t border-zinc-200 bg-[#fcfcfb] p-4">
+                          <div className="border-t border-zinc-200 bg-[#fcfcfb] p-2 sm:p-4">
                             <InlineQuickFields block={block} onChange={updateSelected} />
-                            <div className="mt-4">
+                            <div className="mt-3 sm:mt-4">
                               <BlockEditorForm block={block} onChange={updateSelected} />
                             </div>
-                            <div className="mt-4 border-t border-zinc-200 pt-4 lg:hidden">
+                            <div className="mt-3 border-t border-zinc-200 pt-3 sm:mt-4 sm:pt-4 lg:hidden">
                               {renderBlockPreview(block)}
                             </div>
                           </div>
                         )}
                       </div>
 
-                      {block.type === 'group' && (
+                      {(block.type === 'group' || block.type === 'split_group') && (
                         <GroupNodeEditor
                           block={block}
                           selectedId={selected?.id}
@@ -1435,6 +1396,76 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
           }
         }}
       />
+      {/* Mobile FAB */}
+      <button type="button" onClick={() => setShowMobileFab(true)} className="fixed bottom-28 right-4 z-30 flex h-14 w-14 items-center justify-center border border-zinc-900 bg-zinc-900 text-white shadow-[0_4px_20px_rgba(0,0,0,0.25)] sm:bottom-20 lg:hidden" aria-label="Add content">
+        <PlusIconSharp width={24} height={24} />
+      </button>
+
+      {/* Mobile add bottom sheet */}
+      {showMobileFab && (
+        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden">
+          <button type="button" onClick={() => setShowMobileFab(false)} className="absolute inset-0" />
+          <div className="absolute inset-x-0 bottom-0 max-h-[70vh] animate-soft-rise overflow-auto border-t border-zinc-200 bg-white [padding-bottom:env(safe-area-inset-bottom)]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3">
+              <div className="text-sm font-semibold text-zinc-900">Add Content</div>
+              <button type="button" onClick={() => setShowMobileFab(false)} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700">Close</button>
+            </div>
+            <div className="grid grid-cols-3 gap-px bg-zinc-100 p-0">
+              <button type="button" onClick={() => { setShowMobileFab(false); setIsModalOpen(true); }} className="flex flex-col items-center gap-2 bg-white px-3 py-5 active:bg-zinc-50">
+                <span className="flex h-10 w-10 items-center justify-center border border-zinc-900 bg-zinc-900 text-white"><PlusIconSharp width={20} height={20} /></span>
+                <span className="text-xs font-medium text-zinc-800">Task</span>
+                <span className="text-[10px] text-zinc-400">Full library</span>
+              </button>
+              <button type="button" onClick={() => { setShowMobileFab(false); setShowSlideLibrary(true); }} className="flex flex-col items-center gap-2 bg-white px-3 py-5 active:bg-zinc-50">
+                <span className="flex h-10 w-10 items-center justify-center border border-zinc-200 text-zinc-600"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="14" height="12"/><path d="M3 8h14"/></svg></span>
+                <span className="text-xs font-medium text-zinc-800">Slide</span>
+                <span className="text-[10px] text-zinc-400">Info, rich, table</span>
+              </button>
+              <button type="button" onClick={() => { setShowMobileFab(false); addBlockAndTrack(createDefaultBlock('group', { blank: true })); }} className="flex flex-col items-center gap-2 bg-white px-3 py-5 active:bg-zinc-50">
+                <span className="flex h-10 w-10 items-center justify-center border border-zinc-200 text-zinc-600"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="6" height="6"/><rect x="11" y="3" width="6" height="6"/><rect x="3" y="11" width="6" height="6"/><rect x="11" y="11" width="6" height="6"/></svg></span>
+                <span className="text-xs font-medium text-zinc-800">Group</span>
+                <span className="text-[10px] text-zinc-400">Multi-task set</span>
+              </button>
+              {onOpenGuide && (
+                <button type="button" onClick={() => { setShowMobileFab(false); onOpenGuide(); }} className="flex flex-col items-center gap-2 bg-white px-3 py-5 active:bg-zinc-50">
+                  <span className="flex h-10 w-10 items-center justify-center border border-zinc-900 bg-zinc-900 text-white text-lg font-bold">?</span>
+                  <span className="text-xs font-medium text-zinc-800">Guide</span>
+                  <span className="text-[10px] text-zinc-400">AI assistant</span>
+                </button>
+              )}
+            </div>
+            {recentTypes.length > 0 && (
+              <div className="border-t border-zinc-200 px-4 py-3">
+                <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">Recently Used</div>
+                <div className="flex flex-wrap gap-2">
+                  {recentTypes.slice(0, 6).map((type) => {
+                    const def = getTaskDefinition(type);
+                    if (!def || def.type === 'generic') return null;
+                    return (
+                      <button key={type} type="button" onClick={() => { setShowMobileFab(false); addBlockAndTrack(createDefaultBlock(type, { blank: true })); }} className="border border-zinc-200 px-3 py-2 text-xs text-zinc-700 active:bg-zinc-50">{def.label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {favorites.length > 0 && (
+              <div className="border-t border-zinc-200 px-4 py-3">
+                <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">★ Favorites</div>
+                <div className="flex flex-wrap gap-2">
+                  {favorites.slice(0, 8).map((type) => {
+                    const def = getTaskDefinition(type);
+                    if (!def || def.type === 'generic') return null;
+                    return (
+                      <button key={type} type="button" onClick={() => { setShowMobileFab(false); addBlockAndTrack(createDefaultBlock(type, { blank: true })); }} className="border border-zinc-200 px-3 py-2 text-xs text-zinc-700 active:bg-zinc-50">★ {def.label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <MobileSlideLibrarySheet isOpen={showSlideLibrary} onClose={() => setShowSlideLibrary(false)} onAdd={(block) => addBlockAndTrack(block)} />
     </>
   );

@@ -1,19 +1,11 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
+import { SPEAKER_COLORS, STRICT_MATCH_THRESHOLD } from '../../config/constants';
+import { BLANK_WITH_ANSWER_RE } from '../../utils/patterns';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
-const SPEAKER_COLORS = [
-  { bg: 'bg-blue-100', text: 'text-blue-900', border: 'border-blue-200', avatar: 'bg-blue-600' },
-  { bg: 'bg-zinc-100', text: 'text-zinc-900', border: 'border-zinc-200', avatar: 'bg-zinc-600' },
-  { bg: 'bg-emerald-100', text: 'text-emerald-900', border: 'border-emerald-200', avatar: 'bg-emerald-600' },
-  { bg: 'bg-purple-100', text: 'text-purple-900', border: 'border-purple-200', avatar: 'bg-purple-600' },
-  { bg: 'bg-amber-100', text: 'text-amber-900', border: 'border-amber-200', avatar: 'bg-amber-600' },
-  { bg: 'bg-rose-100', text: 'text-rose-900', border: 'border-rose-200', avatar: 'bg-rose-600' },
-  { bg: 'bg-cyan-100', text: 'text-cyan-900', border: 'border-cyan-200', avatar: 'bg-cyan-600' },
-  { bg: 'bg-indigo-100', text: 'text-indigo-900', border: 'border-indigo-200', avatar: 'bg-indigo-600' },
-];
-
-const BLANK_RE = /(\{[^}]+\}|\{\}|_{3,}|\[blank\]|\[\d+\])/i;
+const BLANK_RE = BLANK_WITH_ANSWER_RE;
 
 function parseDialogueLines(text) {
   if (!text) return [];
@@ -54,7 +46,7 @@ export default function DialogueDragTask({ block, onComplete }) {
     return raw.toString().split('|').map((a) => a.trim()).filter(Boolean);
   }, [block.answer, block.correct, block.blanks, lines]);
 
-  const [shuffleSeed] = useState(() => crypto.randomUUID());
+  const shuffleSeed = useShuffleSeed();
   const indexedPool = useMemo(() => {
     const source = block.options?.length ? [...answers, ...block.options.filter((o) => !answers.includes(o))] : [...answers];
     const indexed = source.map((word, i) => ({ id: i, word }));
@@ -110,7 +102,7 @@ export default function DialogueDragTask({ block, onComplete }) {
   const submit = () => {
     const score = values.reduce((t, v, i) => t + (v.trim().toLowerCase() === (answers[i] || '').trim().toLowerCase() ? 1 : 0), 0) / Math.max(answers.length, 1);
     setSubmitted(true);
-    onComplete?.({ submitted: true, correct: score >= 0.95, score, response: values, correctAnswer: answers });
+    onComplete?.({ submitted: true, correct: score >= STRICT_MATCH_THRESHOLD, score, response: values, correctAnswer: answers });
   };
 
   return (
@@ -164,7 +156,7 @@ export default function DialogueDragTask({ block, onComplete }) {
               <div className={`flex h-8 w-8 shrink-0 items-center justify-center text-xs font-bold text-white ${colors.avatar}`}>
                 {line.speaker?.[0]?.toUpperCase() || '?'}
               </div>
-              <div className={`max-w-[75%] border px-4 py-2.5 ${colors.bg} ${colors.border} ${colors.text} ${isLeft ? 'rounded-t-2xl rounded-br-2xl rounded-bl-sm' : 'rounded-t-2xl rounded-bl-2xl rounded-br-sm'}`}>
+              <div className={`max-w-[75%] border px-4 py-2.5 ${colors.bg} ${colors.border} ${colors.text} ${isLeft ? 'bubble-left' : 'bubble-right'}`}>
                 {line.speaker && <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider opacity-60">{line.speaker}</div>}
                 <div className="text-sm leading-relaxed">
                   {hasBlanks ? parts.map((part, pIdx) => {

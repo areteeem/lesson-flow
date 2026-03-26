@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
+import { BLANK_MARKER_RE } from '../../utils/patterns';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
 export default function DragToBlankTask({ block, onComplete, existingResult }) {
   const sentence = block.text || block.sentence || '';
-  const tokens = sentence.split(/(\{\}|_{3,}|\[blank\]|\[\d+\])/i);
+  const tokens = sentence.split(BLANK_MARKER_RE);
   const answers = block.blanks || [];
-  const blankCount = tokens.filter((t) => /(\{\}|_{3,}|\[blank\]|\[\d+\])/i.test(t)).length;
-  const [shuffleSeed] = useState(() => crypto.randomUUID());
+  const blankCount = tokens.filter((t) => BLANK_MARKER_RE.test(t)).length;
+  const shuffleSeed = useShuffleSeed();
   const [values, setValues] = useState(Array(Math.max(blankCount, 1)).fill(''));
 
   // Build pool as indexed items so duplicates are tracked independently
@@ -91,7 +93,7 @@ export default function DragToBlankTask({ block, onComplete, existingResult }) {
   // If no blanks in sentence text, show a fallback message
   if (blankCount === 0) {
     return (
-      <div className="border border-zinc-200 bg-white p-8">
+      <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
         {sentence && <div className="mb-4 whitespace-pre-wrap text-sm leading-7 text-zinc-700">{sentence}</div>}
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">This task has no blanks to fill. The text should contain ___ or {'{ }'} markers.</div>
@@ -104,7 +106,7 @@ export default function DragToBlankTask({ block, onComplete, existingResult }) {
     return acc;
   }, {});
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <div className="mb-3 text-xs text-zinc-500">{block.hint}</div>}
       {preferTapPlacement && !submitted && (

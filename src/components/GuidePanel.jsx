@@ -462,7 +462,7 @@ Output ONLY the DSL text, nothing else.`;
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <button type="button" onClick={onClose} className="absolute inset-0 bg-black/20" />
-      <aside className="relative z-10 h-full w-full max-w-[900px] overflow-y-auto border-l border-zinc-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.14)]">
+      <aside className="relative z-10 h-full w-full max-w-full sm:max-w-[600px] lg:max-w-[800px] xl:max-w-[900px] overflow-y-auto border-l border-zinc-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.14)]">
         <div className="sticky top-0 z-10 border-b border-zinc-200 bg-white px-5 py-3">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold text-zinc-950">Guide</div>

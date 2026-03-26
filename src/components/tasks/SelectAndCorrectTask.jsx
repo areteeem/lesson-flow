@@ -29,7 +29,7 @@ export default function SelectAndCorrectTask({ block, onComplete, existingResult
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950">
         <Md text={block.question || block.instruction || 'Select the incorrect word and correct it'} />
       </div>

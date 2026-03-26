@@ -42,10 +42,10 @@ export default function SettingsPage({ onBack }) {
     <div className="flex h-screen flex-col overflow-hidden bg-[#f7f7f5]">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-200 bg-white px-6 py-3">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={onBack} className="border border-zinc-200 px-3 py-1.5 text-sm text-zinc-700 hover:border-zinc-900">Back</button>
+          <button type="button" onClick={onBack} className="border border-zinc-200 px-4 py-2.5 text-sm text-zinc-700 hover:border-zinc-900">Back</button>
           <div className="text-lg font-semibold text-zinc-950">Settings</div>
         </div>
-        <button type="button" onClick={handleSave} className="border border-zinc-900 bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white">
+        <button type="button" onClick={handleSave} className="border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white">
           {saved ? 'Saved ✓' : 'Save Settings'}
         </button>
       </header>

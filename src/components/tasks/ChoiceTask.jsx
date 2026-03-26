@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
 function normalizeAnswers(value) {
   if (Array.isArray(value)) return value.map((item) => item.toString().trim().toLowerCase());
@@ -11,7 +12,7 @@ function normalizeAnswers(value) {
 export default function ChoiceTask({ block, onComplete, existingResult }) {
   const multi = block.multiple || block.taskType === 'multi_select';
   const correctAnswers = useMemo(() => normalizeAnswers(block.correct || block.answer), [block.correct, block.answer]);
-  const [shuffleSeed] = useState(() => crypto.randomUUID());
+  const shuffleSeed = useShuffleSeed();
   const options = useMemo(() => block.shuffle === false ? (block.options || []) : stableShuffle(block.options || [], `${block.id || block.question}-${shuffleSeed}-options`), [block.id, block.options, block.question, block.shuffle, shuffleSeed]);
   const [selected, setSelected] = useState(() => existingResult?.response || []);
   const [submitted, setSubmitted] = useState(() => Boolean(existingResult?.submitted));
@@ -45,7 +46,7 @@ export default function ChoiceTask({ block, onComplete, existingResult }) {
   const isBinary = options.length === 2 && ['true_false', 'yes_no', 'either_or'].includes(block.taskType);
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <p className="mb-4 text-sm text-zinc-500"><Md text={block.hint} /></p>}
       {options.length === 0 && (

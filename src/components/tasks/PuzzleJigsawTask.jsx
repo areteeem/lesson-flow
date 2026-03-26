@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
 function normalizeRows(block) {
   const sourceRows = block.rows?.length ? block.rows : [['A', 'B'], ['C', 'D']];
@@ -91,7 +92,7 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
     return flat;
   }, [rows]);
 
-  const [shuffleSeed] = useState(() => crypto.randomUUID());
+  const shuffleSeed = useShuffleSeed();
   const shuffledPieces = useMemo(
     () => stableShuffle(pieces, `${block.id || block.question}-jigsaw-${shuffleSeed}`),
     [block.id, block.question, pieces, shuffleSeed]
@@ -104,10 +105,20 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
   // Available pieces (not yet placed)
   const [available, setAvailable] = useState(() => shuffledPieces.map((p) => p.id));
   const [draggingPiece, setDraggingPiece] = useState(null);
+  const [selectedPiece, setSelectedPiece] = useState(null);
   const [checked, setChecked] = useState(false);
+  const [preferTap, setPreferTap] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia('(pointer: coarse)');
+    const update = () => setPreferTap(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
 
   const pieceMap = useMemo(() => Object.fromEntries(pieces.map((p) => [p.id, p])), [pieces]);
-  const cellSize = 90;
+  const cellSize = typeof window !== 'undefined' && window.innerWidth < 640 ? Math.min(90, Math.floor((window.innerWidth - 48) / numCols)) : 90;
 
   const handleDragStart = (pieceId) => {
     setDraggingPiece(pieceId);
@@ -153,22 +164,32 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
     setChecked(false);
   };
 
-  const handleTapPlace = (pieceId) => {
-    // Find first empty cell and place there
-    for (let r = 0; r < numRows; r++) {
-      for (let c = 0; c < numCols; c++) {
-        if (board[r][c] === null) {
-          setBoard((prev) => {
-            const next = prev.map((row) => [...row]);
-            next[r][c] = pieceId;
-            return next;
-          });
-          setAvailable((prev) => prev.filter((id) => id !== pieceId));
-          setChecked(false);
-          return;
+  const handleTapSelect = (pieceId) => {
+    setSelectedPiece((prev) => (prev === pieceId ? null : pieceId));
+  };
+
+  const handleTapPlaceOnCell = (row, col) => {
+    const activePiece = selectedPiece;
+    if (!activePiece) return;
+    // If there's already a piece in the target cell, return it to available
+    const displaced = board[row][col];
+    if (displaced) {
+      setAvailable((prev) => [...prev, displaced]);
+    }
+    setBoard((prev) => {
+      const next = prev.map((r) => [...r]);
+      // Clear piece from any other cell if it was on the board
+      for (let r = 0; r < numRows; r++) {
+        for (let c = 0; c < numCols; c++) {
+          if (next[r][c] === activePiece) next[r][c] = null;
         }
       }
-    }
+      next[row][col] = activePiece;
+      return next;
+    });
+    setAvailable((prev) => prev.filter((id) => id !== activePiece));
+    setSelectedPiece(null);
+    setChecked(false);
   };
 
   const handleTapRemove = (row, col) => {
@@ -227,6 +248,17 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
         <Md text={block.question || block.instruction || 'Assemble the puzzle'} />
       </div>
       {block.hint && <div className="mb-4 text-sm text-zinc-500"><Md text={block.hint} /></div>}
+      {!checked && (
+        <div className="mb-4 text-xs text-zinc-500">
+          {preferTap ? 'Tap a piece to select it, then tap a cell to place it.' : 'Drag pieces onto the board, or tap to select and place.'}
+        </div>
+      )}
+      {selectedPiece && (
+        <div className="mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
+          <span>Selected: <strong>{pieceMap[selectedPiece]?.text}</strong></span>
+          <button type="button" onClick={() => setSelectedPiece(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</button>
+        </div>
+      )}
 
       {/* Board grid */}
       <div className="mb-6 inline-block border border-zinc-300 bg-zinc-100 p-2">
@@ -247,7 +279,13 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
                   key={`${ri}-${ci}`}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => handleDropOnBoard(ri, ci)}
-                  onClick={() => cellPieceId && handleTapRemove(ri, ci)}
+                  onClick={() => {
+                    if (selectedPiece && !cellPieceId) {
+                      handleTapPlaceOnCell(ri, ci);
+                    } else if (cellPieceId) {
+                      handleTapRemove(ri, ci);
+                    }
+                  }}
                   className={[
                     'relative flex cursor-pointer items-center justify-center overflow-hidden border-2 transition-all',
                     cellPieceId ? JIGSAW_COLORS[colorIdx] : 'border-dashed border-zinc-300 bg-white',
@@ -301,10 +339,10 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
                   type="button"
                   draggable
                   onDragStart={() => handleDragStart(pieceId)}
-                  onClick={() => handleTapPlace(pieceId)}
-                  className={`flex items-center justify-center border-2 px-3 py-2 text-xs font-medium transition hover:scale-105 ${JIGSAW_COLORS[colorIdx]}`}
+                  onClick={() => handleTapSelect(pieceId)}
+                  className={`flex items-center justify-center border-2 px-3 py-2 text-xs font-medium transition hover:scale-105 ${selectedPiece === pieceId ? 'ring-2 ring-zinc-900 ring-offset-1' : ''} ${JIGSAW_COLORS[colorIdx]}`}
                   style={{ minWidth: 60, minHeight: 40 }}
-                  title="Drag or click to place"
+                  title={preferTap ? 'Tap to select, then tap a cell' : 'Drag or click to place'}
                 >
                   <Md text={piece.text} />
                 </button>

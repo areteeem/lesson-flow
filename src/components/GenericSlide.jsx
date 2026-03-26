@@ -75,7 +75,7 @@ export default function GenericSlide({ block }) {
   const taskList = block.taskRefs || block.items || [];
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       {block.title && <h2 className="mb-3 text-2xl font-semibold text-zinc-950">{block.title}</h2>}
       {block.instruction && <div className="mb-4 text-sm text-zinc-500">{block.instruction}</div>}
 

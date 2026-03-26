@@ -8,9 +8,46 @@ function statusTone(entry) {
   return 'border-zinc-200 bg-zinc-50 text-zinc-700';
 }
 
+function getScoreBand(score) {
+  if (score >= 90) return { label: 'Excellent', tone: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', message: 'Outstanding performance! You clearly understand this material.' };
+  if (score >= 70) return { label: 'Good', tone: 'text-sky-700', bg: 'bg-sky-50 border-sky-200', message: 'Solid work — just a few areas to review for full mastery.' };
+  if (score >= 50) return { label: 'Needs Practice', tone: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', message: 'You\'re getting there. Focus on the areas below to improve.' };
+  return { label: 'Keep Trying', tone: 'text-red-700', bg: 'bg-red-50 border-red-200', message: 'Don\'t give up — review the mistakes below and try again.' };
+}
+
+function computeTakeaways(breakdown) {
+  const strengths = [];
+  const weaknesses = [];
+  const mistakes = [];
+  const categoryScores = new Map();
+
+  for (const entry of breakdown) {
+    if (entry.correct === null) continue;
+    const cat = entry.taskType || 'other';
+    if (!categoryScores.has(cat)) categoryScores.set(cat, { total: 0, earned: 0 });
+    const bucket = categoryScores.get(cat);
+    bucket.total += 1;
+    bucket.earned += entry.score || 0;
+
+    if (entry.correct === false) {
+      mistakes.push({ label: entry.label, taskType: entry.taskType, feedback: entry.result?.feedback || null });
+    }
+  }
+
+  for (const [cat, data] of categoryScores) {
+    const avg = data.total > 0 ? data.earned / data.total : 0;
+    if (avg >= 0.8) strengths.push(cat);
+    else if (avg < 0.5) weaknesses.push(cat);
+  }
+
+  return { strengths, weaknesses, mistakes };
+}
+
 export default function GradingScreen({ lesson, blocks, results, studentName, onStudentNameChange, onRestart, onExit }) {
   const [saved, setSaved] = useState(false);
   const summary = useMemo(() => summarizeResults(blocks, results), [blocks, results]);
+  const takeaways = useMemo(() => computeTakeaways(summary.breakdown), [summary.breakdown]);
+  const scoreBand = useMemo(() => getScoreBand(summary.score), [summary.score]);
   const radius = 58;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (summary.score / 100) * circumference;
@@ -32,13 +69,13 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
 
   return (
     <div className="min-h-screen bg-[#f7f7f5] px-4 py-8">
-      <div className="mx-auto grid max-w-6xl gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+        <section className="rounded-[28px] border border-zinc-200 bg-white p-4 md:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
           <div className="text-xs font-medium uppercase tracking-[0.22em] text-zinc-500">Final report</div>
           <h1 className="mt-3 text-3xl font-semibold text-zinc-950">{lesson.title}</h1>
           <div className="mt-6 flex justify-center">
             <div className="relative flex h-36 w-36 items-center justify-center">
-              <svg width="136" height="136" className="-rotate-90">
+              <svg width="136" height="136" className="-rotate-90" role="img" aria-label={`Score: ${summary.score}%`}>
                 <circle cx="68" cy="68" r={radius} fill="none" stroke="#e4e4e7" strokeWidth="10" />
                 <circle cx="68" cy="68" r={radius} fill="none" stroke="#111111" strokeWidth="10" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={dashOffset} style={{ transition: 'stroke-dashoffset 400ms ease' }} />
               </svg>
@@ -80,7 +117,62 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
             <button type="button" onClick={onExit} className="rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-zinc-800">Back to lessons</button>
           </div>
         </section>
-        <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+        <section className="rounded-[28px] border border-zinc-200 bg-white p-4 md:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+          {/* Key Takeaways */}
+          <div className="text-xs font-medium uppercase tracking-[0.22em] text-zinc-500">Key Takeaways</div>
+          <div className={`mt-3 border p-4 ${scoreBand.bg}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className={`text-lg font-semibold ${scoreBand.tone}`}>{scoreBand.label}</div>
+              <div className={`border border-current px-3 py-1 text-xs font-medium ${scoreBand.tone}`}>{summary.score}%</div>
+            </div>
+            <div className={`mt-2 text-sm ${scoreBand.tone}`}>{scoreBand.message}</div>
+          </div>
+
+          {takeaways.strengths.length > 0 && (
+            <div className="mt-4">
+              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-600">Strengths</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {takeaways.strengths.map((cat) => (
+                  <span key={cat} className="border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">{cat}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {takeaways.weaknesses.length > 0 && (
+            <div className="mt-4">
+              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-amber-600">Areas for Improvement</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {takeaways.weaknesses.map((cat) => (
+                  <span key={cat} className="border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">{cat}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {takeaways.mistakes.length > 0 && (
+            <div className="mt-4">
+              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-red-600">Mistakes to Review</div>
+              <div className="mt-2 space-y-2">
+                {takeaways.mistakes.slice(0, 5).map((m, i) => (
+                  <div key={i} className="border border-red-200 bg-red-50 px-3 py-2">
+                    <div className="text-xs font-medium text-red-800">{m.label}</div>
+                    {m.feedback && <div className="mt-1 text-[11px] text-red-600">{m.feedback}</div>}
+                  </div>
+                ))}
+                {takeaways.mistakes.length > 5 && (
+                  <div className="text-[11px] text-zinc-500">+{takeaways.mistakes.length - 5} more — see breakdown below</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {takeaways.strengths.length === 0 && takeaways.weaknesses.length === 0 && takeaways.mistakes.length === 0 && (
+            <div className="mt-4 border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">Complete more tasks to see detailed takeaways.</div>
+          )}
+        </section>
+
+        <section className="rounded-[28px] border border-zinc-200 bg-white p-4 md:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs font-medium uppercase tracking-[0.22em] text-zinc-500">Breakdown</div>

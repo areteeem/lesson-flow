@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { serializeBlockField, updateBlockField } from '../utils/builder';
 import { isSelectionBasedTask } from '../config/dslSchema';
+import { PALETTE_COLORS, CATEGORY_COLORS, DIALOGUE_COLORS } from '../config/constants';
 import MarkdownComposer from './MarkdownComposer';
 
 function Field({ label, help, children }) {
@@ -55,11 +56,11 @@ function Toggle({ checked, onChange, label = 'Enabled' }) {
       className="group inline-flex items-center gap-2.5 px-1 py-1 text-xs"
     >
       <span className={[
-        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200',
+        'toggle-track relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200',
         checked ? 'bg-zinc-900' : 'bg-zinc-200 group-hover:bg-zinc-300',
       ].join(' ')}>
         <span className={[
-          'inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200',
+          'toggle-knob inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200',
           checked ? 'translate-x-[18px]' : 'translate-x-[3px]',
         ].join(' ')} />
       </span>
@@ -71,15 +72,6 @@ function Toggle({ checked, onChange, label = 'Enabled' }) {
 function apply(onChange, block, field, value) {
   onChange(updateBlockField(block, field, value));
 }
-
-const KAHOOT_COLORS = [
-  { bg: 'bg-red-50', border: 'border-red-200', activeBg: 'bg-red-500', activeText: 'text-white', hoverBorder: 'hover:border-red-300' },
-  { bg: 'bg-blue-50', border: 'border-blue-200', activeBg: 'bg-blue-500', activeText: 'text-white', hoverBorder: 'hover:border-blue-300' },
-  { bg: 'bg-amber-50', border: 'border-amber-200', activeBg: 'bg-amber-500', activeText: 'text-white', hoverBorder: 'hover:border-amber-300' },
-  { bg: 'bg-emerald-50', border: 'border-emerald-200', activeBg: 'bg-emerald-500', activeText: 'text-white', hoverBorder: 'hover:border-emerald-300' },
-  { bg: 'bg-purple-50', border: 'border-purple-200', activeBg: 'bg-purple-500', activeText: 'text-white', hoverBorder: 'hover:border-purple-300' },
-  { bg: 'bg-pink-50', border: 'border-pink-200', activeBg: 'bg-pink-500', activeText: 'text-white', hoverBorder: 'hover:border-pink-300' },
-];
 
 function AnswerSelector({ block, onChange, multiple = false }) {
   const options = block.options || [];
@@ -106,7 +98,7 @@ function AnswerSelector({ block, onChange, multiple = false }) {
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {options.map((opt, i) => {
-          const color = KAHOOT_COLORS[i % KAHOOT_COLORS.length];
+          const color = PALETTE_COLORS[i % PALETTE_COLORS.length];
           const active = isSelected(opt);
           return (
             <button
@@ -267,14 +259,14 @@ function TableGridEditor({ block, onChange, revealMode = false }) {
   );
 }
 
-const BLANK_PATTERN = /(\{[^}]*\}|\{\}|_{3,}|\[blank\]|\[\d+\])/gi;
+const BLANK_PATTERN = /(\{[^}]*\}|\{\}|_{3,}|\[blank\]|\[\d+\])/i;
 
 function InlineBlanksEditor({ block, onChange }) {
   const text = block.text || '';
   const isBlanksField = block.taskType === 'drag_to_blank';
   const parts = text.split(BLANK_PATTERN);
   const blankIndices = [];
-  parts.forEach((part, i) => { if (BLANK_PATTERN.test(part)) blankIndices.push(i); BLANK_PATTERN.lastIndex = 0; });
+  parts.forEach((part, i) => { if (BLANK_PATTERN.test(part)) blankIndices.push(i); });
   const blankCount = blankIndices.length;
 
   const answers = isBlanksField
@@ -306,12 +298,9 @@ function InlineBlanksEditor({ block, onChange }) {
       <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">Answers for each blank</div>
       <div className="border border-zinc-200 bg-zinc-50 p-3 text-sm leading-8 text-zinc-700">
         {parts.map((part, i) => {
-          BLANK_PATTERN.lastIndex = 0;
           if (!BLANK_PATTERN.test(part)) {
-            BLANK_PATTERN.lastIndex = 0;
             return <span key={i} className="whitespace-pre-wrap">{part}</span>;
           }
-          BLANK_PATTERN.lastIndex = 0;
           const idx = blankNum++;
           return (
             <span key={i} className="inline-flex items-center">
@@ -383,15 +372,6 @@ function ItemListEditor({ block, onChange, label = 'Items', field = 'items' }) {
     </div>
   );
 }
-
-const CATEGORY_COLORS = [
-  { bg: 'bg-blue-50', border: 'border-blue-200', badge: 'bg-blue-500' },
-  { bg: 'bg-emerald-50', border: 'border-emerald-200', badge: 'bg-emerald-500' },
-  { bg: 'bg-amber-50', border: 'border-amber-200', badge: 'bg-amber-500' },
-  { bg: 'bg-purple-50', border: 'border-purple-200', badge: 'bg-purple-500' },
-  { bg: 'bg-rose-50', border: 'border-rose-200', badge: 'bg-rose-500' },
-  { bg: 'bg-cyan-50', border: 'border-cyan-200', badge: 'bg-cyan-500' },
-];
 
 function CategorizeEditor({ block, onChange }) {
   const categories = block.categories || [];
@@ -572,15 +552,6 @@ const PAIR_LABELS = {
   matching_pairs_categories: { label: 'Pairs', left: 'Example', right: 'Category' },
   emoji_symbol_match: { label: 'Symbols', left: 'Symbol', right: 'Meaning' },
 };
-
-const DIALOGUE_COLORS = [
-  { bg: 'bg-blue-50', border: 'border-blue-200', avatar: 'bg-blue-500', text: 'text-blue-700' },
-  { bg: 'bg-zinc-50', border: 'border-zinc-200', avatar: 'bg-zinc-500', text: 'text-zinc-700' },
-  { bg: 'bg-emerald-50', border: 'border-emerald-200', avatar: 'bg-emerald-500', text: 'text-emerald-700' },
-  { bg: 'bg-purple-50', border: 'border-purple-200', avatar: 'bg-purple-500', text: 'text-purple-700' },
-  { bg: 'bg-amber-50', border: 'border-amber-200', avatar: 'bg-amber-500', text: 'text-amber-700' },
-  { bg: 'bg-rose-50', border: 'border-rose-200', avatar: 'bg-rose-500', text: 'text-rose-700' },
-];
 
 function parseDialogueMessages(text) {
   if (!text) return [{ speaker: 'A', content: '' }, { speaker: 'B', content: '' }];
@@ -764,7 +735,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="builder-form space-y-5">
       {/* Toggle bar */}
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-100 pb-3">
         <Toggle checked={block.enabled !== false} onChange={(value) => apply(onChange, block, 'enabled', value)} />

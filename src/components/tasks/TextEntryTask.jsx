@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Md } from '../FormattedText';
+import { BLANK_MARKER_RE } from '../../utils/patterns';
+import { STRICT_MATCH_THRESHOLD, PASS_SCORE } from '../../config/constants';
 
 function normalizeList(value) {
   if (Array.isArray(value)) return value.map((item) => item.toString().trim().toLowerCase());
@@ -8,7 +10,7 @@ function normalizeList(value) {
 }
 
 function splitBlankTokens(text = '') {
-  return text.split(/(\{\}|_{3,}|\[blank\]|\[\d+\])/i).filter((token) => token !== '');
+  return text.split(BLANK_MARKER_RE).filter((token) => token !== '');
 }
 
 export default function TextEntryTask({ block, onComplete, existingResult }) {
@@ -58,7 +60,7 @@ export default function TextEntryTask({ block, onComplete, existingResult }) {
         for (let i = 0; i < longer.length; i++) {
           if (shorter[i] !== longer[i]) diff++;
         }
-        if (diff <= 2) return 0.8;
+        if (diff <= 2) return PASS_SCORE;
       }
     }
     return 0;
@@ -87,16 +89,16 @@ export default function TextEntryTask({ block, onComplete, existingResult }) {
     setSubmitted(true);
     onComplete?.({
       submitted: true,
-      correct: score >= 0.95,
+      correct: score >= STRICT_MATCH_THRESHOLD,
       score,
       response: values,
       correctAnswer: block.answer || block.correct || block.blanks,
-      feedback: score >= 0.95 ? 'Correct' : score >= 0.6 ? 'Close — check your spelling.' : 'Check the expected answer.',
+      feedback: score >= STRICT_MATCH_THRESHOLD ? 'Correct' : score >= 0.6 ? 'Close — check your spelling.' : 'Check the expected answer.',
     });
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {inlineMode ? (
         <div className="mb-5 rounded-3xl border border-zinc-200 bg-zinc-50 p-5 text-base leading-9 text-zinc-800">

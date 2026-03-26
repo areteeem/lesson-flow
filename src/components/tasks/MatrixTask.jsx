@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
 function normalizeRows(block) {
   const sourceRows = block.rows?.length ? block.rows : [['Cell 1', 'Cell 2'], ['Cell 3', 'Cell 4']];
@@ -15,7 +16,7 @@ export default function MatrixTask({ block, onComplete, existingResult }) {
   const rows = useMemo(() => normalizeRows(block), [block]);
   const columns = block.columns || [];
   const [values, setValues] = useState(rows.map((row) => row.map(() => '')));
-  const [shuffleSeed] = useState(() => crypto.randomUUID());
+  const shuffleSeed = useShuffleSeed();
   const hiddenCells = useMemo(() => new Set(block.hiddenCells || []), [block.hiddenCells]);
   const hiddenRows = useMemo(() => new Set((block.hiddenRows || []).map((value) => Number(value))), [block.hiddenRows]);
   const [revealedCells, setRevealedCells] = useState({});
@@ -38,7 +39,7 @@ export default function MatrixTask({ block, onComplete, existingResult }) {
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {isRevealTask && <div className="mb-4 text-sm text-zinc-600">Hidden cells can be revealed one by one for guided practice and staged checking.</div>}
       <div className="overflow-auto border border-zinc-200">

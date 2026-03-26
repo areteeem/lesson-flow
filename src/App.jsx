@@ -1,6 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { deleteLesson, loadLessons, loadSessions, saveLesson } from './storage';
+import { lazy, Suspense, useState, useCallback } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { useAppContext } from './context/AppContext';
 import { createLessonTemplate, createPromptPresetLesson } from './utils/builder';
+import ErrorBoundary from './components/ErrorBoundary';
+import { PersonIcon, GearIcon, QuestionIcon } from './components/Icons';
 
 const Editor = lazy(() => import('./components/Editor'));
 const GuidePanel = lazy(() => import('./components/GuidePanel'));
@@ -24,122 +27,182 @@ function ScreenFallback({ label = 'Loading…' }) {
   );
 }
 
-export default function App() {
-  const [screen, setScreen] = useState('home');
-  const [lessons, setLessons] = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [currentLesson, setCurrentLesson] = useState(null);
+function HomePage() {
+  const { lessons, sessions, deleteLesson } = useAppContext();
+  const navigate = useNavigate();
+
+  return (
+    <ErrorBoundary message="Failed to load lessons.">
+      <Suspense fallback={<ScreenFallback label="Loading lessons…" />}>
+        <RecentLessons
+          lessons={lessons}
+          sessions={sessions}
+          onCreate={(template) => {
+            const lesson = createLessonTemplate(template);
+            sessionStorage.setItem('lf_current_lesson', JSON.stringify(lesson));
+            navigate('/editor/new');
+          }}
+          onSelect={(lesson) => {
+            sessionStorage.setItem('lf_current_lesson', JSON.stringify(lesson));
+            navigate(`/editor/${lesson.id}`);
+          }}
+          onDelete={(id) => deleteLesson(id)}
+          onImport={(lesson) => {
+            sessionStorage.setItem('lf_current_lesson', JSON.stringify(lesson));
+            navigate('/editor/new');
+          }}
+        />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function EditorPage() {
+  const { saveLesson, refresh } = useAppContext();
+  const navigate = useNavigate();
   const [showGuide, setShowGuide] = useState(false);
 
-  const refresh = () => {
-    setLessons(loadLessons());
-    setSessions(loadSessions());
-  };
+  const [currentLesson, setCurrentLesson] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('lf_current_lesson');
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
 
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  const openEditor = (lesson = null) => {
-    setCurrentLesson(lesson);
-    setScreen('editor');
-  };
-
-  const handleSave = (lesson) => {
+  const handleSave = useCallback((lesson) => {
     const saved = saveLesson(lesson);
     setCurrentLesson(saved);
-    refresh();
-  };
+    try { sessionStorage.setItem('lf_current_lesson', JSON.stringify(saved)); } catch {}
+  }, [saveLesson]);
 
-  const handlePlay = (lesson) => {
+  const handlePlay = useCallback((lesson) => {
     const saved = saveLesson(lesson);
     setCurrentLesson(saved);
-    refresh();
-    setScreen('play');
-  };
+    try { sessionStorage.setItem('lf_current_lesson', JSON.stringify(saved)); } catch {}
+    navigate(`/play/${saved.id}`);
+  }, [saveLesson, navigate]);
 
-  const handleApplyGuidePreset = (config) => {
-    const nextLesson = createPromptPresetLesson(config, screen === 'editor' ? currentLesson : null);
+  const handleApplyGuidePreset = useCallback((config) => {
+    const nextLesson = createPromptPresetLesson(config, currentLesson);
     setCurrentLesson(nextLesson);
-    setScreen('editor');
+    try { sessionStorage.setItem('lf_current_lesson', JSON.stringify(nextLesson)); } catch {}
     setShowGuide(false);
-  };
+  }, [currentLesson]);
+
+  return (
+    <ErrorBoundary message="Editor crashed. Your latest save is preserved.">
+      <Suspense fallback={<ScreenFallback label="Loading editor…" />}>
+        <Editor
+          lesson={currentLesson}
+          onSave={handleSave}
+          onPlay={handlePlay}
+          onBack={() => { refresh(); navigate('/'); }}
+          onOpenGuide={() => setShowGuide(true)}
+        />
+      </Suspense>
+      {showGuide && (
+        <Suspense fallback={<ScreenFallback label="Loading guide…" />}>
+          <GuidePanel onClose={() => setShowGuide(false)} onApplyPreset={handleApplyGuidePreset} />
+        </Suspense>
+      )}
+    </ErrorBoundary>
+  );
+}
+
+function PlayPage() {
+  const { refresh } = useAppContext();
+  const navigate = useNavigate();
+
+  const [lesson] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('lf_current_lesson');
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
+
+  if (!lesson) {
+    navigate('/');
+    return null;
+  }
+
+  return (
+    <ErrorBoundary message="Player crashed.">
+      <Suspense fallback={<ScreenFallback label="Loading lesson player…" />}>
+        <LessonPlayer lesson={lesson} onExit={() => { refresh(); navigate('/'); }} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function SettingsRoute() {
+  const navigate = useNavigate();
+  return (
+    <ErrorBoundary message="Settings crashed.">
+      <Suspense fallback={<ScreenFallback label="Loading settings…" />}>
+        <SettingsPage onBack={() => navigate('/')} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function ProfilesRoute() {
+  const { sessions } = useAppContext();
+  const navigate = useNavigate();
+  return (
+    <ErrorBoundary message="Profiles crashed.">
+      <Suspense fallback={<ScreenFallback label="Loading profiles…" />}>
+        <StudentProfiles sessions={sessions} onBack={() => navigate('/')} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isPlaying = location.pathname.startsWith('/play');
+  const isEditor = location.pathname.startsWith('/editor');
+  const isHome = location.pathname === '/';
+  const [showGuide, setShowGuide] = useState(false);
+
+  const handleApplyGuidePresetFromHome = useCallback((config) => {
+    const nextLesson = createPromptPresetLesson(config, null);
+    sessionStorage.setItem('lf_current_lesson', JSON.stringify(nextLesson));
+    setShowGuide(false);
+    navigate('/editor/new');
+  }, [navigate]);
 
   return (
     <>
-      {screen === 'home' && (
-        <Suspense fallback={<ScreenFallback label="Loading lessons…" />}>
-          <RecentLessons
-            lessons={lessons}
-            sessions={sessions}
-            onCreate={(template) => openEditor(createLessonTemplate(template))}
-            onSelect={(lesson) => openEditor(lesson)}
-            onDelete={(id) => {
-              deleteLesson(id);
-              refresh();
-            }}
-            onImport={(lesson) => openEditor(lesson)}
-          />
-        </Suspense>
-      )}
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/editor/:lessonId" element={<EditorPage />} />
+        <Route path="/play/:lessonId" element={<PlayPage />} />
+        <Route path="/settings" element={<SettingsRoute />} />
+        <Route path="/profiles" element={<ProfilesRoute />} />
+      </Routes>
 
-      {screen === 'editor' && (
-        <Suspense fallback={<ScreenFallback label="Loading editor…" />}>
-          <Editor
-            lesson={currentLesson}
-            onSave={handleSave}
-            onPlay={handlePlay}
-            onBack={() => {
-              refresh();
-              setScreen('home');
-            }}
-          />
-        </Suspense>
-      )}
-
-      {screen === 'play' && currentLesson && (
-        <Suspense fallback={<ScreenFallback label="Loading lesson player…" />}>
-          <LessonPlayer
-            lesson={currentLesson}
-            onExit={() => {
-              refresh();
-              setScreen('home');
-            }}
-          />
-        </Suspense>
-      )}
-
-      {screen === 'settings' && (
-        <Suspense fallback={<ScreenFallback label="Loading settings…" />}>
-          <SettingsPage onBack={() => setScreen('home')} />
-        </Suspense>
-      )}
-
-      {screen === 'profiles' && (
-        <Suspense fallback={<ScreenFallback label="Loading profiles…" />}>
-          <StudentProfiles sessions={sessions} onBack={() => setScreen('home')} />
-        </Suspense>
-      )}
-
-      {screen !== 'play' && (
-        <div className="fixed bottom-6 right-6 z-30 flex gap-2">
-          {screen === 'home' && (
+      {!isPlaying && !isEditor && (
+        <div className="fixed bottom-20 right-6 z-30 flex gap-2 sm:bottom-6">
+          {isHome && (
             <>
               <button
                 type="button"
-                onClick={() => setScreen('profiles')}
+                onClick={() => navigate('/profiles')}
                 className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-200 bg-white text-lg text-zinc-700 shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition hover:border-zinc-900"
                 title="Student Profiles"
+                aria-label="Student Profiles"
               >
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="9" cy="6" r="3"/><path d="M3 16c0-3 2.7-5.5 6-5.5s6 2.5 6 5.5"/></svg>
+                <PersonIcon />
               </button>
               <button
                 type="button"
-                onClick={() => setScreen('settings')}
+                onClick={() => navigate('/settings')}
                 className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-200 bg-white text-lg text-zinc-700 shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition hover:border-zinc-900"
                 title="Settings"
+                aria-label="Settings"
               >
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 2.75 10.12 4.3l1.9.3.63 1.82 1.72 1.03-.35 1.9.35 1.9-1.72 1.03-.63 1.82-1.9.3L9 15.25l-1.12-1.55-1.9-.3-.63-1.82-1.72-1.03.35-1.9-.35-1.9 1.72-1.03.63-1.82 1.9-.3L9 2.75Z"/><circle cx="9" cy="9" r="2.2"/></svg>
+                <GearIcon />
               </button>
             </>
           )}
@@ -147,15 +210,16 @@ export default function App() {
             type="button"
             onClick={() => setShowGuide(true)}
             className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-900 bg-zinc-900 text-lg text-white shadow-[0_8px_24px_rgba(0,0,0,0.15)] transition hover:scale-[1.02] hover:bg-zinc-800"
+            aria-label="Open guide"
           >
-            ?
+            <QuestionIcon />
           </button>
         </div>
       )}
 
-      {showGuide && (
+      {showGuide && !location.pathname.startsWith('/editor') && (
         <Suspense fallback={<ScreenFallback label="Loading guide…" />}>
-          <GuidePanel onClose={() => setShowGuide(false)} onApplyPreset={handleApplyGuidePreset} />
+          <GuidePanel onClose={() => setShowGuide(false)} onApplyPreset={handleApplyGuidePresetFromHome} />
         </Suspense>
       )}
     </>

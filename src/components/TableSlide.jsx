@@ -3,7 +3,7 @@ export default function TableSlide({ block }) {
   const rows = (block.rows || []).map((row) => Array.isArray(row) ? row : row.split('|').map((cell) => cell.trim()));
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       {block.title && <h2 className="mb-4 text-2xl font-semibold text-zinc-950">{block.title}</h2>}
       <div className="overflow-x-auto rounded-2xl border border-zinc-200">
         <table className="min-w-full border-collapse text-left text-sm">

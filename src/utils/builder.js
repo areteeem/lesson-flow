@@ -21,7 +21,7 @@ export function cloneBlockTree(block) {
   return {
     ...block,
     id: nextId,
-    ref: block.type === 'task' || block.type === 'group' ? `${block.type === 'task' ? block.taskType || 'task' : 'group'}-${nextId}` : nextId,
+    ref: block.type === 'task' || block.type === 'group' || block.type === 'split_group' ? `${block.type === 'task' ? block.taskType || 'task' : block.type === 'split_group' ? 'split-group' : 'group'}-${nextId}` : nextId,
     children: (block.children || []).map((child) => cloneBlockTree(child)),
   };
 }
@@ -394,6 +394,24 @@ export function createDefaultBlock(type, { blank = false } = {}) {
       enabled: true,
       children,
       layout: 'tabs',
+      itemRefs: children.map((child) => child.ref),
+    };
+  }
+
+  if (normalizedType === 'split_group') {
+    const children = [
+      createDefaultBlock('multiple_choice', { blank }),
+      createDefaultBlock('fill_typing', { blank }),
+    ];
+    return {
+      id,
+      ref: `split-group-${id}`,
+      type: 'split_group',
+      title: blank ? '' : 'Split Group',
+      instruction: blank ? '' : 'Two tasks displayed side by side.',
+      enabled: true,
+      children,
+      layout: 'split',
       itemRefs: children.map((child) => child.ref),
     };
   }

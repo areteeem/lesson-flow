@@ -1,18 +1,9 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Md } from '../FormattedText';
+import { SPEAKER_COLORS, STRICT_MATCH_THRESHOLD } from '../../config/constants';
+import { BLANK_WITH_ANSWER_RE } from '../../utils/patterns';
 
-const SPEAKER_COLORS = [
-  { bg: 'bg-blue-100', text: 'text-blue-900', border: 'border-blue-200', avatar: 'bg-blue-600' },
-  { bg: 'bg-zinc-100', text: 'text-zinc-900', border: 'border-zinc-200', avatar: 'bg-zinc-600' },
-  { bg: 'bg-emerald-100', text: 'text-emerald-900', border: 'border-emerald-200', avatar: 'bg-emerald-600' },
-  { bg: 'bg-purple-100', text: 'text-purple-900', border: 'border-purple-200', avatar: 'bg-purple-600' },
-  { bg: 'bg-amber-100', text: 'text-amber-900', border: 'border-amber-200', avatar: 'bg-amber-600' },
-  { bg: 'bg-rose-100', text: 'text-rose-900', border: 'border-rose-200', avatar: 'bg-rose-600' },
-  { bg: 'bg-cyan-100', text: 'text-cyan-900', border: 'border-cyan-200', avatar: 'bg-cyan-600' },
-  { bg: 'bg-indigo-100', text: 'text-indigo-900', border: 'border-indigo-200', avatar: 'bg-indigo-600' },
-];
-
-const BLANK_RE = /(\{[^}]+\}|\{\}|_{3,}|\[blank\]|\[\d+\])/i;
+const BLANK_RE = BLANK_WITH_ANSWER_RE;
 
 function parseDialogueLines(text) {
   if (!text) return [];
@@ -52,9 +43,9 @@ function splitBlanks(text) {
 function TypingIndicator() {
   return (
     <div className="flex items-center gap-1 px-2 py-1">
-      <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" style={{ animationDelay: '0ms' }} />
-      <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" style={{ animationDelay: '150ms' }} />
-      <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" style={{ animationDelay: '300ms' }} />
+      <span className="h-2 w-2 animate-bounce rounded-full dot-round bg-zinc-400" style={{ animationDelay: '0ms' }} />
+      <span className="h-2 w-2 animate-bounce rounded-full dot-round bg-zinc-400" style={{ animationDelay: '150ms' }} />
+      <span className="h-2 w-2 animate-bounce rounded-full dot-round bg-zinc-400" style={{ animationDelay: '300ms' }} />
     </div>
   );
 }
@@ -184,11 +175,11 @@ export default function DialogueTask({ block, onComplete, existingResult }) {
     setSubmitted(true);
     onComplete?.({
       submitted: true,
-      correct: score >= 0.95,
+      correct: score >= STRICT_MATCH_THRESHOLD,
       score,
       response: values,
       correctAnswer: answers,
-      feedback: score >= 0.95 ? 'Correct!' : 'Check the expected answers.',
+      feedback: score >= STRICT_MATCH_THRESHOLD ? 'Correct!' : 'Check the expected answers.',
     });
   };
 
@@ -225,7 +216,7 @@ export default function DialogueTask({ block, onComplete, existingResult }) {
               </div>
 
               {/* Bubble */}
-              <div className={`max-w-[75%] border px-4 py-2.5 ${colors.bg} ${colors.border} ${colors.text} ${isLeft ? 'rounded-t-2xl rounded-br-2xl rounded-bl-sm' : 'rounded-t-2xl rounded-bl-2xl rounded-br-sm'}`}>
+              <div className={`max-w-[75%] border px-4 py-2.5 ${colors.bg} ${colors.border} ${colors.text} ${isLeft ? 'bubble-left' : 'bubble-right'}`}>
                 {line.speaker && <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider opacity-60">{line.speaker}</div>}
                 <div className="text-sm leading-relaxed">
                   {hasBlanks ? (
@@ -287,7 +278,7 @@ export default function DialogueTask({ block, onComplete, existingResult }) {
         {showTyping && (
           <div className="flex items-end gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-zinc-400 text-xs font-bold text-white">…</div>
-            <div className="rounded-t-2xl rounded-br-2xl rounded-bl-sm border border-zinc-200 bg-zinc-50 px-4 py-2.5">
+            <div className="bubble-left border border-zinc-200 bg-zinc-50 px-4 py-2.5">
               <TypingIndicator />
             </div>
           </div>

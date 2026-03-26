@@ -1,10 +1,11 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
 export default function OrderTask({ block, onComplete, existingResult }) {
   const taskType = block.taskType || 'order';
-  const [shuffleSeed] = useState(() => crypto.randomUUID());
+  const shuffleSeed = useShuffleSeed();
   const initial = useMemo(() => block.shuffle === false ? [...(block.items || [])] : stableShuffle(block.items || [], `${block.id || block.question}-${shuffleSeed}-order`), [block.id, block.items, block.question, block.shuffle, shuffleSeed]);
   const [items, setItems] = useState(() => existingResult?.response || initial);
   const [submitted, setSubmitted] = useState(() => Boolean(existingResult?.submitted));
@@ -148,7 +149,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
   /* ─── Sentence Builder: horizontal chips ─── */
   if (taskType === 'sentence_builder') {
     return (
-      <div className="border border-zinc-200 bg-white p-8">
+      <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
         {!submitted && <div className="mb-3 text-xs text-zinc-500">Drag the words into the correct order to build a sentence.</div>}
         <div ref={listRef} className="flex flex-wrap gap-2">
@@ -189,7 +190,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
   /* ─── Timeline Order: vertical timeline with markers ─── */
   if (taskType === 'timeline_order') {
     return (
-      <div className="border border-zinc-200 bg-white p-8">
+      <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
         {!submitted && <div className="mb-3 text-xs text-zinc-500">Arrange events in chronological order along the timeline.</div>}
         <div ref={listRef} className="relative ml-6 border-l-2 border-zinc-300 pl-6">
@@ -239,7 +240,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
   /* ─── Story Reconstruction: paragraph cards ─── */
   if (taskType === 'story_reconstruction') {
     return (
-      <div className="border border-zinc-200 bg-white p-8">
+      <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
         {!submitted && <div className="mb-3 text-xs text-zinc-500">Rearrange the paragraphs to rebuild the story.</div>}
         <div ref={listRef} className="space-y-3">
@@ -285,7 +286,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
 
   /* ─── Default: vertical list (order, justify_order, etc.) ─── */
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {items.length === 0 && (
         <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no items to order.</div>

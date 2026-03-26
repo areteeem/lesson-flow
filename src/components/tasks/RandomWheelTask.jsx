@@ -119,7 +119,7 @@ export default function RandomWheelTask({ block, onComplete, existingResult }) {
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-center text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       <div className="mb-5 text-center text-sm text-zinc-500">Spin for a speaking prompt.</div>
       <div ref={containerRef} className="relative mx-auto mb-6 flex w-full max-w-[26rem] items-center justify-center">

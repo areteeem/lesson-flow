@@ -7,6 +7,8 @@ import { createLessonTemplate, deleteBlockFromTree } from '../utils/builder';
 import { flattenBlocks } from '../utils/lesson';
 import HotkeysModal from './HotkeysModal';
 import MarkdownComposer from './MarkdownComposer';
+import TemplatePicker from './TemplatePicker';
+import { BackIcon, DotsVerticalIcon, PlayIcon as PlayIconSharp, SaveIcon as SaveIconSharp, SettingsIcon as SettingsIconSharp, DslIcon, BuilderIcon, PreviewIcon, TemplateIcon } from './Icons';
 
 const DslMonacoEditor = lazy(() => import('./DslMonacoEditor'));
 const BuilderPanel = lazy(() => import('./BuilderPanel'));
@@ -31,40 +33,19 @@ function IconButton({ title, onClick, children, className = '', variant }) {
 }
 
 function MenuIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M3 5.5H15" />
-      <path d="M3 9H15" />
-      <path d="M3 12.5H15" />
-    </svg>
-  );
+  return <DotsVerticalIcon />;
 }
 
 function PlayIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
-      <path d="M5 3.5L14.5 9L5 14.5V3.5Z" fill="currentColor" />
-    </svg>
-  );
+  return <PlayIconSharp />;
 }
 
 function SaveIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M4 3.5H12.5L14.5 5.5V14.5H4V3.5Z" />
-      <path d="M6 3.5V7H11V3.5" />
-      <path d="M6 12H12" />
-    </svg>
-  );
+  return <SaveIconSharp />;
 }
 
 function SettingsIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M9 2.75 10.12 4.3l1.9.3.63 1.82 1.72 1.03-.35 1.9.35 1.9-1.72 1.03-.63 1.82-1.9.3L9 15.25l-1.12-1.55-1.9-.3-.63-1.82-1.72-1.03.35-1.9-.35-1.9 1.72-1.03.63-1.82 1.9-.3L9 2.75Z" />
-      <circle cx="9" cy="9" r="2.2" />
-    </svg>
-  );
+  return <SettingsIconSharp />;
 }
 
 function AutoGrowField({ value, onChange, placeholder, className = '' }) {
@@ -117,7 +98,7 @@ function CommandPalette({ commands, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-center bg-black/20 pt-[15vh] backdrop-blur-[1px]" onClick={onClose}>
-      <div className="h-fit w-full max-w-lg border border-zinc-900 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.18)]" onClick={(e) => e.stopPropagation()}>
+      <div className="h-fit w-full max-w-sm md:max-w-lg border border-zinc-900 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.18)]" onClick={(e) => e.stopPropagation()}>
         <div className="border-b border-zinc-200 px-4 py-3">
           <input ref={inputRef} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={onKeyDown} placeholder="Type a command…" className="w-full text-sm outline-none placeholder:text-zinc-400" />
         </div>
@@ -221,7 +202,7 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
   );
 }
 
-export default function Editor({ lesson, onSave, onPlay, onBack }) {
+export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) {
   const inputRef = useRef(null);
   const dslInputRef = useRef(null);
   const autoSaveRef = useRef(null);
@@ -249,8 +230,14 @@ export default function Editor({ lesson, onSave, onPlay, onBack }) {
   const current = hist.entries[hist.index] || hist.entries[hist.entries.length - 1] || createStateFromLesson(lesson);
   const parsed = current.parsed;
   const dsl = current.dsl;
-  const allBlocks = flattenBlocks(parsed.blocks || []);
-  const isMobile = typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false;
+  const allBlocks = useMemo(() => flattenBlocks(parsed.blocks || []), [parsed.blocks]);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // Build current payload for auto-save
   const payloadRef = useRef(null);
@@ -458,8 +445,13 @@ export default function Editor({ lesson, onSave, onPlay, onBack }) {
     ];
   }, [allBlocks, dsl, focusMode, mode, parsed.title, showDebugPanel]);
 
-  const loadTemplate = (kind) => {
-    const next = createStateFromLesson(createLessonTemplate(kind));
+  const loadTemplate = (kind, customDsl = null) => {
+    let next;
+    if (customDsl) {
+      next = { dsl: customDsl, parsed: parseLesson(customDsl) };
+    } else {
+      next = createStateFromLesson(createLessonTemplate(kind));
+    }
     setHist({ entries: [next], index: 0 });
     setSelectedBlockId(next.parsed.blocks[0]?.id || null);
     setMode('builder');
@@ -486,18 +478,18 @@ export default function Editor({ lesson, onSave, onPlay, onBack }) {
         <div className="flex items-center justify-between gap-3 px-4 py-2">
           {/* Left: Back + Title hero + Meta pills */}
           <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={onBack} className="flex items-center gap-1 border border-zinc-200 px-2.5 py-2 text-sm text-zinc-700 transition hover:border-zinc-900">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 3L5 7l4 4"/></svg>
+            <button type="button" onClick={onBack} className="hidden items-center gap-1 border border-zinc-200 px-2.5 py-2 text-sm text-zinc-700 transition hover:border-zinc-900 sm:flex">
+              <BackIcon />
               <span className="hidden sm:inline">Back</span>
             </button>
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2">
-                <div className="min-w-0 truncate text-base font-semibold text-zinc-950 sm:text-lg">{parsed.title || 'Untitled Lesson'}</div>
+                <div className="min-w-0 truncate text-base font-semibold text-zinc-950 sm:max-w-[180px] sm:text-lg md:max-w-none">{parsed.title || 'Untitled Lesson'}</div>
                 <button type="button" onClick={() => setShowLessonSettings(true)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-zinc-400 transition hover:text-zinc-900" aria-label="Lesson settings" title="Lesson settings">
                   <SettingsIcon />
                 </button>
               </div>
-              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+              <div className="mt-0.5 hidden min-w-0 flex-wrap items-center gap-1.5 sm:flex">
                 {!!parsed.settings?.lessonTopic && <span className="inline-block max-w-[200px] truncate bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">{parsed.settings.lessonTopic}</span>}
                 {!!parsed.settings?.grammarTopic && <span className="inline-block max-w-[200px] truncate bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">{parsed.settings.grammarTopic}</span>}
                 {!!parsed.settings?.focus && [].concat(parsed.settings.focus).filter(Boolean).map((f) => <span key={f} className="inline-block bg-zinc-100 px-2 py-0.5 text-[10px] font-medium capitalize text-zinc-500">{f}</span>)}
@@ -507,11 +499,11 @@ export default function Editor({ lesson, onSave, onPlay, onBack }) {
           </div>
 
           {/* Right: Actions */}
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1 md:gap-1.5">
             {/* Mode switcher */}
             <div className="hidden border border-zinc-200 sm:flex">
               {['dsl', 'builder', 'preview'].map((entry) => (
-                <button key={entry} type="button" onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white last:border-r-0' : 'border-r border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : 'Preview'}</button>
+                <button key={entry} type="button" onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : 'Preview'}</button>
               ))}
             </div>
 
@@ -521,24 +513,15 @@ export default function Editor({ lesson, onSave, onPlay, onBack }) {
               </button>
             )}
 
-            {/* Mobile mode switcher */}
-            <div className="flex border border-zinc-200 sm:hidden">
-              {['dsl', 'builder', 'preview'].map((entry) => (
-                <button key={entry} type="button" onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-[10px] font-medium text-white last:border-r-0' : 'border-r border-zinc-200 px-2 py-1.5 text-[10px] font-medium text-zinc-600 last:border-r-0'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Build' : 'View'}</button>
-              ))}
-            </div>
+            {/* Mobile mode switcher — moved to bottom bar, hidden from header */}
 
             <div className="relative">
-              <button type="button" onClick={() => setTemplateMenuOpen((v) => !v)} className="hidden border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900 md:inline-flex md:items-center md:gap-1">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="2" y="2" width="4" height="4"/><rect x="8" y="2" width="4" height="4"/><rect x="2" y="8" width="4" height="4"/><rect x="8" y="8" width="4" height="4"/></svg>
+              <button type="button" onClick={() => setTemplateMenuOpen(true)} className="hidden border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900 md:inline-flex md:items-center md:gap-1">
+                <TemplateIcon size={14} />
                 Templates
               </button>
               {templateMenuOpen && (
-                <div className="absolute right-0 top-full z-30 mt-1 min-w-40 border border-zinc-200 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
-                  {['blank', 'grammar', 'vocabulary', 'reading', 'catalog'].map((t) => (
-                    <button key={t} type="button" onClick={() => loadTemplate(t)} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 last:border-b-0 hover:bg-zinc-50 capitalize">{t}</button>
-                  ))}
-                </div>
+                <TemplatePicker onSelect={loadTemplate} onClose={() => setTemplateMenuOpen(false)} />
               )}
             </div>
 
@@ -601,7 +584,7 @@ export default function Editor({ lesson, onSave, onPlay, onBack }) {
       {/* Main content area — full screen */}
       <div className="min-h-0 flex-1 overflow-hidden">
         {mode === 'dsl' && (
-          <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[1fr_340px]">
+          <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px]">
             <div className="flex min-h-0 flex-col border-r border-zinc-200 bg-white">
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-200 px-4 py-2">
                 <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Raw DSL Editor</div>
@@ -633,6 +616,7 @@ export default function Editor({ lesson, onSave, onPlay, onBack }) {
               lesson={focusMode && selectedBlockId ? { ...parsed, blocks: parsed.blocks.filter((b) => b.id === selectedBlockId || (b.children || []).some((c) => c.id === selectedBlockId)) } : parsed}
               selectedId={selectedBlockId}
               onSelect={setSelectedBlockId}
+              onOpenGuide={onOpenGuide}
               onReplaceLesson={(next) => { syncFromModel(focusMode ? { ...parsed, blocks: parsed.blocks.map((b) => { const replacement = next.blocks.find((nb) => nb.id === b.id); return replacement || b; }) } : next); }}
               onAddBlock={handleAddBlock}
               onDeleteBlock={handleDeleteBlock}
@@ -641,19 +625,39 @@ export default function Editor({ lesson, onSave, onPlay, onBack }) {
         )}
 
         {mode === 'preview' && (
-          <div className="h-full overflow-auto bg-white p-6">
-            <div className="mx-auto max-w-4xl">
+          <div className="h-full overflow-auto bg-white p-3 sm:p-6">
+            <div className="mx-auto max-w-4xl px-0 sm:px-4">
               <div className="mb-4 flex items-center justify-between">
                 <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Full lesson preview</div>
                 <div className="border border-zinc-200 px-2 py-1 text-[10px] text-zinc-500">{parsed.blocks.length} blocks</div>
               </div>
               <div className="space-y-5">
-                {parsed.blocks.map((block) => <div key={block.id}><Suspense fallback={<div className="border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">Loading…</div>}><BlockPreview block={block} /></Suspense></div>)}
+                {parsed.blocks.map((block) => <div key={block.id} className="overflow-x-auto"><Suspense fallback={<div className="border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">Loading…</div>}><BlockPreview block={block} /></Suspense></div>)}
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Mobile bottom tab bar */}
+      {!focusMode && (
+        <nav className="shrink-0 border-t border-zinc-200 bg-white sm:hidden [padding-bottom:env(safe-area-inset-bottom)]">
+          <div className="flex">
+            <button type="button" onClick={onBack} className="flex flex-1 flex-col items-center gap-0.5 py-2 text-zinc-500">
+              <BackIcon />
+              <span className="text-[10px]">Back</span>
+            </button>
+            {['dsl', 'builder', 'preview'].map((entry) => (
+              <button key={entry} type="button" onClick={() => setMode(entry)} className={`flex flex-1 flex-col items-center gap-0.5 py-2 ${mode === entry ? 'text-zinc-900' : 'text-zinc-400'}`}>
+                {entry === 'dsl' && <DslIcon />}
+                {entry === 'builder' && <BuilderIcon />}
+                {entry === 'preview' && <PreviewIcon />}
+                <span className="text-[10px] font-medium">{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Build' : 'View'}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
 
       {isMobile && <HotkeysModal isOpen={showHotkeys} onClose={() => setShowHotkeys(false)} />}
       {showLessonSettings && <LessonSettingsModal lesson={parsed} onClose={() => setShowLessonSettings(false)} onSave={syncFromModel} />}

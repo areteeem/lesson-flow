@@ -1,10 +1,11 @@
 import { useMemo, useState, useEffect } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
 export default function DragDropTask({ block, onComplete, existingResult }) {
   const pairs = block.pairs || [];
-  const [shuffleSeed] = useState(() => crypto.randomUUID());
+  const shuffleSeed = useShuffleSeed();
 
   // Right options as draggable items
   const draggableItems = useMemo(() => {
@@ -83,7 +84,7 @@ export default function DragDropTask({ block, onComplete, existingResult }) {
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <div className="mb-3 text-xs text-zinc-500">{block.hint}</div>}
       {pairs.length === 0 && (

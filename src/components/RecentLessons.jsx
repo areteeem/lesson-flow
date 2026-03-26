@@ -105,7 +105,7 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
           <div className="text-lg font-semibold tracking-tight text-zinc-950">Lesson Flow</div>
         </div>
         <div className="flex items-center gap-2">
-          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search lessons…" className="w-56 border border-zinc-200 px-3 py-1.5 text-sm outline-none focus:border-zinc-900" />
+          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search lessons…" className="w-full sm:w-56 border border-zinc-200 px-3 py-1.5 text-sm outline-none focus:border-zinc-900" />
           <button type="button" onClick={() => inputRef.current?.click()} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:border-zinc-900">Import</button>
           <input ref={inputRef} type="file" accept="application/json" className="hidden" onChange={handleImport} />
         </div>

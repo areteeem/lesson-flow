@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ErrorBoundary from './ErrorBoundary';
 import CardsTask from './tasks/CardsTask';
 import CategorizeTask from './tasks/CategorizeTask';
 import ChoiceTask from './tasks/ChoiceTask';
@@ -122,7 +123,9 @@ export default function TaskRenderer({ block, onComplete, existingResult }) {
         </div>
       )}
       <div key={attempt}>
-        {Component ? <Component block={block} onComplete={handleComplete} existingResult={attempt === 0 ? existingResult : undefined} /> : <GenericTask block={block} onComplete={handleComplete} existingResult={attempt === 0 ? existingResult : undefined} />}
+        <ErrorBoundary message={`Failed to render task: ${block.taskType}`}>
+          {Component ? <Component block={block} onComplete={handleComplete} existingResult={attempt === 0 ? existingResult : undefined} /> : <GenericTask block={block} onComplete={handleComplete} existingResult={attempt === 0 ? existingResult : undefined} />}
+        </ErrorBoundary>
       </div>
       {(hints.length > 0 || (lastResult?.submitted && !lastResult?.correct)) && (
         <div className="mt-3 flex items-center justify-between gap-3">

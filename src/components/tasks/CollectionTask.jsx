@@ -10,7 +10,7 @@ export default function CollectionTask({ block, onComplete, existingResult }) {
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.text && <FormattedText text={block.text} className="mb-4 text-sm leading-7 text-zinc-700" />}
       {block.hint && <p className="mb-4 text-sm text-zinc-500"><Md text={block.hint} /></p>}

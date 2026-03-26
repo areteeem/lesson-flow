@@ -13,6 +13,7 @@ export const SLIDE_REGISTRY = [
   { type: 'flashcard_slide', label: 'Flashcard Slide', layout: 'cards' },
   { type: 'scenario', label: 'Scenario / Dialogue Slide', layout: 'scenario' },
   { type: 'map_diagram', label: 'Map / Diagram Slide', layout: 'media' },
+  { type: 'split_group', label: 'Split Group (Side-by-Side)', layout: 'split' },
 ];
 
 export const SLIDE_TYPE_MAP = Object.fromEntries(SLIDE_REGISTRY.map((entry) => [entry.type, entry]));

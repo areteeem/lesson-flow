@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { getTaskDefinition } from '../../config/taskRegistry';
 import { FormattedText, Md } from '../FormattedText';
+import { FUZZY_MATCH_THRESHOLD } from '../../config/constants';
 
 function similarity(left, right) {
   const a = (left || '').trim().toLowerCase();
@@ -35,7 +36,7 @@ function OptionRenderer({ block, onComplete }) {
     onComplete?.({ submitted: true, correct: exact, score, response: selected, correctAnswer: block.correct || block.answer, feedback: block.explanation || block.hint || '' });
   };
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-3 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {(block.hint || block.explanation) && <div className="mb-4 text-sm text-zinc-500"><Md text={block.hint || block.explanation} /></div>}
       <div className="space-y-2">
@@ -65,10 +66,10 @@ function TextRenderer({ block, onComplete }) {
   const submit = () => {
     const score = values.reduce((total, value, index) => total + similarity(value, answers[index] || ''), 0) / Math.max(values.length, 1);
     setSubmitted(true);
-    onComplete?.({ submitted: true, correct: score >= 0.85, score, response: values, correctAnswer: answers, feedback: block.explanation || block.hint || '' });
+    onComplete?.({ submitted: true, correct: score >= FUZZY_MATCH_THRESHOLD, score, response: values, correctAnswer: answers, feedback: block.explanation || block.hint || '' });
   };
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-3 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.text && <FormattedText text={block.text} className="mb-4 text-sm leading-7 text-zinc-700" />}
       <div className="space-y-3">
@@ -92,7 +93,7 @@ function GridRenderer({ block, onComplete }) {
   const rows = block.rows?.length ? block.rows : [['A1', 'A2'], ['B1', 'B2']];
   const [values, setValues] = useState(rows.map((row) => row.map(() => '')));
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-3 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       <div className="overflow-x-auto rounded-2xl border border-zinc-200">
         <table className="min-w-full border-collapse text-sm">
@@ -117,7 +118,7 @@ function GridRenderer({ block, onComplete }) {
 function MediaRenderer({ block, onComplete }) {
   const media = block.media || block.image || block.video || block.audio || block.src || '';
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-3 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
@@ -139,7 +140,7 @@ function GenericCollectionRenderer({ block, onComplete }) {
   const definition = getTaskDefinition(block.taskType);
   const hasContent = (block.items?.length > 0 || block.pairs?.length > 0 || block.categories?.length > 0 || block.text || block.options?.length > 0);
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction || definition.label} /></div>
       {block.text && <FormattedText text={block.text} className="mb-4 text-sm leading-7 text-zinc-700" />}
       {hasContent ? (

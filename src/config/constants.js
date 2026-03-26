@@ -1,0 +1,44 @@
+// Shared color palettes used across task components and editor forms
+
+export const SPEAKER_COLORS = [
+  { bg: 'bg-blue-100', text: 'text-blue-900', border: 'border-blue-200', avatar: 'bg-blue-600' },
+  { bg: 'bg-zinc-100', text: 'text-zinc-900', border: 'border-zinc-200', avatar: 'bg-zinc-600' },
+  { bg: 'bg-emerald-100', text: 'text-emerald-900', border: 'border-emerald-200', avatar: 'bg-emerald-600' },
+  { bg: 'bg-purple-100', text: 'text-purple-900', border: 'border-purple-200', avatar: 'bg-purple-600' },
+  { bg: 'bg-amber-100', text: 'text-amber-900', border: 'border-amber-200', avatar: 'bg-amber-600' },
+  { bg: 'bg-rose-100', text: 'text-rose-900', border: 'border-rose-200', avatar: 'bg-rose-600' },
+  { bg: 'bg-cyan-100', text: 'text-cyan-900', border: 'border-cyan-200', avatar: 'bg-cyan-600' },
+  { bg: 'bg-indigo-100', text: 'text-indigo-900', border: 'border-indigo-200', avatar: 'bg-indigo-600' },
+];
+
+export const PALETTE_COLORS = [
+  { bg: 'bg-red-50', border: 'border-red-200', activeBg: 'bg-red-500', activeText: 'text-white', hoverBorder: 'hover:border-red-300' },
+  { bg: 'bg-blue-50', border: 'border-blue-200', activeBg: 'bg-blue-500', activeText: 'text-white', hoverBorder: 'hover:border-blue-300' },
+  { bg: 'bg-amber-50', border: 'border-amber-200', activeBg: 'bg-amber-500', activeText: 'text-white', hoverBorder: 'hover:border-amber-300' },
+  { bg: 'bg-emerald-50', border: 'border-emerald-200', activeBg: 'bg-emerald-500', activeText: 'text-white', hoverBorder: 'hover:border-emerald-300' },
+  { bg: 'bg-purple-50', border: 'border-purple-200', activeBg: 'bg-purple-500', activeText: 'text-white', hoverBorder: 'hover:border-purple-300' },
+  { bg: 'bg-pink-50', border: 'border-pink-200', activeBg: 'bg-pink-500', activeText: 'text-white', hoverBorder: 'hover:border-pink-300' },
+];
+
+export const CATEGORY_COLORS = [
+  { bg: 'bg-blue-50', border: 'border-blue-200', badge: 'bg-blue-500' },
+  { bg: 'bg-emerald-50', border: 'border-emerald-200', badge: 'bg-emerald-500' },
+  { bg: 'bg-amber-50', border: 'border-amber-200', badge: 'bg-amber-500' },
+  { bg: 'bg-purple-50', border: 'border-purple-200', badge: 'bg-purple-500' },
+  { bg: 'bg-rose-50', border: 'border-rose-200', badge: 'bg-rose-500' },
+  { bg: 'bg-cyan-50', border: 'border-cyan-200', badge: 'bg-cyan-500' },
+];
+
+export const DIALOGUE_COLORS = [
+  { bg: 'bg-blue-50', border: 'border-blue-200', avatar: 'bg-blue-500', text: 'text-blue-700' },
+  { bg: 'bg-zinc-50', border: 'border-zinc-200', avatar: 'bg-zinc-500', text: 'text-zinc-700' },
+  { bg: 'bg-emerald-50', border: 'border-emerald-200', avatar: 'bg-emerald-500', text: 'text-emerald-700' },
+  { bg: 'bg-purple-50', border: 'border-purple-200', avatar: 'bg-purple-500', text: 'text-purple-700' },
+  { bg: 'bg-amber-50', border: 'border-amber-200', avatar: 'bg-amber-500', text: 'text-amber-700' },
+  { bg: 'bg-rose-50', border: 'border-rose-200', avatar: 'bg-rose-500', text: 'text-rose-700' },
+];
+
+// Scoring thresholds — prefer block-level overrides when available
+export const FUZZY_MATCH_THRESHOLD = 0.85;
+export const STRICT_MATCH_THRESHOLD = 0.95;
+export const PASS_SCORE = 0.8;

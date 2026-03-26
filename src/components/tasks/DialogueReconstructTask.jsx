@@ -1,12 +1,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { Md } from '../FormattedText';
-
-const SPEAKER_COLORS = [
-  { bg: 'bg-blue-100', text: 'text-blue-900', border: 'border-blue-200', avatar: 'bg-blue-600' },
-  { bg: 'bg-zinc-100', text: 'text-zinc-900', border: 'border-zinc-200', avatar: 'bg-zinc-600' },
-  { bg: 'bg-emerald-100', text: 'text-emerald-900', border: 'border-emerald-200', avatar: 'bg-emerald-600' },
-  { bg: 'bg-purple-100', text: 'text-purple-900', border: 'border-purple-200', avatar: 'bg-purple-600' },
-];
+import { SPEAKER_COLORS } from '../../config/constants';
+import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
 function parseLines(text) {
   if (!text) return [];
@@ -51,12 +46,11 @@ export default function DialogueReconstructTask({ block, onComplete, existingRes
       const idx = Number(f);
       if (!isNaN(idx) && idx >= 0 && idx < correctOrder.length) fixed.add(idx);
     });
-    // First message is always fixed as anchor
     if (correctOrder.length > 0) fixed.add(0);
     return fixed;
   }, [block.fixed, block.targets, correctOrder]);
 
-  const [seed] = useState(() => crypto.randomUUID());
+  const seed = useShuffleSeed();
   const [items, setItems] = useState(() => {
     const movable = correctOrder.filter((_, i) => !fixedIndices.has(i));
     const shuffled = stableShuffleLocal(movable, seed);
@@ -71,8 +65,17 @@ export default function DialogueReconstructTask({ block, onComplete, existingRes
   const [submitted, setSubmitted] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [insertBefore, setInsertBefore] = useState(null);
+  const [preferTap, setPreferTap] = useState(false);
   const listRef = useRef(null);
   const touchDrag = useRef(null);
+
+  useEffect(() => {
+    const query = window.matchMedia('(pointer: coarse)');
+    const update = () => setPreferTap(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
 
   const moveItem = (from, to) => {
     if (submitted || items[from].fixed) return;
@@ -164,7 +167,7 @@ export default function DialogueReconstructTask({ block, onComplete, existingRes
       <div className="border-b border-zinc-200 bg-zinc-50 px-6 py-4">
         <div className="text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction || 'Reconstruct the dialogue'} /></div>
         {block.hint && !submitted && <div className="mt-1 text-sm text-zinc-500">{block.hint}</div>}
-        {!submitted && <div className="mt-2 text-xs text-zinc-500">Drag messages into the correct order. Pinned messages cannot be moved.</div>}
+        {!submitted && <div className="mt-2 text-xs text-zinc-500">{preferTap ? 'Use the ▲▼ arrows or drag messages to reorder. Pinned messages cannot be moved.' : 'Drag messages into the correct order. Pinned messages cannot be moved.'}</div>}
       </div>
 
       <div ref={listRef} className="space-y-2 px-4 py-5 sm:px-6">
@@ -202,7 +205,7 @@ export default function DialogueReconstructTask({ block, onComplete, existingRes
                 <div className={[
                   'max-w-[70%] border px-4 py-2.5 text-sm',
                   colors.bg, colors.border, colors.text,
-                  isLeft ? 'rounded-t-2xl rounded-br-2xl rounded-bl-sm' : 'rounded-t-2xl rounded-bl-2xl rounded-br-sm',
+                  isLeft ? 'bubble-left' : 'bubble-right',
                   line.fixed ? 'ring-1 ring-zinc-300' : '',
                   isCorrect ? 'ring-2 ring-emerald-400' : '',
                   isWrong ? 'ring-2 ring-red-400' : '',

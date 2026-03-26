@@ -34,7 +34,7 @@ export default function InputTask({ block, onComplete }) {
   const incorrect = submitted && !checkAnswer();
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-4 text-xl font-semibold text-zinc-950">
         <Md text={block.question || block.instruction} />
       </div>

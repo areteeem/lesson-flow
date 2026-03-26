@@ -32,7 +32,7 @@ export default function ReadingHighlightTask({ block, onComplete, existingResult
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-8">
+    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction || 'Highlight the correct words'} /></div>
       <div className="mb-5 text-sm text-zinc-500">Tap the words you want to mark.</div>
       <div className="flex flex-wrap gap-y-1 text-base leading-8 text-zinc-800">

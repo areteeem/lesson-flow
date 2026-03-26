@@ -77,6 +77,12 @@ export const GROUP_SCHEMA = {
   children: { ...L(), required: false },
 };
 
+export const SPLIT_GROUP_SCHEMA = {
+  ...BASE_BLOCK,
+  layout: { ...S('split'), required: false },
+  children: { ...L(), required: false },
+};
+
 // ────────────────────────────────────────────────
 //  Task base fields (shared by every task)
 // ────────────────────────────────────────────────
@@ -418,6 +424,8 @@ export function validateBlockSchema(block) {
     schema = getTaskSchema(block.taskType);
   } else if (block.type === 'group') {
     schema = GROUP_SCHEMA;
+  } else if (block.type === 'split_group') {
+    schema = SPLIT_GROUP_SCHEMA;
   } else {
     schema = getSlideSchema(block.layout || block.type);
   }
