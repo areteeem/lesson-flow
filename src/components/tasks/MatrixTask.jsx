@@ -12,7 +12,7 @@ function getCellKey(rowIndex, columnIndex) {
   return `${rowIndex}:${columnIndex}`;
 }
 
-export default function MatrixTask({ block, onComplete, existingResult }) {
+export default function MatrixTask({ block, onComplete }) {
   const rows = useMemo(() => normalizeRows(block), [block]);
   const columns = block.columns || [];
   const [values, setValues] = useState(rows.map((row) => row.map(() => '')));
@@ -78,8 +78,10 @@ export default function MatrixTask({ block, onComplete, existingResult }) {
       </div>
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="text-xs text-zinc-500">{isRevealTask ? 'Reveal tables work well for prediction, gap review, and progressive disclosure.' : 'Structured response surface for matrices, compare tables, and grid-style tasks.'}</div>
-        <button type="button" onClick={() => onComplete?.({ submitted: true, correct: true, score: 1, response: isRevealTask ? { revealedCells: Object.keys(revealedCells) } : values, feedback: block.explanation || block.hint || (isRevealTask ? 'Reveal table saved.' : 'Matrix saved.') })} className="rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">{isRevealTask ? 'Save progress' : 'Save matrix'}</button>
+        <button type="button" onClick={() => onComplete?.({ submitted: true, correct: true, score: 1, response: isRevealTask ? { revealedCells: Object.keys(revealedCells) } : values, feedback: block.explanation || block.hint || (isRevealTask ? 'Reveal table saved.' : 'Matrix saved.') })} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">{isRevealTask ? 'Save progress' : 'Save matrix'}</button>
       </div>
     </div>
   );
 }
+
+

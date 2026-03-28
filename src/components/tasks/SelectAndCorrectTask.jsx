@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Md } from '../FormattedText';
 
-export default function SelectAndCorrectTask({ block, onComplete, existingResult }) {
+export default function SelectAndCorrectTask({ block, onComplete }) {
   const text = block.text || '';
   const words = text.split(/(\s+)/);
   const correctAnswer = (block.answer || '').trim();
@@ -73,13 +73,13 @@ export default function SelectAndCorrectTask({ block, onComplete, existingResult
         </div>
       )}
       {!submitted && (
-        <button type="button" onClick={submit} disabled={selectedIndex === null || !correction.trim()} className="rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
+        <button type="button" onClick={submit} disabled={selectedIndex === null || !correction.trim()} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
           Check
         </button>
       )}
       {submitted && (
         <div className={[
-          'mt-4 rounded-2xl border px-4 py-3 text-sm',
+          'mt-4 border px-4 py-3 text-sm',
           correction.trim().toLowerCase() === correctAnswer.toLowerCase()
             ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
             : 'border-red-300 bg-red-50 text-red-800',
@@ -88,8 +88,10 @@ export default function SelectAndCorrectTask({ block, onComplete, existingResult
         </div>
       )}
       {submitted && block.explanation && (
-        <div className="mt-3 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
+        <div className="mt-3 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
       )}
     </div>
   );
 }
+
+

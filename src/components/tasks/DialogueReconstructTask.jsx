@@ -31,7 +31,7 @@ function stableShuffleLocal(arr, seed) {
   return copy;
 }
 
-export default function DialogueReconstructTask({ block, onComplete, existingResult }) {
+export default function DialogueReconstructTask({ block, onComplete }) {
   const correctOrder = useMemo(() => parseLines(block.text), [block.text]);
   const speakerMap = useMemo(() => {
     const map = new Map();
@@ -116,7 +116,7 @@ export default function DialogueReconstructTask({ block, onComplete, existingRes
     touchDrag.current = { index: idx, startY: e.touches[0].clientY, moved: false };
   };
 
-  const handleTouchMove = (e, idx) => {
+  const handleTouchMove = (e) => {
     if (!touchDrag.current || submitted) return;
     const dy = Math.abs(e.touches[0].clientY - touchDrag.current.startY);
     if (dy > 8) { touchDrag.current.moved = true; e.preventDefault(); }
@@ -216,8 +216,8 @@ export default function DialogueReconstructTask({ block, onComplete, existingRes
                 </div>
                 {!submitted && !line.fixed && (
                   <div className="flex shrink-0 flex-col gap-0.5">
-                    <button type="button" onClick={() => moveArrow(idx, -1)} disabled={idx === 0} className="border border-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-50 disabled:opacity-30">▲</button>
-                    <button type="button" onClick={() => moveArrow(idx, 1)} disabled={idx === items.length - 1} className="border border-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-50 disabled:opacity-30">▼</button>
+                    <button type="button" onClick={() => moveArrow(idx, -1)} disabled={idx === 0} className="border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-500 hover:bg-zinc-50 disabled:opacity-30">▲</button>
+                    <button type="button" onClick={() => moveArrow(idx, 1)} disabled={idx === items.length - 1} className="border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-500 hover:bg-zinc-50 disabled:opacity-30">▼</button>
                   </div>
                 )}
               </div>
@@ -242,3 +242,6 @@ export default function DialogueReconstructTask({ block, onComplete, existingRes
     </div>
   );
 }
+
+
+

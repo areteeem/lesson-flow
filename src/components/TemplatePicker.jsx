@@ -8,7 +8,11 @@ function loadCustomTemplates() {
   try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]'); } catch { return []; }
 }
 function saveCustomTemplates(templates) {
-  localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(templates));
+  try {
+    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(templates));
+  } catch {
+    // Ignore storage write failures so the picker does not crash.
+  }
 }
 
 const BUILTIN_TEMPLATES = [

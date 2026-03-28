@@ -111,6 +111,7 @@ const TASK_BASE = {
   repeat: { ...B(false), required: false },
   min: { ...N(1), required: false },
   max: { ...N(5), required: false },
+  points: { ...N(1), required: false },
   timeLimit: { ...N(null), required: false },
   hiddenRows: { ...L(), required: false },
   hiddenCells: { ...L(), required: false },
@@ -395,6 +396,17 @@ export const TASK_SCHEMAS = {
     ...TASK_BASE,
     media: { ...S(), required: true },
   },
+  highlight_glossary: {
+    ...TASK_BASE,
+    text: { ...S(), required: true },
+    targets: { ...L(), required: false },
+    pairs: { ...P(), required: false },
+  },
+  text_linking: {
+    ...TASK_BASE,
+    text: { ...S(), required: true },
+    targets: { ...L(), required: false },
+  },
 };
 
 // ────────────────────────────────────────────────
@@ -613,7 +625,7 @@ export const ANSWER_MODE = {
     'conditional_branch_questions', 'video_questions', 'image_labeling',
     'hotspot_selection', 'map_geography_label', 'image_compare_spot',
     'pronunciation_shadowing', 'fill_table_matrix', 'table_reveal',
-    'compare_contrast_table', 'puzzle_jigsaw',
+    'compare_contrast_table', 'puzzle_jigsaw', 'highlight_glossary', 'text_linking',
   ]),
 };
 

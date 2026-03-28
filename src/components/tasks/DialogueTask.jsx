@@ -50,7 +50,7 @@ function TypingIndicator() {
   );
 }
 
-export default function DialogueTask({ block, onComplete, existingResult }) {
+export default function DialogueTask({ block, onComplete }) {
   const lines = useMemo(() => parseDialogueLines(block.text), [block.text]);
   const speakerMap = useMemo(() => {
     const map = new Map();
@@ -316,3 +316,5 @@ export default function DialogueTask({ block, onComplete, existingResult }) {
     </div>
   );
 }
+
+

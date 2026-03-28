@@ -32,8 +32,7 @@ function highlightAffixes(word, root) {
 export default function WordFamilyBuilderTask({ block, onComplete }) {
   const rootWord = block.question || block.instruction || 'word';
   const fields = useMemo(() => block.categories || DEFAULT_FIELDS, [block.categories]);
-  const expectedAnswers = useMemo(() => {
-    // answers stored as items array in order per field, or as pairs
+  const answers = useMemo(() => {
     if (block.pairs?.length) {
       return Object.fromEntries(block.pairs.map((p) => [p.left?.toLowerCase(), p.right]));
     }
@@ -43,47 +42,34 @@ export default function WordFamilyBuilderTask({ block, onComplete }) {
     return {};
   }, [block.items, block.pairs, fields]);
 
-  const [values, setValues] = useState(() => Object.fromEntries(fields.map((f) => [f, ''])));
-  const [submitted, setSubmitted] = useState(false);
-  const [unlockedCount, setUnlockedCount] = useState(fields.length <= 4 ? fields.length : 2);
+  const [revealed, setRevealed] = useState({});
+  const [done, setDone] = useState(false);
 
-  const update = (field, val) => {
-    setValues((prev) => ({ ...prev, [field]: val }));
-    setSubmitted(false);
-  };
-
-  const submit = () => {
-    setSubmitted(true);
-    let correct = 0;
-    let total = 0;
-    fields.slice(0, unlockedCount).forEach((f) => {
-      const expected = (expectedAnswers[f] || '').trim().toLowerCase();
-      const given = (values[f] || '').trim().toLowerCase();
-      if (expected) {
-        total++;
-        if (given === expected) correct++;
-      }
-    });
-    // Unlock more fields progressively
-    if (correct > 0 && unlockedCount < fields.length) {
-      setUnlockedCount((prev) => Math.min(fields.length, prev + 1));
-    }
-    onComplete?.({
-      submitted: true,
-      correct: correct === total && total > 0,
-      score: total > 0 ? correct / total : 1,
-      response: values,
-      feedback: block.explanation || (correct === total ? 'All forms correct!' : `${correct}/${total} correct.`),
-    });
-  };
-
-  // Extract root for affix highlighting
   const root = (rootWord.match(/\b\w{3,}\b/) || [''])[0];
+  const allRevealed = fields.every((f) => revealed[f]);
+
+  const reveal = (field) => {
+    const next = { ...revealed, [field]: true };
+    setRevealed(next);
+    if (fields.every((f) => next[f]) && !done) {
+      setDone(true);
+      onComplete?.({ submitted: true, correct: true, score: 1, response: answers, feedback: 'All word forms reviewed.' });
+    }
+  };
+
+  const revealAll = () => {
+    const next = Object.fromEntries(fields.map((f) => [f, true]));
+    setRevealed(next);
+    if (!done) {
+      setDone(true);
+      onComplete?.({ submitted: true, correct: true, score: 1, response: answers, feedback: 'All word forms reviewed.' });
+    }
+  };
 
   return (
     <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950">
-        <Md text={block.title || 'Word Family Builder'} />
+        <Md text={block.title || 'Word Family'} />
       </div>
       {block.hint && <div className="mb-4 text-sm text-zinc-500"><Md text={block.hint} /></div>}
 
@@ -93,10 +79,9 @@ export default function WordFamilyBuilderTask({ block, onComplete }) {
           <div className="flex h-20 w-20 items-center justify-center border-2 border-zinc-900 bg-zinc-900 text-lg font-bold text-white">
             {root || rootWord}
           </div>
-          {/* Radial lines to fields */}
           <div className="absolute -inset-4">
-            {fields.slice(0, unlockedCount).map((_, i) => {
-              const angle = (360 / Math.max(unlockedCount, 1)) * i - 90;
+            {fields.map((_, i) => {
+              const angle = (360 / Math.max(fields.length, 1)) * i - 90;
               return (
                 <div
                   key={i}
@@ -109,67 +94,48 @@ export default function WordFamilyBuilderTask({ block, onComplete }) {
         </div>
       </div>
 
-      {/* Fields */}
+      {/* Word form cards — tap to reveal */}
       <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map((field, i) => {
-          const locked = i >= unlockedCount;
+        {fields.map((field) => {
           const pos = POS_LABELS[field] || POS_LABELS.other;
-          const expected = (expectedAnswers[field] || '').trim();
-          const given = (values[field] || '').trim();
-          const correct = submitted && expected && given.toLowerCase() === expected.toLowerCase();
-          const wrong = submitted && expected && given.toLowerCase() !== expected.toLowerCase();
+          const answer = (answers[field] || '').trim();
+          const isRevealed = revealed[field];
 
           return (
-            <div
+            <button
               key={field}
+              type="button"
+              onClick={() => !isRevealed && reveal(field)}
               className={[
-                'border p-4 transition',
-                locked ? 'border-dashed border-zinc-200 bg-zinc-50 opacity-50' : '',
-                correct ? 'border-emerald-400 bg-emerald-50' : '',
-                wrong ? 'border-red-300 bg-red-50' : '',
-                !locked && !submitted ? `${pos.color} border` : '',
+                'border p-4 text-left transition',
+                isRevealed ? `${pos.color} border` : 'border-dashed border-zinc-300 bg-zinc-50 hover:border-zinc-400 cursor-pointer',
               ].join(' ')}
             >
               <div className="mb-2 flex items-center gap-2">
                 <span className={`inline-block border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${pos.color}`}>
                   {pos.label}
                 </span>
-                {correct && <span className="text-sm text-emerald-600">✓</span>}
-                {wrong && <span className="text-[10px] text-red-500">Expected: {highlightAffixes(expected, root)}</span>}
               </div>
-              {locked ? (
-                <div className="flex h-9 items-center text-xs text-zinc-400">🔒 Unlock by answering correctly</div>
-              ) : (
-                <input
-                  value={values[field]}
-                  onChange={(e) => update(field, e.target.value)}
-                  placeholder={`Enter ${pos.label.toLowerCase()} form…`}
-                  className="w-full border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                  disabled={locked}
-                />
-              )}
-              {!locked && given && !submitted && (
-                <div className="mt-1 text-xs text-zinc-500">
-                  {highlightAffixes(given, root)}
+              {isRevealed ? (
+                <div className="text-base font-semibold text-zinc-900">
+                  {answer ? highlightAffixes(answer, root) : <span className="text-zinc-400 italic">—</span>}
                 </div>
+              ) : (
+                <div className="flex h-7 items-center text-xs text-zinc-400">Tap to reveal</div>
               )}
-            </div>
+            </button>
           );
         })}
       </div>
 
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <div className="text-xs text-zinc-500">
-          {unlockedCount < fields.length ? `${unlockedCount}/${fields.length} forms unlocked` : `${fields.length} forms`}
+      {/* Reveal all shortcut */}
+      {!allRevealed && (
+        <div className="mt-4 flex justify-end">
+          <button type="button" onClick={revealAll} className="border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-600 transition hover:border-zinc-900">
+            Reveal All
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={submit}
-          className="border border-zinc-900 bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800"
-        >
-          Check
-        </button>
-      </div>
+      )}
     </div>
   );
 }

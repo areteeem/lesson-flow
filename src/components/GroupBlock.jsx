@@ -16,7 +16,10 @@ export default function GroupBlock({ block, results, onCompleteChild }) {
   const activeChild = children[activeIndex] || null;
   const isSplit = block.layout === 'split' || block.type === 'split_group';
 
+  const [rightIndex, setRightIndex] = useState(1);
+
   if (isSplit && children.length >= 2) {
+    const extraChildren = children.slice(2);
     return (
       <div className="space-y-4">
         <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
@@ -28,10 +31,27 @@ export default function GroupBlock({ block, results, onCompleteChild }) {
             </div>
             <div className="border border-zinc-200 px-3 py-1 text-xs text-zinc-500">{children.length} tasks</div>
           </div>
+          {extraChildren.length > 0 && (
+            <div className="mt-3 flex gap-1">
+              {children.slice(1).map((child, i) => (
+                <button
+                  key={child.id}
+                  type="button"
+                  onClick={() => setRightIndex(i + 1)}
+                  className={rightIndex === i + 1
+                    ? 'border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs text-white'
+                    : 'border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 hover:border-zinc-400'}
+                >
+                  {child.question || child.title || `Task ${i + 2}`}
+                  {results?.[child.id] ? ' ✓' : ''}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <SplitView
           left={<div className="p-2">{renderChild(children[0], results, onCompleteChild)}</div>}
-          right={<div className="p-2">{renderChild(children[1], results, onCompleteChild)}</div>}
+          right={<div className="p-2">{renderChild(children[rightIndex], results, onCompleteChild)}</div>}
         />
       </div>
     );

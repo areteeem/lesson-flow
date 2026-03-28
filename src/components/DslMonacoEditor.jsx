@@ -1,11 +1,16 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import MonacoEditor from '@monaco-editor/react';
+import MonacoEditor, { loader } from '@monaco-editor/react';
+import * as monacoInstance from 'monaco-editor';
 import { parseLesson } from '../parser';
 import { TASK_REGISTRY } from '../config/taskRegistry';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 
+// Use locally installed monaco-editor instead of CDN (CDN is blocked by CSP)
+loader.config({ monaco: monacoInstance });
+
 const DSL_LANGUAGE_ID = 'lesson-dsl';
-let languageRegistered = false;
+// Use a WeakSet keyed on the monaco instance to survive HMR without double-registration
+const registeredInstances = new WeakSet();
 
 const FIELD_KEYS = [
   'Title', 'Question', 'Instruction', 'Content', 'Text', 'Answer', 'Correct',
@@ -24,9 +29,27 @@ const BLOCK_MARKERS = [
   ...TASK_REGISTRY.map((e) => `#TASK: ${e.type.toUpperCase()}`),
 ];
 
+const DSL_THEME_DEF = {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [
+    { token: 'type.lesson-marker', foreground: 'c586c0', fontStyle: 'bold' },
+    { token: 'type.slide-marker', foreground: '569cd6', fontStyle: 'bold' },
+    { token: 'type.task-marker', foreground: '4ec9b0', fontStyle: 'bold' },
+    { token: 'type.group-marker', foreground: 'dcdcaa', fontStyle: 'bold' },
+    { token: 'type.link-marker', foreground: 'ce9178', fontStyle: 'bold' },
+    { token: 'variable.field-key', foreground: '9cdcfe' },
+    { token: 'operator.pair-arrow', foreground: 'ce9178' },
+    { token: 'string.blank-marker', foreground: 'dcdcaa' },
+    { token: 'string.indexed-blank', foreground: 'dcdcaa', fontStyle: 'bold' },
+    { token: 'keyword.value', foreground: 'b5cea8' },
+  ],
+  colors: {},
+};
+
 function registerDslLanguage(monaco) {
-  if (languageRegistered) return;
-  languageRegistered = true;
+  if (registeredInstances.has(monaco)) return;
+  registeredInstances.add(monaco);
 
   monaco.languages.register({ id: DSL_LANGUAGE_ID });
   monaco.languages.setMonarchTokensProvider(DSL_LANGUAGE_ID, {
@@ -49,23 +72,7 @@ function registerDslLanguage(monaco) {
     },
   });
 
-  monaco.editor.defineTheme('dsl-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'type.lesson-marker', foreground: 'c586c0', fontStyle: 'bold' },
-      { token: 'type.slide-marker', foreground: '569cd6', fontStyle: 'bold' },
-      { token: 'type.task-marker', foreground: '4ec9b0', fontStyle: 'bold' },
-      { token: 'type.group-marker', foreground: 'dcdcaa', fontStyle: 'bold' },
-      { token: 'type.link-marker', foreground: 'ce9178', fontStyle: 'bold' },
-      { token: 'variable.field-key', foreground: '9cdcfe' },
-      { token: 'operator.pair-arrow', foreground: 'ce9178' },
-      { token: 'string.blank-marker', foreground: 'dcdcaa' },
-      { token: 'string.indexed-blank', foreground: 'dcdcaa', fontStyle: 'bold' },
-      { token: 'keyword.value', foreground: 'b5cea8' },
-    ],
-    colors: {},
-  });
+  monaco.editor.defineTheme('dsl-dark', DSL_THEME_DEF);
 
   // --- Autocomplete provider ---
   monaco.languages.registerCompletionItemProvider(DSL_LANGUAGE_ID, {
@@ -147,6 +154,7 @@ function registerDslLanguage(monaco) {
         DIALOGUE_FILL: '#TASK: DIALOGUE_FILL\nQuestion: ${1:Fill in the dialogue.}\nText:\nA: ${2:What time [1] you start?}\nB: ${3:I [2] at nine.}\nAnswer: ${4:do | start}\n',
         DIALOGUE_COMPLETION: '#TASK: DIALOGUE_COMPLETION\nQuestion: ${1:Complete the dialogue.}\nText:\nA: ${2:What time ___ you start?}\nB: ${3:I ___ at nine.}\nAnswer: ${4:do | start}\n',
         READING_HIGHLIGHT: '#TASK: READING_HIGHLIGHT\nQuestion: ${1:Highlight the target words.}\nText:\n${2:Tom lives in Kyiv and studies English.}\nTargets:\n${3:lives}\n${4:studies}\n',
+        HIGHLIGHT_GLOSSARY: '#TASK: HIGHLIGHT_GLOSSARY\nQuestion: ${1:Highlight the useful vocabulary.}\nText:\n${2:Tom lives in Kyiv and studies English.}\nTargets:\n${3:Kyiv}\n${4:studies}\nPairs:\n${5:Kyiv} => ${6:Київ}\n${7:studies} => ${8:навчається}\n',
         ERROR_CORRECTION: '#TASK: ERROR_CORRECTION\nQuestion: ${1:Correct the error.}\nText: ${2:She walk to school every day.}\nAnswer: ${3:She walks to school every day.}\n',
       };
 
@@ -356,6 +364,7 @@ export default function DslMonacoEditor({ value, onChange }) {
           theme="dsl-dark"
           value={value}
           onChange={handleChange}
+          beforeMount={(monaco) => monaco.editor.defineTheme('dsl-dark', DSL_THEME_DEF)}
           onMount={handleMount}
           options={{
             minimap: { enabled: false },

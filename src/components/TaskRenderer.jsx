@@ -20,10 +20,13 @@ import ScaleTask from './tasks/ScaleTask';
 import SelectAndCorrectTask from './tasks/SelectAndCorrectTask';
 import TextEntryTask from './tasks/TextEntryTask';
 import WordFamilyBuilderTask from './tasks/WordFamilyBuilderTask';
+import WordCloudTask from './tasks/WordCloudTask';
 import YouTubeTask from './tasks/YouTubeTask';
 import DialogueTask from './tasks/DialogueTask';
 import DialogueDragTask from './tasks/DialogueDragTask';
 import DialogueReconstructTask from './tasks/DialogueReconstructTask';
+import HighlightGlossaryTask from './tasks/HighlightGlossaryTask';
+import TextLinkingTask from './tasks/TextLinkingTask';
 
 const MAP = {
   multiple_choice: ChoiceTask,
@@ -87,7 +90,10 @@ const MAP = {
   justify_order: BranchTask,
   peer_review_checklist: CollectionTask,
   word_family_builder: WordFamilyBuilderTask,
+  word_cloud: WordCloudTask,
   youtube: YouTubeTask,
+  highlight_glossary: HighlightGlossaryTask,
+  text_linking: TextLinkingTask,
 };
 
 export default function TaskRenderer({ block, onComplete, existingResult }) {

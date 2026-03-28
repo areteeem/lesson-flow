@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FormattedTextBlock, Md } from './FormattedText';
+import { resolveMediaSource } from '../utils/media';
 
 const CHAT_COLORS = [
   { bg: 'bg-blue-100', text: 'text-blue-900', border: 'border-blue-200', avatar: 'bg-blue-600' },
@@ -60,7 +61,7 @@ function ScenarioChat({ text, revealMode }) {
 function Panel({ title, body }) {
   if (!title && !body) return null;
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4">
+    <div className="border border-zinc-200 bg-zinc-50/60 p-4">
       {title && <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">{title}</div>}
       {body && <FormattedTextBlock text={body} className="text-sm leading-7 text-zinc-700" compact />}
     </div>
@@ -71,7 +72,7 @@ export default function GenericSlide({ block }) {
   const [stepIndex, setStepIndex] = useState(0);
   const layout = block.layout || block.type;
   const steps = block.steps || block.items || [];
-  const media = block.media || block.image || block.video || block.audio || block.src || '';
+  const media = resolveMediaSource(block);
   const taskList = block.taskRefs || block.items || [];
 
   return (
@@ -88,11 +89,11 @@ export default function GenericSlide({ block }) {
 
       {['image_task', 'video_task', 'map_diagram'].includes(layout) && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 animate-soft-rise">
+          <div className="border border-zinc-200 bg-zinc-50 p-4 animate-soft-rise">
             {media ? (
               layout === 'video_task'
-                ? <video controls className="w-full rounded-xl" src={media} />
-                : <img alt={block.title || 'slide media'} className="max-h-[60vh] w-full rounded-xl object-contain transition duration-500 hover:scale-[1.01]" src={media} />
+                ? <video controls preload="metadata" className="w-full" src={media} />
+                : <img alt={block.title || 'slide media'} loading="lazy" className="max-h-[60vh] w-full object-contain transition duration-500 hover:scale-[1.01]" src={media} />
             ) : (
               <div className="flex min-h-64 items-center justify-center text-sm text-zinc-400">No media source attached.</div>
             )}
@@ -103,14 +104,14 @@ export default function GenericSlide({ block }) {
 
       {layout === 'carousel' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5 animate-soft-rise">
+          <div className="border border-zinc-200 bg-zinc-50 p-5 animate-soft-rise">
             <div className="mb-1 text-xs font-medium text-zinc-400">Card {stepIndex + 1} of {Math.max(steps.length, 1)}</div>
             <FormattedTextBlock text={steps[stepIndex] || block.content || ''} className="text-sm leading-7 text-zinc-700" compact />
           </div>
           {steps.length > 1 && (
             <div className="grid gap-2 md:grid-cols-3">
               {steps.map((step, index) => (
-                <button key={index} type="button" onClick={() => setStepIndex(index)} className={index === stepIndex ? 'rounded-2xl border border-zinc-900 bg-zinc-900 px-3 py-3 text-left text-white transition' : 'rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-left text-zinc-700 transition hover:border-zinc-400'}>
+                <button key={index} type="button" onClick={() => setStepIndex(index)} className={index === stepIndex ? 'border border-zinc-900 bg-zinc-900 px-3 py-3 text-left text-white transition' : 'border border-zinc-200 bg-white px-3 py-3 text-left text-zinc-700 transition hover:border-zinc-400'}>
                   <div className="text-[10px] uppercase tracking-[0.18em] opacity-70">Card {index + 1}</div>
                   <div className="mt-2 line-clamp-3 text-sm">{step}</div>
                 </button>
@@ -119,8 +120,8 @@ export default function GenericSlide({ block }) {
           )}
           {steps.length > 1 && (
             <div className="flex gap-2">
-              <button type="button" onClick={() => setStepIndex((value) => Math.max(0, value - 1))} className="rounded-2xl border border-zinc-200 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50">Previous</button>
-              <button type="button" onClick={() => setStepIndex((value) => Math.min(steps.length - 1, value + 1))} className="rounded-2xl border border-zinc-900 bg-zinc-900 px-3 py-2 text-sm text-white transition hover:bg-zinc-800">Next</button>
+              <button type="button" onClick={() => setStepIndex((value) => Math.max(0, value - 1))} className="border border-zinc-200 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50">Previous</button>
+              <button type="button" onClick={() => setStepIndex((value) => Math.min(steps.length - 1, value + 1))} className="border border-zinc-900 bg-zinc-900 px-3 py-2 text-sm text-white transition hover:bg-zinc-800">Next</button>
             </div>
           )}
         </div>

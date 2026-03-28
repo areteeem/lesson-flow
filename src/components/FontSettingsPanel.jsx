@@ -37,7 +37,11 @@ export function loadFontSettings() {
 }
 
 function saveFontSettings(settings) {
-  localStorage.setItem(FONT_STORAGE_KEY, JSON.stringify(settings));
+  try {
+    localStorage.setItem(FONT_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage write failures and keep the in-memory state.
+  }
 }
 
 export function getFontCSSVars(settings) {

@@ -131,7 +131,7 @@ export default function DialogueDragTask({ block, onComplete }) {
                 else setSelectedItemId((c) => c === item.id ? null : item.id);
               }}
               className={[
-                'border px-3 py-1.5 text-sm font-medium transition',
+                'border px-3 py-2.5 text-sm font-medium transition min-h-11',
                 selectedItemId === item.id ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-900',
               ].join(' ')}
             >
@@ -170,11 +170,18 @@ export default function DialogueDragTask({ block, onComplete }) {
                       <button
                         key={pIdx}
                         type="button"
-                        onDrop={(e) => { e.preventDefault(); try { fillBlank(gIdx, JSON.parse(e.dataTransfer.getData('application/json'))); } catch {} }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          try {
+                            fillBlank(gIdx, JSON.parse(e.dataTransfer.getData('application/json')));
+                          } catch {
+                            // Ignore malformed drag payloads.
+                          }
+                        }}
                         onDragOver={(e) => e.preventDefault()}
                         onClick={() => { if (selectedItem) fillBlank(gIdx, selectedItem); else releaseBlank(gIdx); }}
                         className={[
-                          'mx-0.5 inline-flex min-w-16 items-center justify-center border border-dashed px-2 py-0.5 text-sm font-medium transition',
+                          'mx-0.5 inline-flex min-w-16 min-h-9 items-center justify-center border border-dashed px-2 py-1.5 text-sm font-medium transition',
                           correct ? 'border-emerald-400 bg-emerald-50/50 text-emerald-800' : '',
                           wrong ? 'border-red-400 bg-red-50/50 text-red-800' : '',
                           !submitted && val ? 'border-zinc-600 bg-white/50 text-zinc-900' : '',

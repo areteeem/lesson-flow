@@ -3,7 +3,7 @@ import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
-export default function CategorizeTask({ block, onComplete, existingResult }) {
+export default function CategorizeTask({ block, onComplete }) {
   const shuffleSeed = useShuffleSeed();
   const categories = useMemo(() => block.shuffle === false ? (block.categories || []) : stableShuffle(block.categories || [], `${block.id || block.question}-${shuffleSeed}-categories`), [block.categories, block.id, block.question, block.shuffle, shuffleSeed]);
 
@@ -101,7 +101,7 @@ export default function CategorizeTask({ block, onComplete, existingResult }) {
     return (
       <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">This categorize task has no items to sort.</div>
+        <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">This categorize task has no items to sort.</div>
       </div>
     );
   }
@@ -150,9 +150,9 @@ export default function CategorizeTask({ block, onComplete, existingResult }) {
         </div>
       )}
       {selectedItem && !submitted && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
+        <div className="mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
           <span>Selected: <strong>{selectedItem.text}</strong> — tap a category below</span>
-          <button type="button" onClick={() => setSelectedItem(null)} className="rounded-xl border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</button>
+          <button type="button" onClick={() => setSelectedItem(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</button>
         </div>
       )}
 
@@ -195,7 +195,7 @@ export default function CategorizeTask({ block, onComplete, existingResult }) {
                       onClick={(e) => { e.stopPropagation(); returnToBank(item, category); }}
                       disabled={submitted}
                       className={[
-                        'rounded-xl border px-2.5 py-1.5 text-xs font-medium transition',
+                        'border px-2.5 py-1.5 text-xs font-medium transition',
                         isCorrect ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : '',
                         isWrong ? 'border-red-300 bg-red-50 text-red-800' : '',
                         !submitted ? 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-red-300 hover:bg-red-50' : '',
@@ -220,3 +220,4 @@ export default function CategorizeTask({ block, onComplete, existingResult }) {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generateDSL, parseLesson } from '../parser';
 import { exportLesson, importDsl, importLesson, printLessonReport, printStudentLesson } from '../storage';
 import { loadSettings } from './SettingsPage';
@@ -8,6 +8,7 @@ import { flattenBlocks } from '../utils/lesson';
 import HotkeysModal from './HotkeysModal';
 import MarkdownComposer from './MarkdownComposer';
 import TemplatePicker from './TemplatePicker';
+import PromptModal from './PromptModal';
 import { BackIcon, DotsVerticalIcon, PlayIcon as PlayIconSharp, SaveIcon as SaveIconSharp, SettingsIcon as SettingsIconSharp, DslIcon, BuilderIcon, PreviewIcon, TemplateIcon } from './Icons';
 
 const DslMonacoEditor = lazy(() => import('./DslMonacoEditor'));
@@ -186,7 +187,7 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
           </div>
 
           {/* Toggles */}
-          <div className="flex flex-wrap gap-3 px-6 pb-6 pt-5">
+          <div className="flex flex-wrap gap-3 px-6 pt-5">
             <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
               <input type="checkbox" checked={settings.showHints !== false} onChange={(event) => patchSettings({ showHints: event.target.checked })} />
               Show hints
@@ -195,6 +196,45 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
               <input type="checkbox" checked={settings.showExplanations !== false} onChange={(event) => patchSettings({ showExplanations: event.target.checked })} />
               Show explanations
             </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.allowSessionSave !== false} onChange={(event) => patchSettings({ allowSessionSave: event.target.checked })} />
+              Allow session saving
+            </label>
+          </div>
+
+          {/* Font settings */}
+          <div className="px-6 pt-5 pb-6">
+            <div className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Font Override <span className="normal-case tracking-normal text-zinc-300">(player)</span></div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <div className="mb-1.5 text-[10px] text-zinc-400">Family</div>
+                <select value={settings.fontFamily || ''} onChange={(e) => patchSettings({ fontFamily: e.target.value })} className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
+                  <option value="">Default</option>
+                  <option value="system">System</option>
+                  <option value="serif">Serif</option>
+                  <option value="mono">Mono</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="dyslexic">Dyslexia-friendly</option>
+                  <option value="handwriting">Handwriting</option>
+                </select>
+              </div>
+              <div>
+                <div className="mb-1.5 text-[10px] text-zinc-400">Size</div>
+                <div className="flex gap-1">
+                  {[{ id: 'sm', label: 'S' }, { id: 'md', label: 'M' }, { id: 'lg', label: 'L' }, { id: 'xl', label: 'XL' }].map((s) => (
+                    <button key={s.id} type="button" onClick={() => patchSettings({ fontSize: settings.fontSize === s.id ? '' : s.id })} className={`flex-1 py-1.5 text-center text-xs font-medium ${settings.fontSize === s.id ? 'border border-zinc-900 bg-zinc-900 text-white' : 'border border-zinc-200 text-zinc-600 hover:border-zinc-400'}`}>{s.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1.5 text-[10px] text-zinc-400">Line spacing</div>
+                <div className="flex gap-1">
+                  {[{ id: 'compact', label: 'Tight' }, { id: 'normal', label: 'Normal' }, { id: 'relaxed', label: 'Relaxed' }].map((l) => (
+                    <button key={l.id} type="button" onClick={() => patchSettings({ lineHeight: settings.lineHeight === l.id ? '' : l.id })} className={`flex-1 py-1.5 text-center text-xs font-medium ${settings.lineHeight === l.id ? 'border border-zinc-900 bg-zinc-900 text-white' : 'border border-zinc-200 text-zinc-600 hover:border-zinc-400'}`}>{l.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -202,10 +242,11 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
   );
 }
 
-export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) {
+export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpenGuide }) {
   const inputRef = useRef(null);
   const dslInputRef = useRef(null);
   const autoSaveRef = useRef(null);
+  const dslParseTimer = useRef(null);
   const [mode, setMode] = useState('builder');
   // Combined history state — eliminates stale-closure bugs on fast edits
   const [hist, setHist] = useState(() => {
@@ -217,6 +258,7 @@ export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) 
   const [menuOpen, setMenuOpen] = useState(false);
   const [showLessonSettings, setShowLessonSettings] = useState(false);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const [templatePromptOpen, setTemplatePromptOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -290,6 +332,7 @@ export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) 
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+      if (dslParseTimer.current) clearTimeout(dslParseTimer.current);
     };
   }, []);
 
@@ -303,10 +346,13 @@ export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) 
     scheduleAutoSave();
   };
 
-  const syncFromDsl = (nextDsl) => {
-    const nextParsed = parseLesson(nextDsl, parsed.blocks);
-    commit(nextDsl, nextParsed);
-  };
+  const syncFromDsl = useCallback((nextDsl) => {
+    clearTimeout(dslParseTimer.current);
+    dslParseTimer.current = setTimeout(() => {
+      const nextParsed = parseLesson(nextDsl, parsed.blocks);
+      commit(nextDsl, nextParsed);
+    }, 250);
+  }, [parsed.blocks]);
 
   // Builder edits: generate DSL for persistence but keep original blocks
   // (avoids round-trip through parser which can corrupt IDs and dialogue text).
@@ -439,7 +485,7 @@ export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) 
       { id: 'export-json', label: 'Export JSON', group: 'File', action: () => exportLesson(payload) },
       { id: 'student-pdf', label: 'Print Student PDF', group: 'File', action: () => printStudentLesson(payload) },
       { id: 'teacher-pdf', label: 'Print Teacher PDF', group: 'File', action: () => printLessonReport(payload) },
-      { id: 'save-template', label: 'Save as Template', group: 'File', action: () => { const name = prompt('Template name:', parsed.title || 'My Template'); if (name) addCustomTemplate(name, dsl); } },
+      { id: 'save-template', label: 'Save as Template', group: 'File', action: () => setTemplatePromptOpen(true) },
       { id: 'back', label: 'Back to Home', group: 'Navigation', action: onBack },
       ...blockCommands,
     ];
@@ -536,7 +582,7 @@ export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) 
                   <button type="button" onClick={() => { exportLesson(payload); setMenuOpen(false); }} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Export JSON</button>
                   <button type="button" onClick={() => { printStudentLesson(payload); setMenuOpen(false); }} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Student PDF</button>
                   <button type="button" onClick={() => { printLessonReport(payload); setMenuOpen(false); }} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Teacher PDF</button>
-                  <button type="button" onClick={() => { const name = prompt('Template name:', parsed.title || 'My Template'); if (name) { addCustomTemplate(name, dsl); setMenuOpen(false); } }} className="block w-full px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Save as Template</button>
+                  <button type="button" onClick={() => { setTemplatePromptOpen(true); setMenuOpen(false); }} className="block w-full px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Save as Template</button>
                 </div>
               )}
             </div>
@@ -547,6 +593,11 @@ export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) 
             <IconButton title="Play lesson" onClick={() => onPlay(payload)} variant="primary">
               <PlayIcon />
             </IconButton>
+            {onGoLive && (
+              <button type="button" onClick={() => onGoLive(payload)} className="border border-red-600 bg-red-600 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-red-500" title="Start live quiz">
+                Live
+              </button>
+            )}
           </div>
         </div>
         )}
@@ -697,6 +748,15 @@ export default function Editor({ lesson, onSave, onPlay, onBack, onOpenGuide }) 
           </div>
         </div>
       )}
+
+      <PromptModal
+        open={templatePromptOpen}
+        title="Save as Template"
+        placeholder="Template name"
+        defaultValue={parsed.title || 'My Template'}
+        onConfirm={(name) => { addCustomTemplate(name, dsl); setTemplatePromptOpen(false); }}
+        onCancel={() => setTemplatePromptOpen(false)}
+      />
     </div>
   );
 }

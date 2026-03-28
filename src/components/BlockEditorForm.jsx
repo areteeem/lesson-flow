@@ -48,6 +48,82 @@ function TextArea({ value, onChange, rows = 4 }) {
   return <AutoGrowTextarea value={value} onChange={onChange} rows={rows} />;
 }
 
+function MediaInput({ value, onChange }) {
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef(null);
+
+  const handleFile = (file) => {
+    if (!file) return;
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) return;
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'video/mp4', 'video/webm'];
+    if (!allowedTypes.includes(file.type)) return;
+    const reader = new FileReader();
+    reader.onload = () => onChange(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const isImage = value && (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(value) || value.startsWith('data:image/'));
+  const isAudio = value && (/\.(mp3|wav|ogg)(\?|$)/i.test(value) || value.startsWith('data:audio/'));
+  const isVideo = value && (/\.(mp4|webm)(\?|$)/i.test(value) || value.startsWith('data:video/'));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Paste URL or drop a file"
+          className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="shrink-0 border border-zinc-200 px-3 py-2 text-xs text-zinc-600 transition hover:border-zinc-400"
+        >
+          Browse
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,audio/*,video/*"
+          className="hidden"
+          onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ''; }}
+        />
+      </div>
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        className={[
+          'flex min-h-[80px] items-center justify-center border-2 border-dashed transition',
+          dragging ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200',
+        ].join(' ')}
+      >
+        {isImage && <img src={value} alt="" className="max-h-40 object-contain" />}
+        {isAudio && <audio src={value} controls className="w-full max-w-xs" />}
+        {isVideo && <video src={value} controls className="max-h-40" />}
+        {!isImage && !isAudio && !isVideo && (
+          <span className="text-xs text-zinc-400">{value ? 'Preview unavailable' : 'Drop image, audio, or video here'}</span>
+        )}
+      </div>
+      {value && (
+        <button type="button" onClick={() => onChange('')} className="text-[10px] text-zinc-400 underline">
+          Clear media
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Toggle({ checked, onChange, label = 'Enabled' }) {
   return (
     <button
@@ -699,6 +775,12 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
     </Field>
   );
 
+  const mediaInput = (field, label, help = '') => (
+    <Field label={label} help={help}>
+      <MediaInput value={block[field] || ''} onChange={(value) => apply(onChange, block, field, value)} />
+    </Field>
+  );
+
   const taskPrompt = (field, label, rows = compact ? 5 : 6, help = '') => (
     <Field label={label} help={help}>
       <MarkdownComposer value={serializeBlockField(block, field)} onChange={(value) => apply(onChange, block, field, value)} rows={rows} />
@@ -750,6 +832,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
       {/* Content body */}
       {block.type !== 'task' && richArea('content', 'Content', compact ? 8 : 10, 'Supports Markdown: headings, lists, bold, tables')}
       {block.type === 'task' && input('hint', 'Hint', 'Optional hint shown before answering')}
+      {block.type === 'task' && input('points', 'Points', 'Scoring weight for this question (default 1)')}
       {block.type === 'task' && taskPrompt('explanation', 'Explanation', 4, 'Shown after submission and supports formatting')}
 
       {['two_column_text_task', 'image_task', 'video_task'].includes(block.type) && (
@@ -759,7 +842,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
         </div>
       )}
 
-      {['image_task', 'video_task', 'map_diagram'].includes(block.type) && input('media', 'Media URL')}
+      {['image_task', 'video_task', 'map_diagram'].includes(block.type) && mediaInput('media', 'Media URL')}
       {['carousel', 'step_by_step'].includes(block.type) && <Field label="Steps"><StepListEditor block={block} onChange={onChange} /></Field>}
       {block.type === 'focus' && area('keywords', 'Keywords', 3)}
       {block.type === 'scenario' && <>
@@ -796,7 +879,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
             <AnswerSelector block={block} onChange={onChange} multiple={block.taskType === 'multi_select' || block.multiple} />
           )}
           {['short_answer', 'long_answer', 'error_correction', 'flash_response', 'choose_and_explain', 'scenario_decision', 'highlight_mistake', 'select_and_correct'].includes(block.taskType) && input('answer', 'Answer', block.taskType === 'highlight_mistake' ? 'The incorrect word in the text' : block.taskType === 'select_and_correct' ? 'The correct replacement' : 'Correct answer(s), use | for multiple')}
-          {['drag_to_blank', 'fill_typing', 'short_answer', 'long_answer', 'reading_highlight', 'error_correction', 'flash_response', 'choose_and_explain', 'scenario_decision', 'conditional_branch_questions', 'highlight_differences', 'memory_recall', 'keyword_expand', 'highlight_mistake', 'select_and_correct'].includes(block.taskType) && area('text', 'Text', 4, 'Use ___ or {} for blanks in fill tasks')}
+          {['drag_to_blank', 'fill_typing', 'short_answer', 'long_answer', 'reading_highlight', 'error_correction', 'flash_response', 'choose_and_explain', 'scenario_decision', 'conditional_branch_questions', 'highlight_differences', 'memory_recall', 'keyword_expand', 'highlight_mistake', 'select_and_correct', 'highlight_glossary', 'text_linking'].includes(block.taskType) && area('text', 'Text', 4, block.taskType === 'text_linking' ? 'The passage for students to annotate' : block.taskType === 'highlight_glossary' ? 'The passage students click to collect words' : 'Use ___ or {} for blanks in fill tasks')}
           {['fill_typing', 'drag_to_blank'].includes(block.taskType) && <InlineBlanksEditor block={block} onChange={onChange} />}
           {['dialogue_fill', 'dialogue_completion', 'dialogue_reconstruct'].includes(block.taskType) && <DialogueEditor block={block} onChange={onChange} />}
           {['dialogue_fill', 'dialogue_completion'].includes(block.taskType) && input('answer', 'Answer', 'Correct values for each blank, separated by | (optional with {answer} syntax)')}
@@ -805,15 +888,18 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
           )}
           {['drag_to_blank', 'dialogue_completion'].includes(block.taskType) && area('options', 'Distractors (word bank extras)', 3, 'Extra wrong words for the word bank, one per line')}
           <BankSizeWarning block={block} />
-          {['drag_drop', 'match', 'drag_match', 'matching_pairs_categories', 'emoji_symbol_match'].includes(block.taskType) && (() => {
+          {['drag_drop', 'match', 'drag_match', 'matching_pairs_categories', 'emoji_symbol_match', 'highlight_glossary'].includes(block.taskType) && (() => {
+            if (block.taskType === 'highlight_glossary') {
+              return <PairsEditor block={block} onChange={onChange} label="Optional translations" leftLabel="Word" rightLabel="Translation" />;
+            }
             const labels = PAIR_LABELS[block.taskType] || { label: 'Pairs', left: 'Left', right: 'Right' };
             return <PairsEditor block={block} onChange={onChange} label={labels.label} leftLabel={labels.left} rightLabel={labels.right} />;
           })()}
           {['cards'].includes(block.taskType) && <PairsEditor block={block} onChange={onChange} label="Cards" leftLabel="Front" rightLabel="Back" />}
-          {['order', 'random_wheel', 'timeline_order', 'sentence_builder', 'peer_review_checklist', 'story_reconstruction', 'justify_order', 'word_family_builder'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label={block.taskType === 'sentence_builder' ? 'Words / Chunks' : block.taskType === 'word_family_builder' ? 'Word Forms' : block.taskType === 'peer_review_checklist' ? 'Checklist Items' : block.taskType === 'random_wheel' ? 'Wheel Segments' : 'Items (correct order)'} />}
+          {['order', 'random_wheel', 'timeline_order', 'sentence_builder', 'peer_review_checklist', 'story_reconstruction', 'justify_order', 'word_family_builder', 'word_cloud'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label={block.taskType === 'sentence_builder' ? 'Words / Chunks' : block.taskType === 'word_family_builder' ? 'Word Forms' : block.taskType === 'peer_review_checklist' ? 'Checklist Items' : block.taskType === 'random_wheel' ? 'Wheel Segments' : block.taskType === 'word_cloud' ? 'Seed Words' : 'Items (correct order)'} />}
           {['categorize', 'categorize_grammar'].includes(block.taskType) && <CategorizeEditor block={block} onChange={onChange} />}
-          {['reading_highlight', 'highlight_differences'].includes(block.taskType) && <HighlightEditor block={block} onChange={onChange} />}
-          {['image_labeling', 'audio_transcription', 'video_questions', 'map_geography_label', 'hotspot_selection', 'image_compare_spot', 'pronunciation_shadowing'].includes(block.taskType) && input('media', 'Media URL', 'Direct link to image, audio, or video')}
+          {['reading_highlight', 'highlight_differences', 'highlight_glossary', 'text_linking'].includes(block.taskType) && <HighlightEditor block={block} onChange={onChange} />}
+          {['image_labeling', 'audio_transcription', 'video_questions', 'map_geography_label', 'hotspot_selection', 'image_compare_spot', 'pronunciation_shadowing', 'youtube'].includes(block.taskType) && mediaInput('media', 'Media URL', 'Direct link to image, audio, or video')}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && <Field label="Table editor"><TableGridEditor block={block} onChange={onChange} revealMode={block.taskType === 'table_reveal'} /></Field>}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && area('rowsText', 'Rows', 5)}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && area('columnsText', 'Columns', 2)}

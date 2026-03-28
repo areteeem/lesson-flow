@@ -1,10 +1,14 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useCallback } from 'react';
 import { Md } from '../FormattedText';
+import { resolveMediaSource } from '../../utils/media';
 
 function extractVideoId(url) {
   if (!url) return null;
-  // youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|.*[&?]v=))([a-zA-Z0-9_-]{11})/);
+  const str = String(url).trim();
+  // Bare 11-char ID
+  if (/^[a-zA-Z0-9_-]{11}$/.test(str)) return str;
+  // youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID, youtube.com/shorts/ID
+  const match = str.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|shorts\/|watch\?v=|.*[&?]v=))([a-zA-Z0-9_-]{11})/);
   return match ? match[1] : null;
 }
 
@@ -23,12 +27,12 @@ function formatTime(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function YouTubeTask({ block, onComplete, existingResult }) {
-  const url = block.media || block.video || block.url || '';
+export default function YouTubeTask({ block, onComplete }) {
+  const url = resolveMediaSource(block);
   const videoId = useMemo(() => extractVideoId(url), [url]);
   const iframeRef = useRef(null);
+  const [loaded, setLoaded] = useState(false);
 
-  // Timestamp questions: items like "1:30 => What did the speaker say about X?"
   const questions = useMemo(() => {
     if (block.items?.length) {
       return block.items.map((item, i) => {
@@ -46,14 +50,17 @@ export default function YouTubeTask({ block, onComplete, existingResult }) {
   const [submitted, setSubmitted] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState(null);
 
-  const seekTo = (seconds) => {
+  const seekTo = useCallback((seconds) => {
     if (!iframeRef.current) return;
-    // Use postMessage to seek the YouTube iframe
     iframeRef.current.contentWindow?.postMessage(
       JSON.stringify({ event: 'command', func: 'seekTo', args: [seconds, true] }),
       '*'
     );
-  };
+  }, []);
+
+  const activate = useCallback(() => {
+    if (!loaded) setLoaded(true);
+  }, [loaded]);
 
   const submit = () => {
     setSubmitted(true);
@@ -73,35 +80,50 @@ export default function YouTubeTask({ block, onComplete, existingResult }) {
         <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction || 'YouTube Video'} /></div>
         <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           No valid YouTube URL found. Add a YouTube link in the Media or Video field.
-          <div className="mt-2 text-xs text-amber-600">Supported formats: youtube.com/watch?v=..., youtu.be/..., youtube.com/embed/...</div>
+          <div className="mt-2 text-xs text-amber-600">Supported formats: youtube.com/watch?v=..., youtu.be/..., youtube.com/embed/..., youtube.com/shorts/...</div>
         </div>
       </div>
     );
   }
 
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&rel=0&modestbranding=1`;
+  const encodedId = encodeURIComponent(videoId);
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${encodedId}?enablejsapi=1&rel=0&modestbranding=1&autoplay=1`;
+  const thumbUrl = `https://img.youtube.com/vi/${encodedId}/hqdefault.jpg`;
 
   return (
     <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction || 'Watch the video'} /></div>
 
-      {/* Video embed */}
-      <div className="relative mb-5 w-full overflow-hidden bg-black" style={{ paddingBottom: '56.25%' }}>
-        <iframe
-          ref={iframeRef}
-          src={embedUrl}
-          title="YouTube video"
-          className="absolute inset-0 h-full w-full"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          referrerPolicy="strict-origin-when-cross-origin"
-        />
-      </div>
-
-      {/* Thumbnail preview with video ID */}
-      <div className="mb-4 flex items-center gap-3 text-xs text-zinc-400">
-        <img src={`https://img.youtube.com/vi/${encodeURIComponent(videoId)}/mqdefault.jpg`} alt="" className="h-10 w-16 border border-zinc-200 object-cover" />
-        <span>Video ID: {videoId}</span>
+      {/* Thumbnail-first lazy loading */}
+      <div className="relative mb-5 w-full overflow-hidden bg-zinc-950" style={{ paddingBottom: '56.25%' }}>
+        {loaded ? (
+          <iframe
+            ref={iframeRef}
+            src={embedUrl}
+            title="YouTube video"
+            className="absolute inset-0 h-full w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={activate}
+            className="group absolute inset-0 flex cursor-pointer items-center justify-center"
+            aria-label="Play video"
+          >
+            <img
+              src={thumbUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover transition group-hover:brightness-75"
+              loading="lazy"
+            />
+            <span className="relative z-10 flex h-16 w-16 items-center justify-center bg-red-600 text-white shadow-lg transition group-hover:scale-110 sm:h-20 sm:w-20">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="ml-1 h-8 w-8 sm:h-10 sm:w-10"><path d="M8 5v14l11-7z" /></svg>
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Timestamp questions */}
@@ -113,7 +135,7 @@ export default function YouTubeTask({ block, onComplete, existingResult }) {
               <div className="mb-2 flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => { seekTo(q.timestamp); setActiveQuestion(i); }}
+                  onClick={() => { activate(); seekTo(q.timestamp); setActiveQuestion(i); }}
                   className="border border-zinc-200 bg-white px-2 py-1 text-[11px] font-mono font-medium text-zinc-600 transition hover:border-zinc-900"
                 >
                   ▶ {formatTime(q.timestamp)}
@@ -156,3 +178,5 @@ export default function YouTubeTask({ block, onComplete, existingResult }) {
     </div>
   );
 }
+
+

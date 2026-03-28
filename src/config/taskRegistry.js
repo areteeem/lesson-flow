@@ -59,6 +59,9 @@ export const TASK_REGISTRY = [
   defineTask('dialogue_fill', 'Dialogue Fill', 'text', 'Writing', ['dialogue', 'fill', 'conversation', 'blanks'], 'Fill in missing words within a dialogue exchange.'),
   defineTask('dialogue_reconstruct', 'Dialogue Reconstruct', 'collection', 'Sequencing', ['dialogue', 'reconstruct', 'order', 'conversation'], 'Reorder scrambled dialogue messages into the correct sequence.'),
   defineTask('youtube', 'YouTube Video', 'media', 'Listening', ['youtube', 'video', 'watch', 'embed'], 'Embed a YouTube video with optional timestamp questions.'),
+  defineTask('word_cloud', 'Word Cloud', 'collection', 'Vocabulary', ['word cloud', 'brainstorm', 'vocabulary'], 'Students contribute words to build a live word cloud.'),
+  defineTask('highlight_glossary', 'Highlight Glossary', 'text', 'Reading', ['highlight', 'glossary', 'translation', 'vocabulary'], 'Highlight words in a passage to build a live list with optional translations.'),
+  defineTask('text_linking', 'Text Linking', 'text', 'Reading', ['annotation', 'glossary', 'linking', 'highlight', 'vocabulary'], 'Select words in a passage to build a linked glossary with notes.'),
 ];
 
 export const TASK_TYPE_MAP = Object.fromEntries(TASK_REGISTRY.map((entry) => [entry.type, entry]));

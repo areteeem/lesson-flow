@@ -54,6 +54,26 @@ Indexed blanks are preferred — they make the mapping to answers explicit.
 3. **Categories in Pairs** must match the Categories list exactly
 4. **Targets in reading_highlight** must exist verbatim in the Text
 5. Every task needs at least a Question or Instruction
+6. Prefer **simpler stable task types** unless the lesson explicitly needs complex interaction
+7. Use 'Points: N' for weighted scoring only when N is a positive number; default is 1
+8. For media tasks, use **Media:** as canonical source (Image/Video/Audio are optional aliases)
+9. Do not output unsupported field names
+10. Output pure DSL only (no markdown fences, numbering, bullets, or commentary)
+11. Use plain ASCII punctuation and straight quotes only (avoid smart quotes and decorative symbols)
+12. For multiline fields (Content, Text, Dialogue, Left, Right, Explanation), put values on the next line after the field name
+13. For list fields (Options, Items, Blanks, Categories, Targets, Pairs, Cards), put one entry per line
+14. Keep each block parser-safe: no prose between blocks and no nested block markers inside field values
+`.trim();
+
+export const DSL_PARSER_SAFETY_CHECKLIST = `
+Parser safety checklist before final output:
+- Starts with #LESSON and valid block markers only
+- One field per line, with multiline/list fields expanded below the key
+- No markdown fences, bullets, numbering, or commentary around DSL
+- Choice-task answers are exact matches from Options
+- Blank and answer counts align for gap-fill style tasks
+- Targets appear in Text for highlight tasks
+- Media URLs are plain URLs in Media/Image/Video/Audio fields
 `.trim();
 
 // ────────────────────────────────────────────────
@@ -171,6 +191,18 @@ Tom lives in Kyiv and studies English after school.
 Targets:
 lives
 studies`,
+
+  highlight_glossary: `
+#TASK: HIGHLIGHT_GLOSSARY
+Question: <highlight the useful words>
+Text:
+Tom lives in Kyiv and studies English after school.
+Targets:
+Kyiv
+studies
+Pairs:
+Kyiv => Київ
+studies => навчається`,
 
   error_correction: `
 #TASK: ERROR_CORRECTION
@@ -347,7 +379,16 @@ export function buildGenerationPrompt(config = {}) {
   parts.push('- Use ONLY the block markers and field names shown above');
   parts.push('- Answers MUST exist in Options for choice tasks');
   parts.push('- Use [1], [2], [3] for indexed blanks');
+  parts.push('- Use parser-safe formatting: one field per line, no prose between blocks');
+  parts.push('- Prefer stable tasks first: multiple_choice, short_answer, match, order, categorize, reading_highlight');
+  parts.push('- Use Points only when weighting is intentional; otherwise omit Points');
+  parts.push('- If media is required, provide Media with a valid URL or a clear placeholder URL');
+  parts.push('- Use straight ASCII punctuation and plain URLs only');
+  parts.push('- For multiline fields, place content on lines below the key (not inline after the colon)');
   parts.push('- Return ONLY the DSL, no explanations or markdown fences');
+
+  parts.push('\n## Parser safety checklist');
+  parts.push(DSL_PARSER_SAFETY_CHECKLIST);
 
   return parts.join('\n');
 }

@@ -2,6 +2,8 @@ import DOMPurify from 'dompurify';
 
 const LESSONS_KEY = 'lesson-flow-lessons';
 const SESSIONS_KEY = 'lesson-flow-sessions';
+const FOLDERS_KEY = 'lesson-flow-folders';
+const STUDENTS_KEY = 'lesson-flow-students';
 
 function escapeHtml(value = '') {
   return value
@@ -191,6 +193,13 @@ function renderStaticTaskBody(block) {
     return `${promptText}<p class="hint">Find and highlight the target words: ${(block.targets || []).map((t) => escapeHtml(t)).join(', ')}</p>${hint}`;
   }
 
+  if (block.taskType === 'highlight_glossary') {
+    const translationHint = (block.pairs || []).length > 0
+      ? `<p class="hint">Highlighted words can show translations in the glossary list.</p>`
+      : '';
+    return `${promptText}<p class="hint">Highlight key words in the text and collect them below.</p>${translationHint}${hint}`;
+  }
+
   if (block.taskType === 'cards') {
     return `<div class="match-grid">${(block.pairs || block.cards || []).map((p) => `<div class="match-row"><span>${escapeHtml(p.front || p.left || '')}</span><span class="arrow">↔</span><span>${escapeHtml(p.back || p.right || '')}</span></div>`).join('')}</div>${hint}`;
   }
@@ -218,7 +227,11 @@ function safeRead(key) {
 }
 
 function safeWrite(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore storage quota and privacy-mode write failures.
+  }
 }
 
 export function loadLessons() {
@@ -261,6 +274,36 @@ export function saveSession(session) {
   sessions.unshift(payload);
   safeWrite(SESSIONS_KEY, sessions);
   return payload;
+}
+
+export function deleteSession(id) {
+  safeWrite(SESSIONS_KEY, loadSessions().filter((session) => session.id !== id));
+}
+
+// ─── Folders ──────────────────────────────────
+export function loadFolders() {
+  return safeRead(FOLDERS_KEY);
+}
+
+export function saveFolders(folders) {
+  safeWrite(FOLDERS_KEY, folders);
+}
+
+// ─── Student profiles ─────────────────────────
+export function loadStudentProfiles() {
+  return safeRead(STUDENTS_KEY);
+}
+
+export function saveStudentProfile(profile) {
+  const profiles = loadStudentProfiles();
+  const idx = profiles.findIndex((p) => p.name === profile.name);
+  if (idx >= 0) profiles[idx] = { ...profiles[idx], ...profile };
+  else profiles.push(profile);
+  safeWrite(STUDENTS_KEY, profiles);
+}
+
+export function deleteStudentProfile(name) {
+  safeWrite(STUDENTS_KEY, loadStudentProfiles().filter((p) => p.name !== name));
 }
 
 export function downloadJson(filename, data) {

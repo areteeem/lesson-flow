@@ -58,6 +58,26 @@ export function DotsVerticalIcon(p) {
   return <Icon {...p} fill="currentColor" stroke="none"><rect x="7.5" y="3" width="3" height="3" /><rect x="7.5" y="7.5" width="3" height="3" /><rect x="7.5" y="12" width="3" height="3" /></Icon>;
 }
 
+export function CopyIcon(p) {
+  return <Icon {...p}><rect x="5.5" y="5.5" width="10" height="10" /><path d="M12.5 5.5V2.5h-10v10h3" /></Icon>;
+}
+
+export function ExportIcon(p) {
+  return <Icon {...p}><path d="M9 2.5v9M5.5 8l3.5 3.5L12.5 8" /><path d="M3 12.5v3h12v-3" /></Icon>;
+}
+
+export function EditIcon(p) {
+  return <Icon {...p}><path d="M2.5 15.5l1-4L12.5 2.5l3 3-9 9-4 1Z" /><path d="M10.5 4.5l3 3" /></Icon>;
+}
+
+export function FolderIcon(p) {
+  return <Icon {...p}><path d="M2 5V3.5h5l2 1.5h7V14.5H2V5Z" /></Icon>;
+}
+
+export function FolderOpenIcon(p) {
+  return <Icon {...p}><path d="M2 5V3.5h5l2 1.5h7V7H4l-2 7.5V5Z" /><path d="M4 7h12.5l-2 7.5H2L4 7Z" /></Icon>;
+}
+
 // ─── Settings & Config ────────────────────────
 export function SettingsIcon(p) {
   return (
@@ -303,6 +323,7 @@ const TASK_TYPE_ICON_MAP = {
   categorize: TaskIconCategorize,
   categorize_grammar: TaskIconCategorize,
   reading_highlight: TaskIconReadingHighlight,
+  highlight_glossary: TaskIconReadingHighlight,
   highlight_differences: TaskIconReadingHighlight,
   random_wheel: TaskIconRandomWheel,
   audio_transcription: TaskIconAudio,

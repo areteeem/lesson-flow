@@ -11,7 +11,11 @@ function loadCustomTemplates() {
 }
 
 function saveCustomTemplates(templates) {
-  localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(templates));
+  try {
+    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(templates));
+  } catch {
+    // Ignore storage write failures so the panel does not crash.
+  }
 }
 
 export function addCustomTemplate(name, dsl) {
@@ -486,40 +490,40 @@ Output ONLY the DSL text, nothing else.`;
               <div className="grid gap-4 lg:grid-cols-2">
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Lesson topic <span className="font-normal text-zinc-400">(required)</span></span>
-                  <input value={quickTopic} onChange={(e) => setQuickTopic(e.target.value)} placeholder="e.g. Travel and vacation plans" className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                  <input value={quickTopic} onChange={(e) => setQuickTopic(e.target.value)} placeholder="e.g. Travel and vacation plans" className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Grammar topic <span className="font-normal text-zinc-400">(required)</span></span>
-                  <input value={quickGrammar} onChange={(e) => setQuickGrammar(e.target.value)} placeholder="e.g. Future with Going to and Will" className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                  <input value={quickGrammar} onChange={(e) => setQuickGrammar(e.target.value)} placeholder="e.g. Future with Going to and Will" className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
               </div>
 
               <div className="grid gap-4 lg:grid-cols-5">
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Level</span>
-                  <select value={quickLevel} onChange={(e) => setQuickLevel(e.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={quickLevel} onChange={(e) => setQuickLevel(e.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Hardness</span>
-                  <select value={quickHardness} onChange={(e) => setQuickHardness(e.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={quickHardness} onChange={(e) => setQuickHardness(e.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['easy', 'medium', 'hard', 'expert'].map((h) => <option key={h} value={h}>{h}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Duration</span>
-                  <select value={quickDuration} onChange={(e) => setQuickDuration(e.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={quickDuration} onChange={(e) => setQuickDuration(e.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['30m', '45m', '1h', '1.5h', '2h'].map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Parts</span>
-                  <input type="number" value={quickParts} onChange={(e) => setQuickParts(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} min={1} max={10} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                  <input type="number" value={quickParts} onChange={(e) => setQuickParts(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} min={1} max={10} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Tasks / part</span>
-                  <input type="number" value={quickTasksPerPart} onChange={(e) => setQuickTasksPerPart(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} min={1} max={20} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                  <input type="number" value={quickTasksPerPart} onChange={(e) => setQuickTasksPerPart(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} min={1} max={20} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
               </div>
 
@@ -533,7 +537,7 @@ Output ONLY the DSL text, nothing else.`;
                     { key: 'reading', label: 'Reading', desc: 'Text & comprehension', value: quickIncludeReading, set: setQuickIncludeReading },
                   ].map((section) => (
                     <label key={section.key} className={[
-                      'flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition',
+                      'flex cursor-pointer items-start gap-3 border px-4 py-3 transition',
                       section.value ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 hover:border-zinc-300',
                     ].join(' ')}>
                       <input type="checkbox" checked={section.value} onChange={(e) => section.set(e.target.checked)} className="mt-0.5" />
@@ -553,11 +557,11 @@ Output ONLY the DSL text, nothing else.`;
                       <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Generated prompt</div>
                       <div className="text-sm text-zinc-600">Copy this and paste it into ChatGPT. Then paste the AI output into the DSL tab.</div>
                     </div>
-                    <button type="button" onClick={() => { navigator.clipboard.writeText(quickPrompt); setQuickCopied(true); setTimeout(() => setQuickCopied(false), 2000); }} className="rounded-2xl border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50">
+                    <button type="button" onClick={() => { navigator.clipboard.writeText(quickPrompt); setQuickCopied(true); setTimeout(() => setQuickCopied(false), 2000); }} className="border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50">
                       {quickCopied ? 'Copied!' : 'Copy prompt'}
                     </button>
                   </div>
-                  <pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{quickPrompt}</pre>
+                  <pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{quickPrompt}</pre>
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
                       <span>1</span><span>Copy prompt above</span>
@@ -645,35 +649,35 @@ Output ONLY the DSL text, nothing else.`;
               <div className="grid gap-4 lg:grid-cols-2">
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Lesson topic</span>
-                  <input value={lessonTopic} onChange={(event) => setLessonTopic(event.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                  <input value={lessonTopic} onChange={(event) => setLessonTopic(event.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Grammar topic</span>
-                  <input value={grammarTopic} onChange={(event) => setGrammarTopic(event.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                  <input value={grammarTopic} onChange={(event) => setGrammarTopic(event.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
               </div>
               <div className="grid gap-4 lg:grid-cols-4">
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Focus</span>
-                  <select value={focus} onChange={(event) => setFocus(event.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={focus} onChange={(event) => setFocus(event.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['grammar', 'vocabulary', 'reading', 'speaking', 'listening', 'writing', 'mixed'].map((entry) => <option key={entry} value={entry}>{entry}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Level</span>
-                  <select value={level} onChange={(event) => setLevel(event.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={level} onChange={(event) => setLevel(event.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((entry) => <option key={entry} value={entry}>{entry}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Difficulty style</span>
-                  <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['Controlled practice', 'Scaffolded', 'Balanced', 'Challenging'].map((entry) => <option key={entry} value={entry}>{entry}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Preset template</span>
-                  <select value={templatePreset} onChange={(event) => setTemplatePreset(event.target.value)} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={templatePreset} onChange={(event) => setTemplatePreset(event.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['grammar', 'vocabulary', 'reading', 'speaking', 'mixed'].map((entry) => <option key={entry} value={entry}>{entry}</option>)}
                   </select>
                 </label>
@@ -681,26 +685,26 @@ Output ONLY the DSL text, nothing else.`;
               <div className="grid gap-4 lg:grid-cols-2">
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Number of slides</span>
-                  <input type="number" value={slideCount} onChange={(event) => setSlideCount(Number(event.target.value) || 1)} min={1} max={60} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                  <input type="number" value={slideCount} onChange={(event) => setSlideCount(Number(event.target.value) || 1)} min={1} max={60} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Number of tasks</span>
-                  <input type="number" value={taskCount} onChange={(event) => setTaskCount(Number(event.target.value) || 1)} min={1} max={60} className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                  <input type="number" value={taskCount} onChange={(event) => setTaskCount(Number(event.target.value) || 1)} min={1} max={60} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
               </div>
-              <label className="flex items-center gap-2 rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+              <label className="flex items-center gap-2 border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={markdownFormatting} onChange={(event) => setMarkdownFormatting(event.target.checked)} />
                 Format slide text as Markdown.
               </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+              <label className="flex items-center gap-2 border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={autoTaskSelection} onChange={(event) => setAutoTaskSelection(event.target.checked)} />
                 Auto-select task types. If enabled, include DSL templates for all task types.
               </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+              <label className="flex items-center gap-2 border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={includeSlideTaskSuggestions} onChange={(event) => setIncludeSlideTaskSuggestions(event.target.checked)} />
                 Always suggest a task or activity intention for each slide.
               </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+              <label className="flex items-center gap-2 border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={excludeInputTextTasks} onChange={(event) => {
                   const checked = event.target.checked;
                   setExcludeInputTextTasks(checked);
@@ -737,8 +741,8 @@ Output ONLY the DSL text, nothing else.`;
               <div className="rounded-3xl border border-zinc-200 p-4">
                 <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">DSL examples included in prompt</div>
                 <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                  <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{slideExamples || 'No slide examples selected.'}</pre>
-                  <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{taskExamples || 'No task examples selected.'}</pre>
+                  <pre className="max-h-80 overflow-auto whitespace-pre-wrap border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{slideExamples || 'No slide examples selected.'}</pre>
+                  <pre className="max-h-80 overflow-auto whitespace-pre-wrap border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{taskExamples || 'No task examples selected.'}</pre>
                 </div>
               </div>
               <div className="rounded-3xl border border-zinc-200 p-4">
@@ -747,9 +751,9 @@ Output ONLY the DSL text, nothing else.`;
                     <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Generated prompt</div>
                     <div className="text-sm text-zinc-700">Use this in ChatGPT to generate lesson DSL.</div>
                   </div>
-                  <button type="button" onClick={() => navigator.clipboard.writeText(prompt)} className="rounded-2xl border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50">Copy</button>
+                  <button type="button" onClick={() => navigator.clipboard.writeText(prompt)} className="border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50">Copy</button>
                 </div>
-                <pre className="mt-4 whitespace-pre-wrap rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{prompt}</pre>
+                <pre className="mt-4 whitespace-pre-wrap border border-zinc-200 bg-zinc-50 p-4 text-xs leading-6 text-zinc-700">{prompt}</pre>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -770,7 +774,7 @@ Output ONLY the DSL text, nothing else.`;
                       showHints: true,
                       showExplanations: true,
                     })}
-                    className="rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
+                    className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
                   >
                     Apply As Starter Lesson
                   </button>

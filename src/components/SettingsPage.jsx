@@ -19,7 +19,11 @@ function loadSettings() {
 }
 
 function saveSettings(settings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage write failures and keep the current settings in memory.
+  }
 }
 
 export { loadSettings };
@@ -27,6 +31,7 @@ export { loadSettings };
 export default function SettingsPage({ onBack }) {
   const [settings, setSettings] = useState(loadSettings);
   const [saved, setSaved] = useState(false);
+  const [activeTab, setActiveTab] = useState('defaults');
 
   const update = (key, value) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -37,6 +42,13 @@ export default function SettingsPage({ onBack }) {
     saveSettings(settings);
     setSaved(true);
   };
+
+  const TABS = [
+    { id: 'defaults', label: 'Defaults' },
+    { id: 'ai', label: 'AI' },
+    { id: 'display', label: 'Display' },
+    { id: 'generate', label: 'Generate' },
+  ];
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#f7f7f5]">
@@ -50,10 +62,19 @@ export default function SettingsPage({ onBack }) {
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-6">
+      {/* Tab bar — visible on mobile, hidden on md+ where all sections show */}
+      <div className="scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-4 py-2 md:hidden">
+        {TABS.map((tab) => (
+          <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`shrink-0 px-4 py-2 text-xs font-medium whitespace-nowrap ${activeTab === tab.id ? 'border border-zinc-900 bg-zinc-900 text-white' : 'border border-zinc-200 text-zinc-600'}`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <div className="mx-auto max-w-2xl space-y-6">
           {/* Defaults */}
-          <section className="border border-zinc-200 bg-white p-5">
+          <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'defaults' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Lesson Defaults</div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
@@ -85,7 +106,7 @@ export default function SettingsPage({ onBack }) {
           </section>
 
           {/* AI */}
-          <section className="border border-zinc-200 bg-white p-5">
+          <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'ai' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">AI Preferences</div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
@@ -102,7 +123,7 @@ export default function SettingsPage({ onBack }) {
           </section>
 
           {/* Display */}
-          <section className="border border-zinc-200 bg-white p-5">
+          <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'display' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Display & Behavior</div>
             <div className="space-y-3">
               <label className="flex items-center gap-3 text-sm text-zinc-700">
@@ -133,7 +154,7 @@ export default function SettingsPage({ onBack }) {
           </section>
 
           {/* Sections defaults for Quick Generate */}
-          <section className="border border-zinc-200 bg-white p-5">
+          <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'generate' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Quick Generate Sections</div>
             <div className="space-y-3">
               {['Warm-up', 'Main Activity', 'Practice', 'Review'].map((section) => {

@@ -1,7 +1,45 @@
 import { useMemo, useState } from 'react';
+import { loadStudentProfiles, saveStudentProfile, deleteStudentProfile, downloadJson } from '../storage';
 
-export default function StudentProfiles({ sessions = [], onBack }) {
+const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+export default function StudentProfiles({ sessions = [], onBack, onDeleteSession }) {
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentMeta, setStudentMeta] = useState(() => {
+    const profiles = loadStudentProfiles();
+    const map = {};
+    profiles.forEach((p) => { map[p.name] = p; });
+    return map;
+  });
+
+  const getOrCreateMeta = (name) => studentMeta[name] || { name, level: '', notes: '', tags: [] };
+
+  const updateMeta = (name, updates) => {
+    const current = getOrCreateMeta(name);
+    const next = { ...current, ...updates, name };
+    saveStudentProfile(next);
+    setStudentMeta((prev) => ({ ...prev, [name]: next }));
+  };
+
+  const handleDeleteStudent = (name) => {
+    // Delete sessions
+    const studentSessions = sessions.filter((s) => (s.studentName || 'Anonymous').trim() === name);
+    studentSessions.forEach((s) => onDeleteSession?.(s.id));
+    // Delete profile
+    deleteStudentProfile(name);
+    setStudentMeta((prev) => { const next = { ...prev }; delete next[name]; return next; });
+    setSelectedStudent(null);
+  };
+
+  const handleClearHistory = (name) => {
+    const studentSessions = sessions.filter((s) => (s.studentName || 'Anonymous').trim() === name);
+    studentSessions.forEach((s) => onDeleteSession?.(s.id));
+  };
+
+  const handleExportReport = (profile) => {
+    const meta = getOrCreateMeta(profile.name);
+    downloadJson(`student-${profile.name.replace(/\s+/g, '_')}.json`, { ...meta, avgScore: profile.avgScore, totalTasks: profile.totalTasks, totalCorrect: profile.totalCorrect, weakAreas: profile.weakAreas, strongAreas: profile.strongAreas, sessions: profile.sessions });
+  };
 
   const profiles = useMemo(() => {
     const map = new Map();
@@ -76,15 +114,23 @@ export default function StudentProfiles({ sessions = [], onBack }) {
             <div className="py-20 text-center text-sm text-zinc-400">No student sessions yet. Play a lesson and enter a student name to start tracking.</div>
           ) : (
             <div className="space-y-2">
-              {profiles.map((p) => (
+              {profiles.map((p) => {
+                const meta = getOrCreateMeta(p.name);
+                return (
                 <button key={p.name} type="button" onClick={() => setSelectedStudent(p.name)} className="flex w-full items-center justify-between border border-zinc-200 bg-white px-4 py-3 text-left transition hover:border-zinc-900">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-zinc-900">{p.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-zinc-900">{p.name}</span>
+                      {meta.level && <span className="border border-zinc-300 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600">{meta.level}</span>}
+                    </div>
                     <div className="mt-0.5 flex gap-3 text-[11px] text-zinc-500">
                       <span>{p.sessions.length} session{p.sessions.length !== 1 ? 's' : ''}</span>
                       <span>{p.totalTasks} tasks</span>
                       <span>Last: {new Date(p.sessions[0].timestamp).toLocaleDateString()}</span>
                     </div>
+                    {meta.tags?.length > 0 && (
+                      <div className="mt-1 flex gap-1">{meta.tags.map((tag) => <span key={tag} className="border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[9px] text-zinc-500">{tag}</span>)}</div>
+                    )}
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
@@ -99,12 +145,23 @@ export default function StudentProfiles({ sessions = [], onBack }) {
                     )}
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )
         ) : (
           /* Student detail */
           <div className="space-y-5">
+            {/* Profile info */}
+            <ProfileEditor meta={getOrCreateMeta(detail.name)} onUpdate={(updates) => updateMeta(detail.name, updates)} />
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => handleExportReport(detail)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-900">Export Report</button>
+              <button type="button" onClick={() => handleClearHistory(detail.name)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-900">Clear History</button>
+              <button type="button" onClick={() => handleDeleteStudent(detail.name)} className="border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">Delete Student</button>
+            </div>
+
             {/* Score overview cards */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatCard label="Avg Score" value={`${detail.avgScore}%`} />
@@ -178,6 +235,7 @@ export default function StudentProfiles({ sessions = [], onBack }) {
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] text-zinc-500">{s.correctCount}/{s.total} correct</span>
                       <span className={`text-sm font-bold ${s.score >= 70 ? 'text-emerald-600' : s.score >= 40 ? 'text-amber-600' : 'text-rose-600'}`}>{s.score ?? 0}%</span>
+                      {onDeleteSession && <button type="button" onClick={() => onDeleteSession(s.id)} className="text-[10px] text-zinc-400 hover:text-red-600">×</button>}
                     </div>
                   </div>
                 ))}
@@ -195,6 +253,53 @@ function StatCard({ label, value }) {
     <div className="border border-zinc-200 bg-white p-3 text-center">
       <div className="text-lg font-bold text-zinc-900">{value}</div>
       <div className="text-[10px] text-zinc-400">{label}</div>
+    </div>
+  );
+}
+
+function ProfileEditor({ meta, onUpdate }) {
+  const [tagInput, setTagInput] = useState('');
+
+  const addTag = () => {
+    const tag = tagInput.trim();
+    if (!tag || (meta.tags || []).includes(tag)) return;
+    onUpdate({ tags: [...(meta.tags || []), tag] });
+    setTagInput('');
+  };
+
+  const removeTag = (tag) => {
+    onUpdate({ tags: (meta.tags || []).filter((t) => t !== tag) });
+  };
+
+  return (
+    <div className="border border-zinc-200 bg-white p-4">
+      <div className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Profile</div>
+      <div className="space-y-3">
+        <div>
+          <label className="text-[10px] font-medium text-zinc-500">Level</label>
+          <div className="mt-1 flex gap-1">
+            {LEVELS.map((lvl) => (
+              <button key={lvl} type="button" onClick={() => onUpdate({ level: meta.level === lvl ? '' : lvl })} className={`px-2.5 py-1 text-xs font-medium ${meta.level === lvl ? 'border border-zinc-900 bg-zinc-900 text-white' : 'border border-zinc-200 text-zinc-600 hover:border-zinc-400'}`}>{lvl}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] font-medium text-zinc-500">Notes</label>
+          <textarea value={meta.notes || ''} onChange={(e) => onUpdate({ notes: e.target.value })} rows={2} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-900" placeholder="Any notes about this student…" />
+        </div>
+        <div>
+          <label className="text-[10px] font-medium text-zinc-500">Tags</label>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {(meta.tags || []).map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-1 border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] text-zinc-700">
+                {tag}
+                <button type="button" onClick={() => removeTag(tag)} className="text-zinc-400 hover:text-red-500">×</button>
+              </span>
+            ))}
+            <input value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} className="w-20 border border-zinc-200 px-2 py-0.5 text-[10px] outline-none focus:border-zinc-900" placeholder="Add tag…" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

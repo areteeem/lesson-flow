@@ -7,7 +7,7 @@ export default function Slide({ block }) {
       {block.instruction && <div className="mb-3 text-sm text-zinc-500">{block.instruction}</div>}
       <FormattedTextBlock text={block.content || block.text || ''} />
       {block.notes?.length > 0 && (
-        <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+        <div className="mt-5 border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
           {block.notes.map((note, index) => <div key={index}>{note}</div>)}
         </div>
       )}

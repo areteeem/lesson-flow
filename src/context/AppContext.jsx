@@ -1,17 +1,18 @@
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
-import { loadLessons, loadSessions, saveLesson as storageSave, deleteLesson as storageDelete } from '../storage';
+import { loadLessons, loadSessions, saveLesson as storageSave, deleteLesson as storageDelete, deleteSession as storageDeleteSession, loadFolders, saveFolders as storageSaveFolders } from '../storage';
 
 const AppContext = createContext(null);
 
 const initialState = {
   lessons: [],
   sessions: [],
+  folders: [],
 };
 
 function reducer(state, action) {
   switch (action.type) {
     case 'REFRESH': {
-      return { ...state, lessons: loadLessons(), sessions: loadSessions() };
+      return { ...state, lessons: loadLessons(), sessions: loadSessions(), folders: loadFolders() };
     }
     case 'SAVE_LESSON': {
       const saved = storageSave(action.lesson);
@@ -20,6 +21,10 @@ function reducer(state, action) {
     case 'DELETE_LESSON': {
       storageDelete(action.id);
       return { ...state, lessons: loadLessons() };
+    }
+    case 'DELETE_SESSION': {
+      storageDeleteSession(action.id);
+      return { ...state, sessions: loadSessions() };
     }
     default:
       return state;
@@ -45,12 +50,24 @@ export function AppProvider({ children }) {
     dispatch({ type: 'DELETE_LESSON', id });
   }, []);
 
+  const deleteSessionAction = useCallback((id) => {
+    dispatch({ type: 'DELETE_SESSION', id });
+  }, []);
+
+  const saveFoldersAction = useCallback((folders) => {
+    storageSaveFolders(folders);
+    dispatch({ type: 'REFRESH' });
+  }, []);
+
   const value = {
     lessons: state.lessons,
     sessions: state.sessions,
+    folders: state.folders,
     refresh,
     saveLesson: saveLessonAction,
     deleteLesson: deleteLessonAction,
+    deleteSession: deleteSessionAction,
+    saveFolders: saveFoldersAction,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

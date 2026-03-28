@@ -45,7 +45,8 @@ function computeTakeaways(breakdown) {
 
 export default function GradingScreen({ lesson, blocks, results, studentName, onStudentNameChange, onRestart, onExit }) {
   const [saved, setSaved] = useState(false);
-  const summary = useMemo(() => summarizeResults(blocks, results), [blocks, results]);
+  const safeBlocks = Array.isArray(blocks) ? blocks.filter(Boolean) : [];
+  const summary = useMemo(() => summarizeResults(safeBlocks, results), [safeBlocks, results]);
   const takeaways = useMemo(() => computeTakeaways(summary.breakdown), [summary.breakdown]);
   const scoreBand = useMemo(() => getScoreBand(summary.score), [summary.score]);
   const radius = 58;
@@ -53,8 +54,8 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
   const dashOffset = circumference - (summary.score / 100) * circumference;
 
   const sessionPayload = {
-    lessonId: lesson.id,
-    lessonTitle: lesson.title,
+    lessonId: lesson?.id || 'unknown-lesson',
+    lessonTitle: lesson?.title || 'Untitled Lesson',
     studentName,
     score: summary.score,
     earned: summary.earned,
@@ -63,7 +64,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
     correctCount: summary.breakdown.filter((entry) => entry.correct === true).length,
     incorrectCount: summary.breakdown.filter((entry) => entry.correct === false).length,
     breakdown: summary.breakdown,
-    lessonPreview: lesson.dsl || lesson.blocks?.map((block) => block.title || block.question || block.instruction || '').find(Boolean) || '',
+    lessonPreview: lesson?.dsl || lesson?.blocks?.map((block) => block.title || block.question || block.instruction || '').find(Boolean) || '',
     timestamp: Date.now(),
   };
 
@@ -72,7 +73,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
       <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
         <section className="rounded-[28px] border border-zinc-200 bg-white p-4 md:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
           <div className="text-xs font-medium uppercase tracking-[0.22em] text-zinc-500">Final report</div>
-          <h1 className="mt-3 text-3xl font-semibold text-zinc-950">{lesson.title}</h1>
+          <h1 className="mt-3 text-3xl font-semibold text-zinc-950">{lesson?.title || 'Lesson complete'}</h1>
           <div className="mt-6 flex justify-center">
             <div className="relative flex h-36 w-36 items-center justify-center">
               <svg width="136" height="136" className="-rotate-90" role="img" aria-label={`Score: ${summary.score}%`}>
@@ -86,35 +87,41 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
             </div>
           </div>
           <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+            <div className="border border-zinc-200 bg-zinc-50 px-3 py-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Correct</div>
               <div className="mt-1 text-xl font-semibold text-zinc-950">{sessionPayload.correctCount}</div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+            <div className="border border-zinc-200 bg-zinc-50 px-3 py-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Reviewed</div>
               <div className="mt-1 text-xl font-semibold text-zinc-950">{sessionPayload.completedCount}</div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3">
+            <div className="border border-zinc-200 bg-zinc-50 px-3 py-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Graded</div>
               <div className="mt-1 text-xl font-semibold text-zinc-950">{summary.total}</div>
             </div>
           </div>
-          <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="mt-6 border border-zinc-200 bg-zinc-50 p-4">
             <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Session</div>
-            <label className="mt-3 block space-y-2">
-              <span className="text-sm text-zinc-700">Student name</span>
-              <input value={studentName} onChange={(event) => onStudentNameChange(event.target.value)} placeholder="Enter student name" className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
-            </label>
-            <div className="mt-4 grid gap-3">
-              <button type="button" onClick={() => { saveSession(sessionPayload); setSaved(true); }} className="rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-zinc-800">Save session</button>
-              <button type="button" onClick={() => exportSession(sessionPayload)} className="rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Export JSON</button>
-              <button type="button" onClick={() => printSessionReport(sessionPayload)} className="rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Print / PDF</button>
-            </div>
-            {saved && <div className="mt-3 text-sm text-emerald-700">Session saved locally.</div>}
+            {lesson?.settings?.allowSessionSave === false ? (
+              <div className="mt-3 text-xs text-zinc-400">Session saving is disabled for this lesson.</div>
+            ) : (
+              <>
+                <label className="mt-3 block space-y-2">
+                  <span className="text-sm text-zinc-700">Student name</span>
+                  <input value={studentName} onChange={(event) => onStudentNameChange(event.target.value)} placeholder="Enter student name" className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+                </label>
+                <div className="mt-4 grid gap-3">
+                  <button type="button" disabled={saved} onClick={() => { saveSession(sessionPayload); setSaved(true); }} className={`border px-4 py-3 text-sm font-medium transition ${saved ? 'border-emerald-300 bg-emerald-50 text-emerald-700 cursor-default' : 'border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800'}`}>{saved ? 'Saved ✓' : 'Save session'}</button>
+                  <button type="button" onClick={() => exportSession(sessionPayload)} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Export JSON</button>
+                  <button type="button" onClick={() => printSessionReport(sessionPayload)} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Print / PDF</button>
+                </div>
+                {saved && <div className="mt-3 text-sm text-emerald-700">Session saved locally.</div>}
+              </>
+            )}
           </div>
           <div className="mt-6 grid gap-3">
-            <button type="button" onClick={onRestart} className="rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Try again</button>
-            <button type="button" onClick={onExit} className="rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-zinc-800">Back to lessons</button>
+            <button type="button" onClick={onRestart} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Try again</button>
+            <button type="button" onClick={onExit} className="border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-zinc-800">Back to lessons</button>
           </div>
         </section>
         <section className="rounded-[28px] border border-zinc-200 bg-white p-4 md:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
@@ -181,8 +188,9 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
             <div className="rounded-full border border-zinc-200 px-3 py-2 text-xs text-zinc-500">{summary.earned} / {summary.total} graded correct</div>
           </div>
           <div className="mt-5 space-y-3">
+            {summary.breakdown.length === 0 && <div className="border border-dashed border-zinc-200 px-4 py-4 text-sm text-zinc-500">No gradable tasks were completed. This lesson ended safely and the session can still be saved or restarted.</div>}
             {summary.breakdown.map((entry) => (
-              <div key={entry.id} className={`rounded-2xl border px-4 py-4 ${statusTone(entry)}`}>
+              <div key={entry.id} className={`border px-4 py-4 ${statusTone(entry)}`}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="text-[11px] font-medium uppercase tracking-[0.18em] opacity-70">{entry.taskType}</div>

@@ -179,6 +179,12 @@ const TASK_PRESETS = {
     text: 'Tom lives in Kyiv and studies English after school.',
     targets: ['lives', 'studies'],
   },
+  highlight_glossary: {
+    question: 'Highlight the useful vocabulary in the text.',
+    text: 'Tom lives in Kyiv and studies English after school.',
+    targets: ['Kyiv', 'studies'],
+    pairs: [{ left: 'Kyiv', right: 'Київ' }, { left: 'studies', right: 'навчається' }],
+  },
   random_wheel: {
     question: 'Spin for a speaking topic.',
     items: ['your school day', 'your weekend', 'a family routine', 'a friend\'s habit'],

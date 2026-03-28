@@ -5,7 +5,7 @@ function cleanWord(word) {
   return word.replace(/[^a-zA-Z0-9'-]/g, '').toLowerCase();
 }
 
-export default function ReadingHighlightTask({ block, onComplete, existingResult }) {
+export default function ReadingHighlightTask({ block, onComplete }) {
   const targets = (block.targets || []).map((item) => item.toLowerCase());
   const words = (block.text || '').split(/(\s+)/);
   const [selected, setSelected] = useState(new Set());
@@ -59,7 +59,9 @@ export default function ReadingHighlightTask({ block, onComplete, existingResult
           );
         })}
       </div>
-      <button type="button" onClick={submit} className="mt-5 rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Check</button>
+      <button type="button" onClick={submit} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Check</button>
     </div>
   );
 }
+
+

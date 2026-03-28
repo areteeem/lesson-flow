@@ -222,7 +222,7 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
         </div>
 
         {/* Horizontal scrolling category tabs */}
-        <div className="scrollbar-none flex gap-1.5 overflow-x-auto border-b border-zinc-200 px-4 py-2.5">
+        <div className="scrollbar-none flex shrink-0 gap-1.5 overflow-x-auto border-b border-zinc-200 px-4 py-3">
           {categories.map((entry) => (
             <button
               key={entry}

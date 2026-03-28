@@ -7,7 +7,7 @@ export default function RichSlide({ block }) {
       {block.instruction && <p className="mb-4 text-sm text-zinc-500">{block.instruction}</p>}
       <FormattedTextBlock text={block.content || block.text || ''} />
       {block.examples?.length > 0 && (
-        <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+        <div className="mt-5 border border-zinc-200 bg-zinc-50 p-4">
           <div className="mb-2 text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">Examples</div>
           <div className="space-y-2 text-sm text-zinc-700">
             {block.examples.map((example, index) => (

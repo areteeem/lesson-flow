@@ -1,4 +1,4 @@
-import { getTaskBlocks, isGradableTask, getBlockLabel } from './lesson';
+import { getTaskBlocks, isGradableTask, getBlockLabel, getTaskPoints } from './lesson';
 
 export function normalizeScore(result) {
   if (!result) return 0;
@@ -24,19 +24,31 @@ export function fuzzySimilarity(left, right) {
 }
 
 export function summarizeResults(blocks = [], results = {}) {
+  if (!Array.isArray(blocks) || blocks.length === 0) {
+    return {
+      score: 0,
+      earned: 0,
+      total: 0,
+      breakdown: [],
+    };
+  }
   const tasks = getTaskBlocks(blocks).filter((block) => block.enabled !== false);
   const gradable = tasks.filter(isGradableTask);
-  const earned = gradable.reduce((total, block) => total + normalizeScore(results[block.id]), 0);
-  const total = gradable.length || 1;
-  const score = Math.round((earned / total) * 100);
+  const earned = gradable.reduce((total, block) => total + normalizeScore(results[block.id]) * getTaskPoints(block), 0);
+  const total = gradable.reduce((sum, block) => sum + getTaskPoints(block), 0);
+  const score = total > 0 ? Math.round((earned / total) * 100) : 0;
   const breakdown = tasks.map((block, index) => {
     const result = results[block.id] || null;
+    const points = isGradableTask(block) ? getTaskPoints(block) : 0;
+    const weighted = normalizeScore(result) * points;
     return {
       id: block.id,
       label: getBlockLabel(block, index),
       taskType: block.taskType,
       correct: result?.correct ?? null,
       score: normalizeScore(result),
+      weightedScore: weighted,
+      points,
       result,
       block,
     };

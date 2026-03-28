@@ -15,7 +15,7 @@ function TranslateButton({ text }) {
         Translate
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-36 overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)]">
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-36 overflow-y-auto border border-zinc-200 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)]">
           {langs.map((lang) => (
             <a key={lang.code} href={getTranslateUrl(text, lang.code)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="block px-3 py-1.5 text-xs text-zinc-700 transition hover:bg-zinc-50">{lang.label}</a>
           ))}
@@ -25,7 +25,7 @@ function TranslateButton({ text }) {
   );
 }
 
-export default function CardsTask({ block, onComplete, existingResult }) {
+export default function CardsTask({ block, onComplete }) {
   const shuffleSeed = useShuffleSeed();
   const cards = useMemo(() => {
     const source = block.cards?.length ? block.cards : block.pairs?.length ? block.pairs.map((pair) => ({ front: pair.left, back: pair.right })) : block.items?.length ? block.items.map((item) => ({ front: item, back: '' })) : [];
@@ -83,7 +83,7 @@ export default function CardsTask({ block, onComplete, existingResult }) {
           <div className="text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction || 'Flashcards'} /></div>
           <div className="mt-1 text-sm text-zinc-500">{cards.length} card{cards.length !== 1 ? 's' : ''} · {seenCount} reviewed</div>
         </div>
-        <div className="flex gap-1 rounded-xl border border-zinc-200 p-0.5">
+        <div className="flex gap-1 border border-zinc-200 p-0.5">
           {['cards', 'grid', ...(hasBack ? ['quiz'] : [])].map((m) => (
             <button key={m} type="button" onClick={() => setMode(m)} className={mode === m ? 'rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white' : 'rounded-lg px-3 py-1.5 text-xs text-zinc-600 transition hover:bg-zinc-50'}>{m === 'cards' ? 'Flip' : m === 'grid' ? 'Overview' : 'Quiz'}</button>
           ))}
@@ -118,20 +118,20 @@ export default function CardsTask({ block, onComplete, existingResult }) {
             </button>
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <button type="button" onClick={prev} disabled={index === 0} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-40">← Prev</button>
+            <button type="button" onClick={prev} disabled={index === 0} className="border border-zinc-200 px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-40">← Prev</button>
             <div className="flex gap-1.5">
               {cards.map((_, i) => <button key={i} type="button" onClick={() => goTo(i)} className={i === index ? 'h-2 w-6 rounded-full bg-zinc-900 transition-all' : seen[i] ? 'h-2 w-2 rounded-full bg-zinc-400' : 'h-2 w-2 rounded-full bg-zinc-200'} />)}
             </div>
-            <button type="button" onClick={next} disabled={index === cards.length - 1} className="rounded-xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm text-white transition hover:bg-zinc-800 disabled:opacity-40">Next →</button>
+            <button type="button" onClick={next} disabled={index === cards.length - 1} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm text-white transition hover:bg-zinc-800 disabled:opacity-40">Next →</button>
           </div>
         </>
       )}
 
       {/* GRID / OVERVIEW MODE */}
       {mode === 'grid' && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((card, i) => (
-            <button key={i} type="button" onClick={() => { setMode('cards'); goTo(i); }} className="group rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-left transition hover:border-zinc-400 hover:bg-white">
+            <button key={i} type="button" onClick={() => { setMode('cards'); goTo(i); }} className="group border border-zinc-200 bg-zinc-50 p-3 sm:p-4 text-left transition hover:border-zinc-400 hover:bg-white">
               <div className="text-xs font-medium uppercase tracking-wider text-zinc-400 mb-1">{i + 1}</div>
               <div className="text-sm font-semibold text-zinc-900 leading-snug"><Md text={card.front} /></div>
               {card.back && <div className="mt-1.5 text-xs text-zinc-500 leading-snug"><Md text={card.back} /></div>}
@@ -150,34 +150,35 @@ export default function CardsTask({ block, onComplete, existingResult }) {
               <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${(Object.values(quizResults).filter((v) => v === 'correct').length / cards.length) * 100}%` }} />
             </div>
           </div>
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-center">
+          <div className="border border-zinc-200 bg-zinc-50 p-6 text-center">
             <div className="text-xs text-zinc-400 mb-2">{index + 1}/{cards.length}</div>
             <div className="text-xl font-semibold text-zinc-900 mb-4"><Md text={current.front} /></div>
             {quizResults[index] ? (
-              <div className={quizResults[index] === 'correct' ? 'rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800' : 'rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800'}>
+              <div className={quizResults[index] === 'correct' ? 'border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800' : 'border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800'}>
                 {quizResults[index] === 'correct' ? 'Correct!' : <>Wrong. {quizRevealed[index] ? <span>Answer: <strong>{current.back}</strong></span> : <button type="button" onClick={revealQuiz} className="underline">Show answer</button>}</>}
               </div>
             ) : (
               <div className="flex gap-2">
-                <input value={quizInput} onChange={(e) => setQuizInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && checkQuiz()} placeholder="Type the definition…" className="flex-1 rounded-xl border border-zinc-200 px-4 py-2.5 text-sm outline-none transition focus:border-zinc-900" />
-                <button type="button" onClick={checkQuiz} disabled={!quizInput.trim()} className="rounded-xl border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-40">Check</button>
+                <input value={quizInput} onChange={(e) => setQuizInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && checkQuiz()} placeholder="Type the definition…" className="flex-1 border border-zinc-200 px-4 py-2.5 text-sm outline-none transition focus:border-zinc-900" />
+                <button type="button" onClick={checkQuiz} disabled={!quizInput.trim()} className="border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-40">Check</button>
               </div>
             )}
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <button type="button" onClick={prev} disabled={index === 0} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-40">← Prev</button>
-            <button type="button" onClick={next} disabled={index === cards.length - 1} className="rounded-xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm text-white transition hover:bg-zinc-800 disabled:opacity-40">Next →</button>
+            <button type="button" onClick={prev} disabled={index === 0} className="border border-zinc-200 px-4 py-2 text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-40">← Prev</button>
+            <button type="button" onClick={next} disabled={index === cards.length - 1} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm text-white transition hover:bg-zinc-800 disabled:opacity-40">Next →</button>
           </div>
         </>
       )}
 
       {/* Footer: Complete */}
       {(allSeen || Object.keys(quizResults).length === cards.length) && (
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+        <div className="mt-4 flex items-center justify-between border border-zinc-200 bg-zinc-50 px-4 py-3">
           <div className="text-sm text-zinc-600">{mode === 'quiz' ? `${Object.values(quizResults).filter((v) => v === 'correct').length}/${cards.length} correct` : 'All cards reviewed'}</div>
-          <button type="button" onClick={reportProgress} className="rounded-xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Done</button>
+          <button type="button" onClick={reportProgress} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Done</button>
         </div>
       )}
     </div>
   );
 }
+

@@ -1,16 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { findLinkedBlock, getBlockLabel, getVisibleBlocks } from '../utils/lesson';
+import { getBlockLabel, normalizeVisibleBlocks, validateLessonStructure } from '../utils/lesson';
 import GradingScreen from './GradingScreen';
-import GroupBlock from './GroupBlock';
-import GenericSlide from './GenericSlide';
-import RichSlide from './RichSlide';
-import Slide from './Slide';
-import SplitView from './SplitView';
-import StructureSlide from './StructureSlide';
-import TableSlide from './TableSlide';
-import TaskRenderer from './TaskRenderer';
+import LessonStage from './LessonStage';
 import { HamburgerIcon, FullscreenIcon, ExitFullscreenIcon } from './Icons';
 import FontSettingsPanel, { loadFontSettings, getFontCSSVars } from './FontSettingsPanel';
+import { recordDebugEvent } from '../utils/debug';
 
 function useSwipe(onSwipeLeft, onSwipeRight) {
   const touchRef = useRef(null);
@@ -34,14 +28,9 @@ function useSwipe(onSwipeLeft, onSwipeRight) {
   return handlers;
 }
 
-function normalizeBlocks(blocks = []) {
-  return getVisibleBlocks(blocks)
-    .map((block) => (block.type === 'group' || block.type === 'split_group') ? { ...block, children: normalizeBlocks(block.children || []) } : block)
-    .filter((block) => (block.type !== 'group' && block.type !== 'split_group') || block.children.length > 0);
-}
-
 export default function LessonPlayer({ lesson, onExit }) {
-  const blocks = useMemo(() => normalizeBlocks(lesson?.blocks || []), [lesson]);
+  const validation = useMemo(() => validateLessonStructure(lesson), [lesson]);
+  const blocks = useMemo(() => normalizeVisibleBlocks(lesson?.blocks || []), [lesson]);
   const sessionKey = lesson?.id ? `lf-player-${lesson.id}` : null;
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (!sessionKey) return 0;
@@ -58,6 +47,16 @@ export default function LessonPlayer({ lesson, onExit }) {
   const [fontSettings, setFontSettings] = useState(loadFontSettings);
   const [showFontPanel, setShowFontPanel] = useState(false);
   const shellRef = useRef(null);
+
+  useEffect(() => {
+    if (blocks.length === 0) {
+      recordDebugEvent('lesson_player_empty', {
+        lessonId: lesson?.id || null,
+        title: lesson?.title || null,
+        issues: validation.issues,
+      }, validation.issues.length > 0 ? 'warn' : 'info');
+    }
+  }, [blocks.length, lesson?.id, lesson?.title, validation.issues]);
 
   // Enter fullscreen on mount
   useEffect(() => {
@@ -81,6 +80,7 @@ export default function LessonPlayer({ lesson, onExit }) {
 
   const handleExit = () => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    recordDebugEvent('lesson_player_exit', { lessonId: lesson?.id || null, currentIndex, totalBlocks: blocks.length });
     onExit();
   };
 
@@ -93,8 +93,32 @@ export default function LessonPlayer({ lesson, onExit }) {
     } catch { /* quota exceeded — ignore */ }
   }, [results, currentIndex, sessionKey]);
 
-  const current = blocks[currentIndex] || null;
-  const linkedBlock = current ? findLinkedBlock(blocks, current) : null;
+  useEffect(() => {
+    if (blocks.length === 0) return;
+    if (currentIndex > blocks.length - 1) setCurrentIndex(blocks.length - 1);
+  }, [blocks.length, currentIndex]);
+
+  // Preload next block's media (audio/video/image)
+  useEffect(() => {
+    const next = blocks[currentIndex + 1];
+    if (!next) return;
+    const collectMedia = (b) => {
+      const urls = [];
+      const src = b?.media || b?.image || b?.video || b?.audio || b?.src || '';
+      if (src && !src.startsWith('data:')) urls.push(src);
+      if (b?.children) b.children.forEach((c) => urls.push(...collectMedia(c)));
+      return urls;
+    };
+    const urls = collectMedia(next);
+    const links = urls.map((url) => {
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.href = url;
+      document.head.appendChild(link);
+      return link;
+    });
+    return () => links.forEach((l) => l.remove());
+  }, [currentIndex, blocks]);
 
   const isComplete = (block) => {
     if (!block) return false;
@@ -107,7 +131,22 @@ export default function LessonPlayer({ lesson, onExit }) {
 
   const canAdvance = blocks.length > 0;
 
-  const goNext = () => { if (currentIndex === blocks.length - 1) setShowGrading(true); else setCurrentIndex((v) => Math.min(blocks.length - 1, v + 1)); };
+  const goNext = () => {
+    if (blocks.length === 0) {
+      setShowGrading(true);
+      return;
+    }
+    if (currentIndex >= blocks.length - 1) {
+      recordDebugEvent('lesson_complete', {
+        lessonId: lesson?.id || null,
+        totalBlocks: blocks.length,
+        answered: Object.keys(results).length,
+      });
+      setShowGrading(true);
+      return;
+    }
+    setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
+  };
   const goPrev = () => setCurrentIndex((v) => Math.max(0, v - 1));
   const swipeHandlers = useSwipe(goNext, goPrev);
 
@@ -124,46 +163,47 @@ export default function LessonPlayer({ lesson, onExit }) {
   }, [blocks.length, canAdvance]);
 
   const saveResult = (blockId, result) => {
+    recordDebugEvent('task_complete', { lessonId: lesson?.id || null, blockId, correct: result?.correct ?? null, score: result?.score ?? null });
     setResults((currentResults) => ({ ...currentResults, [blockId]: result }));
   };
 
-  const renderStandalone = (block) => {
-    if (!block) return null;
-    if (block.type === 'slide') return <Slide block={block} />;
-    if (block.type === 'rich') return <RichSlide block={block} />;
-    if (block.type === 'structure') return <StructureSlide block={block} />;
-    if (block.type === 'table') return <TableSlide block={block} />;
-    if (!['slide', 'rich', 'structure', 'table', 'group', 'split_group', 'task'].includes(block.type)) return <GenericSlide block={block} />;
-    if (block.type === 'group' || block.type === 'split_group') return <GroupBlock block={block} results={results} onCompleteChild={saveResult} />;
-    if (block.type === 'task') return <TaskRenderer block={block} onComplete={(result) => saveResult(block.id, result)} existingResult={results[block.id]} />;
-    return null;
-  };
+  const effectiveFontSettings = useMemo(() => {
+    const s = lesson?.settings || {};
+    return {
+      fontId: s.fontFamily || fontSettings.fontId,
+      sizeId: s.fontSize || fontSettings.sizeId,
+      lineHeightId: s.lineHeight || fontSettings.lineHeightId,
+    };
+  }, [lesson?.settings, fontSettings]);
 
-  if (!current) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#f7f7f5] text-sm text-zinc-500">This lesson has no visible blocks.</div>;
+  if (blocks.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-6 text-center">
+        <div className="max-w-xl border border-zinc-200 bg-white p-8">
+          <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Lesson complete</div>
+          <div className="mt-3 text-2xl font-semibold text-zinc-950">No playable blocks available</div>
+          <div className="mt-3 text-sm text-zinc-500">The player did not crash. The lesson has no visible slides or tasks, so there is nothing to render.</div>
+          {validation.issues.length > 0 && (
+            <div className="mt-4 border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-800">
+              {validation.issues.map((issue) => <div key={issue}>{issue}</div>)}
+            </div>
+          )}
+          <button type="button" onClick={handleExit} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Back to lessons</button>
+        </div>
+      </div>
+    );
   }
 
   if (showGrading) {
     return <GradingScreen lesson={lesson} blocks={blocks} results={results} studentName={studentName} onStudentNameChange={setStudentName} onRestart={() => { setResults({}); setCurrentIndex(0); setShowGrading(false); }} onExit={handleExit} />;
   }
 
-  const shouldSplitView = linkedBlock && current.type !== 'group' && current.type !== 'split_group' && (
-    (current.type === 'task' && linkedBlock.type !== 'task') ||
-    (current.type !== 'task' && linkedBlock.type === 'task')
-  );
-
-  const content = shouldSplitView ? (
-    current.type === 'task'
-      ? <SplitView left={renderStandalone(linkedBlock)} right={renderStandalone(current)} />
-      : <SplitView left={renderStandalone(current)} right={renderStandalone(linkedBlock)} />
-  ) : (
-    renderStandalone(current)
-  );
-
   const completedCount = blocks.filter(isComplete).length;
+  const progressWidth = blocks.length > 0 ? `${(completedCount / blocks.length) * 100}%` : '0%';
+  const current = blocks[currentIndex] || null;
 
   return (
-    <div ref={shellRef} className="player-shell flex min-h-screen bg-[#f7f7f5]" style={getFontCSSVars(fontSettings)}>
+    <div ref={shellRef} className="player-shell flex min-h-screen bg-[#f7f7f5]" style={getFontCSSVars(effectiveFontSettings)}>
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex">
           <button type="button" onClick={() => setSidebarOpen(false)} className="absolute inset-0 bg-black/20" />
@@ -199,7 +239,7 @@ export default function LessonPlayer({ lesson, onExit }) {
                 <span className="shrink-0 text-xs text-zinc-400">{currentIndex + 1}/{blocks.length}</span>
               </div>
               <div className="mt-1.5 h-1.5 overflow-hidden bg-zinc-100">
-                <div className="h-full bg-zinc-900 transition-all duration-500" style={{ width: `${(completedCount / blocks.length) * 100}%` }} />
+                <div className="h-full bg-zinc-900 transition-all duration-500" style={{ width: progressWidth }} />
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
@@ -225,7 +265,9 @@ export default function LessonPlayer({ lesson, onExit }) {
         )}
 
         <main className="flex-1 px-3 py-4 sm:px-4 sm:py-5 md:px-5 md:py-7 lg:px-6 lg:py-8 xl:py-10" {...swipeHandlers}>
-          <div key={currentIndex} className="player-frame mx-auto animate-soft-rise">{content}</div>
+          <div key={currentIndex} className="player-frame mx-auto animate-soft-rise">
+            <LessonStage blocks={blocks} currentIndex={currentIndex} results={results} onCompleteBlock={saveResult} emptyMessage="This lesson ended safely because the current block is missing." />
+          </div>
         </main>
 
         <footer className="sticky bottom-0 z-20 border-t border-zinc-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4 md:px-5 [padding-bottom:calc(env(safe-area-inset-bottom)+0.75rem)]">

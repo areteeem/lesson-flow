@@ -80,11 +80,13 @@ const KNOWN_KEYS = new Set([
   'answer', 'correct', 'ref', 'linkto', 'group', 'enabled', 'shuffle', 'repeat',
   'min', 'max', 'timelimit', 'placeholder', 'multiple', 'lessontopic', 'grammartopic',
   'focus', 'difficulty', 'showhints', 'showexplanations', 'revealmode', 'randomhiddencount',
-  'flexibleorder', 'layout', 'tasktype', 'type',
+  'flexibleorder', 'layout', 'tasktype', 'type', 'points',
 ]);
 
 function detectBlock(line) {
   const trimmed = line.trim();
+  // Fast path: most lines don't start with #, skip regex scan
+  if (trimmed.charAt(0) !== '#') return null;
   return BLOCK_PATTERNS.find((pattern) => pattern.regex.test(trimmed)) || null;
 }
 
@@ -327,11 +329,11 @@ function validateBlock(block, warnings) {
     }
 
     // --- Reading highlight ---
-    if (['reading_highlight', 'highlight', 'highlight_differences'].includes(block.taskType)) {
+    if (['reading_highlight', 'highlight', 'highlight_differences', 'highlight_glossary'].includes(block.taskType)) {
       if (!block.text) {
         warnings.push(`Task "${label}" (${block.taskType}) has no text to highlight.`);
       }
-      if ((!block.targets || block.targets.length === 0)) {
+      if (block.taskType !== 'highlight_glossary' && (!block.targets || block.targets.length === 0)) {
         warnings.push(`Task "${label}" (${block.taskType}) has no target words.`);
       }
       if (block.text && block.targets && block.targets.length > 0) {
@@ -339,6 +341,14 @@ function validateBlock(block, warnings) {
         for (const target of block.targets) {
           if (!textLower.includes(target.toLowerCase())) {
             warnings.push(`Task "${label}" (${block.taskType}) target "${target}" not found in text.`);
+          }
+        }
+      }
+      if (block.taskType === 'highlight_glossary' && block.pairs.length > 0) {
+        const textLower = block.text.toLowerCase();
+        for (const pair of block.pairs) {
+          if (pair.left && !textLower.includes(pair.left.toLowerCase())) {
+            warnings.push(`Task "${label}" (${block.taskType}) translation word "${pair.left}" not found in text.`);
           }
         }
       }
@@ -581,7 +591,7 @@ function autoRepairTask(block, warnings) {
   }
 
   // --- READING_HIGHLIGHT: ensure targets exist in text ---
-  if (['reading_highlight', 'highlight', 'highlight_differences'].includes(block.taskType) && block.text && block.targets && block.targets.length > 0) {
+  if (['reading_highlight', 'highlight', 'highlight_differences', 'highlight_glossary'].includes(block.taskType) && block.text && block.targets && block.targets.length > 0) {
     const textLower = block.text.toLowerCase();
     block.targets = block.targets.filter((target) => {
       if (textLower.includes(target.toLowerCase())) return true;
@@ -712,6 +722,7 @@ function buildBlock(definition, rawData, index, warnings) {
     block.keywords = toList(rawData.keywords);
     block.min = toNumber(rawData.min, 1);
     block.max = toNumber(rawData.max, 5);
+    block.points = toNumber(rawData.points, 1);
     block.timeLimit = toNumber(rawData.timelimit, null);
     block.repeat = toBoolean(rawData.repeat, false);
     block.shuffle = rawData.shuffle === undefined ? true : toBoolean(rawData.shuffle, true);
@@ -959,10 +970,14 @@ export function parseLesson(dsl, existingBlocks) {
       settings = {
         showHints: rawData.showhints === undefined ? true : toBoolean(rawData.showhints, true),
         showExplanations: rawData.showexplanations === undefined ? true : toBoolean(rawData.showexplanations, true),
+        allowSessionSave: rawData.allowsessionsave === undefined ? true : toBoolean(rawData.allowsessionsave, true),
         grammarTopic: rawData.grammartopic || '',
         lessonTopic: rawData.lessontopic || rawData.topic || '',
         focus: rawData.focus ? rawData.focus.split(',').map(s => s.trim()).filter(Boolean) : [],
         difficulty: rawData.difficulty ? rawData.difficulty.split(',').map(s => s.trim()).filter(Boolean) : [],
+        fontFamily: rawData.fontfamily || '',
+        fontSize: rawData.fontsize || '',
+        lineHeight: rawData.lineheight || '',
       };
     } else {
       try {
@@ -1029,6 +1044,10 @@ export function generateDSL(lesson) {
   if (lesson.settings?.difficulty?.length) lines.push(`Difficulty: ${[].concat(lesson.settings.difficulty).join(', ')}`);
   if (lesson.settings?.showHints === false) lines.push('ShowHints: false');
   if (lesson.settings?.showExplanations === false) lines.push('ShowExplanations: false');
+  if (lesson.settings?.allowSessionSave === false) lines.push('AllowSessionSave: false');
+  if (lesson.settings?.fontFamily) lines.push(`FontFamily: ${lesson.settings.fontFamily}`);
+  if (lesson.settings?.fontSize) lines.push(`FontSize: ${lesson.settings.fontSize}`);
+  if (lesson.settings?.lineHeight) lines.push(`LineHeight: ${lesson.settings.lineHeight}`);
   if (lines[lines.length - 1] !== '') lines.push('');
 
   const emitBlock = (block, groupRef = '') => {
@@ -1145,6 +1164,9 @@ export function generateDSL(lesson) {
         } else {
           lines.push(`Correct: ${block.correct}`);
         }
+      }
+      if (typeof block.points === 'number' && Number.isFinite(block.points) && block.points > 0 && block.points !== 1) {
+        lines.push(`Points: ${block.points}`);
       }
       if (block.timeLimit) lines.push(`TimeLimit: ${block.timeLimit}`);
       if (block.repeat) lines.push('Repeat: true');

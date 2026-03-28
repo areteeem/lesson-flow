@@ -3,7 +3,7 @@ import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
-export default function DragMatchTask({ block, onComplete, existingResult }) {
+export default function DragMatchTask({ block, onComplete }) {
   const pairs = block.pairs || [];
   const shuffleSeed = useShuffleSeed();
 
@@ -106,15 +106,15 @@ export default function DragMatchTask({ block, onComplete, existingResult }) {
         </div>
       )}
       {pairs.length === 0 && (
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no pairs to match.</div>
+        <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no pairs to match.</div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
         {/* Selected item banner */}
         {selectedId !== null && !submitted && (
-          <div className="col-span-full flex items-center justify-between gap-3 rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
+          <div className="col-span-full flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
             <span>Selected: <strong>{leftItems.find((l) => l.id === selectedId)?.text}</strong></span>
-            <button type="button" onClick={() => setSelectedId(null)} className="rounded-xl border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</button>
+            <button type="button" onClick={() => setSelectedId(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</button>
           </div>
         )}
         {/* Left: draggable items */}
@@ -138,7 +138,7 @@ export default function DragMatchTask({ block, onComplete, existingResult }) {
                   onDragEnd={() => setDraggedId(null)}
                   onClick={() => handleItemPress(item.id)}
                   className={[
-                    'min-h-11 rounded-2xl border px-4 py-2 text-sm font-medium transition',
+                    'min-h-11 border px-4 py-2 text-sm font-medium transition',
                     isPlaced ? 'border-zinc-100 bg-zinc-50 text-zinc-300 cursor-default' : '',
                     isDragging || isSelected ? 'border-zinc-900 bg-zinc-900 text-white' : '',
                     !submitted && !isPlaced && !isDragging && !isSelected ? 'border-zinc-200 bg-white text-zinc-800 hover:-translate-y-0.5 hover:border-zinc-900 cursor-grab active:cursor-grabbing' : '',
@@ -174,7 +174,7 @@ export default function DragMatchTask({ block, onComplete, existingResult }) {
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onClick={() => handleTargetClick(target.id)}
                   className={[
-                    'flex items-center gap-3 rounded-2xl border px-4 py-3 transition',
+                    'flex items-center gap-3 border px-4 py-3 transition',
                     isCorrect ? 'border-emerald-400 bg-emerald-50' : '',
                     isWrong ? 'border-red-400 bg-red-50' : '',
                     !submitted && placedItem ? 'border-zinc-900 bg-zinc-50' : '',
@@ -186,7 +186,7 @@ export default function DragMatchTask({ block, onComplete, existingResult }) {
                   <div className="shrink-0">
                     {placedItem ? (
                       <span className={[
-                        'inline-flex rounded-xl border px-3 py-1 text-sm font-medium',
+                        'inline-flex border px-3 py-1 text-sm font-medium',
                         isCorrect ? 'border-emerald-300 text-emerald-800' : '',
                         isWrong ? 'border-red-300 text-red-800' : '',
                         !submitted ? 'border-zinc-300 text-zinc-900' : '',
@@ -209,13 +209,15 @@ export default function DragMatchTask({ block, onComplete, existingResult }) {
       </div>
 
       {!submitted && (
-        <button type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="mt-5 rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
+        <button type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
           Check
         </button>
       )}
       {submitted && block.explanation && (
-        <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
+        <div className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
       )}
     </div>
   );
 }
+
+

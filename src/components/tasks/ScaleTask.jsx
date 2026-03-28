@@ -7,8 +7,8 @@ export default function ScaleTask({ block, onComplete, existingResult }) {
   const answer = Number(block.answer ?? block.correct ?? min);
   const steps = useMemo(() => Array.from({ length: max - min + 1 }, (_, i) => min + i), [min, max]);
   const labels = block.labels || {};
-  const [value, setValue] = useState(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [value, setValue] = useState(existingResult?.response ?? null);
+  const [submitted, setSubmitted] = useState(!!existingResult?.submitted);
 
   const submit = () => {
     if (value === null) return;

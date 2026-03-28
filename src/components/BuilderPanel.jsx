@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 import { TASK_REGISTRY, getTaskDefinition } from '../config/taskRegistry';
 import { addBlockToGroup, cloneBlockTree, createDefaultBlock, deleteBlockFromTree, findBlockById, getTaskCategories, reorderChildrenInGroup, updateBlockField, updateBlockInTree } from '../utils/builder';
@@ -35,7 +35,7 @@ function IconActionButton({ title, onClick, children, className = '', disabled =
       onClick={onClick}
       disabled={disabled}
       className={[
-        'inline-flex h-8 w-8 items-center justify-center border border-current transition disabled:cursor-not-allowed disabled:opacity-30',
+        'inline-flex h-9 w-9 items-center justify-center border border-current transition disabled:cursor-not-allowed disabled:opacity-30',
         className,
       ].join(' ')}
     >
@@ -264,7 +264,7 @@ function MiniTaskPreview({ entry }) {
   );
 }
 
-function PaletteCard({ entry, label, kind = 'task', onAdd, isFavorite, onToggleFavorite }) {
+const PaletteCard = memo(function PaletteCard({ entry, label, kind = 'task', onAdd, isFavorite, onToggleFavorite }) {
   const meta = CATEGORY_META[entry.category] || { icon: '•', accent: 'border-zinc-300 text-zinc-700' };
   return (
     <div className="group relative w-full border border-zinc-200 bg-white text-left transition hover:border-zinc-900">
@@ -299,25 +299,7 @@ function PaletteCard({ entry, label, kind = 'task', onAdd, isFavorite, onToggleF
       </button>
     </div>
   );
-}
-
-function MobilePreviewSheet({ block, isOpen, onClose }) {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-40 bg-black/40 lg:hidden">
-      <button type="button" onClick={onClose} className="absolute inset-0" />
-      <div className="absolute inset-x-0 bottom-0 max-h-[85vh] animate-soft-rise overflow-auto border-t border-zinc-200 bg-white">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3">
-          <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Preview</div>
-          <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-900">Close</button>
-        </div>
-        <div className="p-4">
-          {block ? renderBlockPreview(block) : <div className="py-8 text-center text-sm text-zinc-400">Select a block to preview.</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
+});
 
 function MobileSlideLibrarySheet({ isOpen, onClose, onAdd }) {
   const [activeTab, setActiveTab] = useState('slides');
@@ -360,15 +342,15 @@ function MobileSlideLibrarySheet({ isOpen, onClose, onAdd }) {
   );
 }
 
-function DropIndicator({ active, label = 'Drop here' }) {
+const DropIndicator = memo(function DropIndicator({ active, label = 'Drop here' }) {
   return (
     <div className={active ? 'pointer-events-none flex min-h-10 items-center justify-center border-2 border-dashed border-zinc-900 bg-zinc-50 px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-700 transition-all' : 'pointer-events-none h-1 transition-all'}>
       {active ? label : ''}
     </div>
   );
-}
+});
 
-function InlineQuickFields({ block, onChange }) {
+const InlineQuickFields = memo(function InlineQuickFields({ block, onChange }) {
   if (!block) return null;
   const isTask = block.type === 'task';
   if (!isTask) {
@@ -389,9 +371,9 @@ function InlineQuickFields({ block, onChange }) {
       </div>
     </div>
   );
-}
+});
 
-function BlockNavigator({ blocks, selectedId, onSelect }) {
+const BlockNavigator = memo(function BlockNavigator({ blocks, selectedId, onSelect }) {
   return (
     <div className="flex gap-1 overflow-auto pb-0.5 scrollbar-none" style={{ scrollbarWidth: 'none' }}>
       {blocks.map((block, index) => (
@@ -404,9 +386,9 @@ function BlockNavigator({ blocks, selectedId, onSelect }) {
       ))}
     </div>
   );
-}
+});
 
-function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenModalForGroup, onDropBuilder, onDragOverTarget, onDragLeaveTarget, onCombineHover, onCombineLeave, onCombineDrop, dropTarget, onDeleteChild, onMoveChild, onUngroupChild, onBeginMobileDrag, onEndMobileDragPress, onMobileDropGroup, mobileDragItem, level = 0 }) {
+const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenModalForGroup, onDropBuilder, onDragOverTarget, onDragLeaveTarget, onCombineHover, onCombineLeave, onCombineDrop, dropTarget, onDeleteChild, onMoveChild, onUngroupChild, onBeginMobileDrag, onEndMobileDragPress, onMobileDropGroup, mobileDragItem, level = 0 }) {
   return (
     <div className="space-y-2 border border-zinc-200 bg-zinc-50 p-2 sm:space-y-3 sm:p-4" style={{ marginLeft: level > 0 ? `${level * 12}px` : 0 }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -518,7 +500,7 @@ function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenMod
         </div>
     </div>
   );
-}
+});
 
 function addGroupPlaceholder(group) {
   const nestedGroup = createDefaultBlock('group');
@@ -565,7 +547,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const quickAddRef = useRef(null);
   const categories = useMemo(() => ['All', ...getTaskCategories()], []);
   const blocks = lesson.blocks || [];
-  const selected = findBlockById(blocks, selectedId) || flattenBlocks(blocks)[0] || null;
+  const selected = useMemo(() => findBlockById(blocks, selectedId) || flattenBlocks(blocks)[0] || null, [blocks, selectedId]);
 
   useEffect(() => {
     const onPointerMove = (event) => {
@@ -703,11 +685,60 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     onAddBlock(block);
   };
 
+  const stableRef = useRef({});
+  stableRef.current = { selectedId, onDeleteBlock, blocks, onSelect, lesson, onReplaceLesson };
+
   useEffect(() => {
     const onKeyDown = (event) => {
+      // Don't intercept keystrokes inside inputs/textareas
+      const tag = event.target?.tagName;
+      const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable;
+      const { selectedId: sid, onDeleteBlock: delBlock, blocks: blks, onSelect: sel, lesson: lsn, onReplaceLesson: replaceLsn } = stableRef.current;
+
       if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
         event.preventDefault();
         setShowQuickAdd((v) => !v);
+        return;
+      }
+      if (isEditing) return;
+      // Delete selected block
+      if (event.key === 'Delete' && sid) {
+        event.preventDefault();
+        delBlock(sid);
+        return;
+      }
+      // Duplicate selected block
+      if ((event.ctrlKey || event.metaKey) && event.key === 'd' && sid) {
+        event.preventDefault();
+        const idx = blks.findIndex((b) => b.id === sid);
+        if (idx >= 0) {
+          const clone = cloneBlockTree(blks[idx]);
+          const next = [...blks];
+          next.splice(idx + 1, 0, clone);
+          replaceLsn({ ...lsn, blocks: next });
+          sel(clone.id);
+        }
+        return;
+      }
+      // Move selected block up/down
+      if (event.altKey && event.key === 'ArrowUp' && sid) {
+        event.preventDefault();
+        const idx = blks.findIndex((b) => b.id === sid);
+        if (idx > 0) {
+          const next = [...blks];
+          [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+          replaceLsn({ ...lsn, blocks: next });
+        }
+        return;
+      }
+      if (event.altKey && event.key === 'ArrowDown' && sid) {
+        event.preventDefault();
+        const idx = blks.findIndex((b) => b.id === sid);
+        if (idx >= 0 && idx < blks.length - 1) {
+          const next = [...blks];
+          [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+          replaceLsn({ ...lsn, blocks: next });
+        }
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -1466,7 +1497,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
         </div>
       )}
 
-      <MobileSlideLibrarySheet isOpen={showSlideLibrary} onClose={() => setShowSlideLibrary(false)} onAdd={(block) => addBlockAndTrack(block)} />
+      <MobileSlideLibrarySheet isOpen={showSlideLibrary} onClose={() => setShowSlideLibrary(false)} onAdd={addBlockAndTrack} />
     </>
   );
 }

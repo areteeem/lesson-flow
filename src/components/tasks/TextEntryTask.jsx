@@ -143,7 +143,7 @@ export default function TextEntryTask({ block, onComplete, existingResult }) {
                   disabled={submitted}
                   placeholder="Correct this sentence..."
                   className={[
-                    'w-full resize-y rounded-2xl border px-4 py-3 text-sm outline-none transition',
+                    'w-full resize-y border px-4 py-3 text-sm outline-none transition',
                     correct ? 'border-emerald-400 bg-emerald-50' : '',
                     wrong ? 'border-red-400 bg-red-50' : '',
                     !submitted ? 'border-zinc-200 focus:border-blue-400' : 'border-zinc-200',
@@ -172,7 +172,7 @@ export default function TextEntryTask({ block, onComplete, existingResult }) {
                   disabled={submitted && block.taskType !== 'open'}
                   placeholder={block.placeholder || `Answer ${index + 1}`}
                   className={[
-                    'w-full resize-y rounded-2xl border px-4 py-3 text-sm outline-none transition',
+                    'w-full resize-y border px-4 py-3 text-sm outline-none transition',
                     correct ? 'border-emerald-400 bg-emerald-50' : '',
                     wrong ? 'border-red-400 bg-red-50' : '',
                     !submitted ? 'border-zinc-200 focus:border-blue-400' : 'border-zinc-200',
@@ -184,12 +184,12 @@ export default function TextEntryTask({ block, onComplete, existingResult }) {
         </>
       )}
       {submitted && block.explanation && (
-        <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
+        <div className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
       )}
       <div className="mt-5 flex items-center justify-between gap-3">
         <div className="text-xs text-zinc-500">{block.examples?.length ? `Example: ${block.examples[0]}` : block.hint || 'Type your answer and check it.'}</div>
         {!submitted && (
-          <button type="button" onClick={submit} disabled={values.every((value) => !value.trim())} className="rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
+          <button type="button" onClick={submit} disabled={values.every((value) => !value.trim())} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
             {block.taskType === 'open' ? 'Save response' : 'Check'}
           </button>
         )}

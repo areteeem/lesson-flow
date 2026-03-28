@@ -77,7 +77,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
     touchDrag.current = { index, startY: touch.clientY, startX: touch.clientX, moved: false };
   };
 
-  const handleTouchMove = (e, index) => {
+  const handleTouchMove = (e) => {
     if (!touchDrag.current || submitted) return;
     const touch = e.touches[0];
     const dy = Math.abs(touch.clientY - touchDrag.current.startY);
@@ -220,8 +220,8 @@ export default function OrderTask({ block, onComplete, existingResult }) {
                     <div className="min-w-0 flex-1 text-sm text-zinc-800"><Md text={item} /></div>
                     {!submitted && (
                       <div className="flex shrink-0 gap-1">
-                        <button type="button" onClick={() => move(index, -1)} disabled={index === 0} className="h-7 w-7 border border-zinc-200 text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-30">↑</button>
-                        <button type="button" onClick={() => move(index, 1)} disabled={index === items.length - 1} className="h-7 w-7 border border-zinc-200 text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-30">↓</button>
+                        <button type="button" onClick={() => move(index, -1)} disabled={index === 0} className="h-9 w-9 border border-zinc-200 text-sm text-zinc-400 hover:text-zinc-700 disabled:opacity-30">↑</button>
+                        <button type="button" onClick={() => move(index, 1)} disabled={index === items.length - 1} className="h-9 w-9 border border-zinc-200 text-sm text-zinc-400 hover:text-zinc-700 disabled:opacity-30">↓</button>
                       </div>
                     )}
                   </div>
@@ -267,8 +267,8 @@ export default function OrderTask({ block, onComplete, existingResult }) {
                     </div>
                     {!submitted && (
                       <div className="flex shrink-0 flex-col gap-1">
-                        <button type="button" onClick={() => move(index, -1)} disabled={index === 0} className="h-7 w-7 border border-zinc-200 text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-30">↑</button>
-                        <button type="button" onClick={() => move(index, 1)} disabled={index === items.length - 1} className="h-7 w-7 border border-zinc-200 text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-30">↓</button>
+                        <button type="button" onClick={() => move(index, -1)} disabled={index === 0} className="h-9 w-9 border border-zinc-200 text-sm text-zinc-400 hover:text-zinc-700 disabled:opacity-30">↑</button>
+                        <button type="button" onClick={() => move(index, 1)} disabled={index === items.length - 1} className="h-9 w-9 border border-zinc-200 text-sm text-zinc-400 hover:text-zinc-700 disabled:opacity-30">↓</button>
                       </div>
                     )}
                   </div>
@@ -347,3 +347,4 @@ export default function OrderTask({ block, onComplete, existingResult }) {
     </div>
   );
 }
+

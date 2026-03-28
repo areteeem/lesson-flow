@@ -49,8 +49,49 @@ export function getTaskBlocks(blocks = []) {
   return flattenBlocks(blocks).filter((block) => block.type === 'task');
 }
 
+export function normalizeVisibleBlocks(blocks = []) {
+  return getVisibleBlocks(Array.isArray(blocks) ? blocks : [])
+    .map((block) => {
+      if (block.type === 'group' || block.type === 'split_group') {
+        return { ...block, children: normalizeVisibleBlocks(block.children || []) };
+      }
+      return block;
+    })
+    .filter((block) => (block.type !== 'group' && block.type !== 'split_group') || block.children.length > 0);
+}
+
+export function validateLessonStructure(lesson) {
+  const issues = [];
+
+  if (!lesson || typeof lesson !== 'object') {
+    return { blocks: [], issues: ['Lesson data is missing.'] };
+  }
+
+  const blocks = normalizeVisibleBlocks(lesson.blocks || []);
+  if (blocks.length === 0) issues.push('Lesson has no visible slides or tasks.');
+
+  flattenBlocks(blocks).forEach((block, index) => {
+    if (!block?.type) {
+      issues.push(`Block ${index + 1} is missing a type.`);
+      return;
+    }
+    if (block.type === 'task' && !block.taskType) {
+      issues.push(`Task ${index + 1} is missing a task type.`);
+    }
+  });
+
+  return { blocks, issues };
+}
+
 export function isGradableTask(block) {
   return block?.type === 'task' && !['random_wheel', 'open', 'cards'].includes(block.taskType);
+}
+
+export function getTaskPoints(block) {
+  if (!block || block.type !== 'task') return 0;
+  const value = Number(block.points);
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  return value;
 }
 
 export function getVisibleBlocks(blocks = []) {

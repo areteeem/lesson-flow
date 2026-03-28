@@ -4,7 +4,7 @@ import { Md } from '../FormattedText';
 import { BLANK_MARKER_RE } from '../../utils/patterns';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
-export default function DragToBlankTask({ block, onComplete, existingResult }) {
+export default function DragToBlankTask({ block, onComplete }) {
   const sentence = block.text || block.sentence || '';
   const tokens = sentence.split(BLANK_MARKER_RE);
   const answers = block.blanks || [];
@@ -96,7 +96,7 @@ export default function DragToBlankTask({ block, onComplete, existingResult }) {
       <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
         {sentence && <div className="mb-4 whitespace-pre-wrap text-sm leading-7 text-zinc-700">{sentence}</div>}
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">This task has no blanks to fill. The text should contain ___ or {'{ }'} markers.</div>
+        <div className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">This task has no blanks to fill. The text should contain ___ or {'{ }'} markers.</div>
       </div>
     );
   }
@@ -110,14 +110,14 @@ export default function DragToBlankTask({ block, onComplete, existingResult }) {
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <div className="mb-3 text-xs text-zinc-500">{block.hint}</div>}
       {preferTapPlacement && !submitted && (
-        <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+        <div className="mb-4 border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
           Tap a word in the bank, then tap a blank to place it. Tap a filled blank to remove its word.
         </div>
       )}
       {selectedItem && !submitted && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
+        <div className="mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
           <span>Selected word: <strong>{selectedItem.word}</strong></span>
-          <button type="button" onClick={() => setSelectedItemId(null)} className="rounded-xl border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Clear</button>
+          <button type="button" onClick={() => setSelectedItemId(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Clear</button>
         </div>
       )}
       <div className="mb-5 border border-zinc-200 bg-zinc-50 p-4 md:p-5 text-base leading-8 md:leading-9 text-zinc-800">
@@ -210,3 +210,5 @@ export default function DragToBlankTask({ block, onComplete, existingResult }) {
     </div>
   );
 }
+
+

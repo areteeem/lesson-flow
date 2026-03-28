@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { FormattedText, Md } from '../FormattedText';
+import { resolveMediaSource } from '../../utils/media';
 
 function MediaFrame({ block }) {
-  const media = block.media || block.image || block.video || block.audio || '';
+  const media = resolveMediaSource(block);
   const [zoomed, setZoomed] = useState(false);
   if (!media) return <div className="flex min-h-56 items-center justify-center border border-zinc-200 bg-zinc-50 text-sm text-zinc-500">Attach media in DSL or the builder.</div>;
-  if (block.taskType === 'video_questions') return <video controls className="w-full border border-zinc-200" src={media} />;
-  if (['audio_transcription', 'pronunciation_shadowing'].includes(block.taskType)) return <audio controls className="w-full" src={media} />;
+  if (block.taskType === 'video_questions') return <video controls preload="metadata" className="w-full border border-zinc-200" src={media} />;
+  if (['audio_transcription', 'pronunciation_shadowing'].includes(block.taskType)) return <audio controls preload="metadata" className="w-full" src={media} />;
   return (
     <>
       <img
         src={media}
         alt={block.question || block.taskType}
         onClick={() => setZoomed(true)}
-        className="max-h-[60vh] w-full cursor-zoom-in border border-zinc-200 object-contain"
+        loading="lazy" className="max-h-[60vh] w-full cursor-zoom-in border border-zinc-200 object-contain"
       />
       {zoomed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setZoomed(false)}>
@@ -26,7 +27,13 @@ function MediaFrame({ block }) {
 }
 
 export default function MediaPromptTask({ block, onComplete, existingResult }) {
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(existingResult?.response || '');
+  const [submitted, setSubmitted] = useState(!!existingResult?.submitted);
+
+  const submit = () => {
+    setSubmitted(true);
+    onComplete?.({ submitted: true, correct: true, score: 1, response: notes, feedback: block.explanation || block.hint || 'Media response saved.' });
+  };
 
   return (
     <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
@@ -48,8 +55,12 @@ export default function MediaPromptTask({ block, onComplete, existingResult }) {
               {block.items.map((item, index) => <div key={index}>{item}</div>)}
             </div>
           )}
-          <textarea rows={10} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Add labels, observations, transcript text, or your answer." className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-zinc-900" />
-          <button type="button" onClick={() => onComplete?.({ submitted: true, correct: true, score: 1, response: notes, feedback: block.explanation || block.hint || 'Media response saved.' })} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Save response</button>
+          <textarea rows={10} value={notes} onChange={(event) => !submitted && setNotes(event.target.value)} readOnly={submitted} placeholder="Add labels, observations, transcript text, or your answer." className={`w-full border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-zinc-900 ${submitted ? 'bg-zinc-50 text-zinc-500' : ''}`} />
+          {!submitted ? (
+            <button type="button" onClick={submit} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Save response</button>
+          ) : (
+            <div className="border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">Response saved ✓</div>
+          )}
         </div>
       </div>
     </div>

@@ -50,7 +50,7 @@ export default function ChoiceTask({ block, onComplete, existingResult }) {
       <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <p className="mb-4 text-sm text-zinc-500"><Md text={block.hint} /></p>}
       {options.length === 0 && (
-        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no options to display.</div>
+        <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no options to display.</div>
       )}
       {isBinary ? (
         <div className="flex gap-4">
