@@ -4,8 +4,10 @@ import {
   supportsLocalLiveTransport,
   supportsSupabaseLiveTransport,
 } from './liveTransport.js';
-import { getSupabaseClient } from './supabaseClient.js';
+import { getSupabaseClient, getSupabaseConfig } from './supabaseClient.js';
 import { ensureLiveUser, persistLivePayload } from './liveSupabaseData.js';
+
+const DEV_PROXY_BASE = '/__supabase';
 
 function createLocalChannel({ sessionId, onStatus }) {
   if (!supportsLocalLiveTransport()) return null;
@@ -78,9 +80,34 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
       created_at: new Date().toISOString(),
     };
 
-    const { error } = await client.from('live_events').insert(envelope);
-    if (error) {
-      onStatus?.({ state: 'error', mode: 'supabase', error: error.message || 'Failed to write live event.' });
+    try {
+      const { error } = await client.from('live_events').insert(envelope);
+      if (error) {
+        // Try proxy fallback for browser fetch errors
+        if ((error.message || '').toLowerCase().includes('failed to fetch')) {
+          try {
+            const proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/live_events`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                apikey: getSupabaseConfig().anonKey,
+                Authorization: `Bearer ${getSupabaseConfig().anonKey}`,
+                Prefer: 'return=minimal',
+              },
+              body: JSON.stringify(envelope),
+            });
+            if (!proxyResponse.ok) {
+              onStatus?.({ state: 'error', mode: 'supabase', error: `Live event failed (HTTP ${proxyResponse.status})` });
+            }
+          } catch (proxyError) {
+            onStatus?.({ state: 'error', mode: 'supabase', error: error.message || 'Failed to write live event.' });
+          }
+        } else {
+          onStatus?.({ state: 'error', mode: 'supabase', error: error.message || 'Failed to write live event.' });
+        }
+      }
+    } catch (error) {
+      onStatus?.({ state: 'error', mode: 'supabase', error: error?.message || 'Failed to write live event.' });
     }
   }
 

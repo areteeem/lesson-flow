@@ -6,6 +6,7 @@ import { normalizeScore } from '../utils/grading';
 import { buildLiveJoinUrl, buildLiveQrUrl, createLiveSessionId, getLiveSessionIdFromSearch, getLiveTransportLabel, supportsConfiguredLiveTransport } from '../utils/liveTransport';
 import { createLiveChannel } from '../utils/liveChannel';
 import { deleteManualScores, fetchManualScores, persistManualScore } from '../utils/liveSupabaseData';
+import { ensureSession } from '../utils/accountAuth';
 
 const PHASE = { LOBBY: 'lobby', RUNNING: 'running', FINISHED: 'finished' };
 
@@ -90,6 +91,10 @@ export default function LiveHost({ lesson, onExit }) {
       timestamp: Date.now(),
     });
   }, [broadcast, currentIndex, lessonPayload, phase]);
+
+  useEffect(() => {
+    void ensureSession();
+  }, []);
 
   useEffect(() => {
     const ch = createLiveChannel({

@@ -4,6 +4,7 @@ import { normalizeVisibleBlocks } from '../utils/lesson';
 import { recordDebugEvent } from '../utils/debug';
 import { getLiveSessionIdFromSearch, getLiveTransportLabel, supportsConfiguredLiveTransport } from '../utils/liveTransport';
 import { createLiveChannel } from '../utils/liveChannel';
+import { ensureSession } from '../utils/accountAuth';
 
 const PHASE = { WAITING: 'waiting', RUNNING: 'running', FINISHED: 'finished' };
 
@@ -41,6 +42,10 @@ export default function LiveJoin({ onExit }) {
   const joinTimeoutRef = useRef(null);
 
   const blocks = useMemo(() => normalizeVisibleBlocks(session?.lesson?.blocks || []), [session]);
+
+  useEffect(() => {
+    void ensureSession();
+  }, []);
 
   useEffect(() => {
     if (!joined || !channelRef.current) return undefined;

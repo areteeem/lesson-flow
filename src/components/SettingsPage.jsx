@@ -30,10 +30,8 @@ export default function SettingsPage({ onBack }) {
 
   const cloudAvailability = getCloudSyncAvailability();
   const cloudStatus = readCloudSyncStatus();
-  const effectiveState = cloudAvailability.available ? 'ready' : (cloudStatus?.state || 'idle');
-  const effectiveMessage = cloudAvailability.available
-    ? 'Cloud config detected. Save a lesson to run sync.'
-    : (cloudStatus?.message || 'No sync attempts yet');
+  const lastSyncState = cloudStatus?.state || 'idle';
+  const lastSyncMessage = cloudStatus?.message || 'No sync attempts yet';
   const formatTime = (timestamp) => {
     if (!timestamp) return 'never';
     try {
@@ -184,8 +182,8 @@ export default function SettingsPage({ onBack }) {
               </label>
               <div className="border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-600">
                 <div>Availability: <span className="font-medium text-zinc-800">{cloudAvailability.available ? 'Ready' : cloudAvailability.reason}</span></div>
-                <div className="mt-1">Current state: <span className="font-medium text-zinc-800">{effectiveState}</span></div>
-                <div className="mt-1">Message: <span className="font-medium text-zinc-800">{effectiveMessage}</span></div>
+                <div className="mt-1">Last sync state: <span className="font-medium text-zinc-800">{lastSyncState}</span></div>
+                <div className="mt-1">Last sync message: <span className="font-medium text-zinc-800">{lastSyncMessage}</span></div>
                 <div className="mt-1">Last sync attempt: <span className="font-medium text-zinc-800">{formatTime(cloudStatus?.updatedAt)}</span></div>
                 {cloudStatus?.diagnostics?.host && (
                   <div className="mt-1">Supabase host: <span className="font-medium text-zinc-800">{cloudStatus.diagnostics.host}</span></div>

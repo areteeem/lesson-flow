@@ -2,6 +2,7 @@ import { getSupabaseClient, getSupabaseConfig, isSupabaseConfigured } from './su
 import { loadAppSettings } from './appSettings';
 
 const CLOUD_STATUS_KEY = 'lesson-flow-cloud-status';
+const DEV_PROXY_BASE = '/__supabase';
 
 function safeWriteStatus(status) {
   try {
@@ -59,18 +60,55 @@ export async function testCloudSyncConnection() {
       diagnostics: {
         host,
         status: response.status,
+        path: 'direct',
       },
     };
   } catch (error) {
-    return {
-      ok: false,
-      message: error?.message || 'Failed to reach Supabase from browser',
-      diagnostics: {
-        host,
-        thrown: error?.message || String(error),
-        online: typeof navigator !== 'undefined' ? navigator?.onLine !== false : null,
-      },
-    };
+    try {
+      const proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/lesson_drafts?select=lesson_id&limit=1`, {
+        method: 'GET',
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+        },
+      });
+
+      if (proxyResponse.ok) {
+        return {
+          ok: true,
+          message: 'Direct fetch blocked, but dev proxy connection works.',
+          diagnostics: {
+            host,
+            status: proxyResponse.status,
+            path: 'proxy',
+            directError: error?.message || String(error),
+          },
+        };
+      }
+
+      return {
+        ok: false,
+        message: `Direct fetch failed and proxy returned HTTP ${proxyResponse.status}`,
+        diagnostics: {
+          host,
+          status: proxyResponse.status,
+          path: 'proxy',
+          directError: error?.message || String(error),
+        },
+      };
+    } catch (proxyError) {
+      return {
+        ok: false,
+        message: error?.message || 'Failed to reach Supabase from browser',
+        diagnostics: {
+          host,
+          thrown: error?.message || String(error),
+          proxyThrown: proxyError?.message || String(proxyError),
+          online: typeof navigator !== 'undefined' ? navigator?.onLine !== false : null,
+          path: 'none',
+        },
+      };
+    }
   }
 }
 
@@ -138,6 +176,55 @@ function buildNetworkMessage(probe) {
   return 'Saved locally, but cloud sync request could not be completed.';
 }
 
+async function tryProxyUpsert({ payload, now, lesson, source, host, directError }) {
+  const { anonKey } = getSupabaseConfig();
+  const proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/lesson_drafts?on_conflict=lesson_id`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (proxyResponse.ok) {
+    const okViaProxy = {
+      state: 'synced',
+      message: 'Saved to cloud via dev proxy',
+      updatedAt: now,
+      source: source || 'unknown',
+      lessonId: lesson?.id || null,
+      diagnostics: {
+        host,
+        path: 'proxy',
+        directError,
+      },
+    };
+    safeWriteStatus(okViaProxy);
+    return okViaProxy;
+  }
+
+  const proxyErrorText = await proxyResponse.text();
+  const failedViaProxy = {
+    state: 'error',
+    message: `Cloud sync failed via proxy (HTTP ${proxyResponse.status})`,
+    updatedAt: now,
+    source: source || 'unknown',
+    lessonId: lesson?.id || null,
+    diagnostics: {
+      host,
+      path: 'proxy',
+      status: proxyResponse.status,
+      response: proxyErrorText || null,
+      directError,
+    },
+  };
+  safeWriteStatus(failedViaProxy);
+  return failedViaProxy;
+}
+
 export async function syncLessonToCloud(lesson, meta = {}) {
   const now = Date.now();
   const availability = getCloudSyncAvailability();
@@ -171,6 +258,21 @@ export async function syncLessonToCloud(lesson, meta = {}) {
   try {
     const { error } = await client.from('lesson_drafts').upsert(payload, { onConflict: 'lesson_id' });
     if (error) {
+      if ((error.message || '').toLowerCase().includes('failed to fetch')) {
+        try {
+          return await tryProxyUpsert({
+            payload,
+            now,
+            lesson,
+            source: meta.source,
+            host,
+            directError: error.message,
+          });
+        } catch {
+          // Fall through to detailed failed status below.
+        }
+      }
+
       const failed = {
         state: 'error',
         message: error.message || 'Cloud sync failed.',
@@ -198,21 +300,33 @@ export async function syncLessonToCloud(lesson, meta = {}) {
     safeWriteStatus(ok);
     return ok;
   } catch (error) {
-    const probe = await probeSupabaseEndpoint();
-    const failed = {
-      state: 'error',
-      message: buildNetworkMessage(probe),
-      updatedAt: now,
-      source: meta.source || 'unknown',
-      lessonId: lesson?.id || null,
-      diagnostics: {
+    try {
+      return await tryProxyUpsert({
+        payload,
+        now,
+        lesson,
+        source: meta.source,
         host,
-        thrown: error?.message || String(error),
-        probe,
-        online: typeof navigator !== 'undefined' ? navigator?.onLine !== false : null,
-      },
-    };
-    safeWriteStatus(failed);
-    return failed;
+        directError: error?.message || String(error),
+      });
+    } catch (proxyError) {
+      const probe = await probeSupabaseEndpoint();
+      const failed = {
+        state: 'error',
+        message: buildNetworkMessage(probe),
+        updatedAt: now,
+        source: meta.source || 'unknown',
+        lessonId: lesson?.id || null,
+        diagnostics: {
+          host,
+          thrown: error?.message || String(error),
+          proxyThrown: proxyError?.message || String(proxyError),
+          probe,
+          online: typeof navigator !== 'undefined' ? navigator?.onLine !== false : null,
+        },
+      };
+      safeWriteStatus(failed);
+      return failed;
+    }
   }
 }
