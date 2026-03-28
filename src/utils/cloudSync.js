@@ -3,6 +3,7 @@ import { loadAppSettings } from './appSettings';
 
 const CLOUD_STATUS_KEY = 'lesson-flow-cloud-status';
 const DEV_PROXY_BASE = '/__supabase';
+const CAN_USE_DEV_PROXY = Boolean(import.meta.env.DEV);
 
 function safeWriteStatus(status) {
   try {
@@ -64,6 +65,19 @@ export async function testCloudSyncConnection() {
       },
     };
   } catch (error) {
+    if (!CAN_USE_DEV_PROXY) {
+      return {
+        ok: false,
+        message: error?.message || 'Failed to reach Supabase from browser',
+        diagnostics: {
+          host,
+          thrown: error?.message || String(error),
+          online: typeof navigator !== 'undefined' ? navigator?.onLine !== false : null,
+          path: 'direct',
+        },
+      };
+    }
+
     try {
       const proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/lesson_drafts?select=lesson_id&limit=1`, {
         method: 'GET',
@@ -190,6 +204,21 @@ function buildNetworkMessage(probe) {
 }
 
 async function tryProxyUpsert({ payload, now, lesson, source, host, directError }) {
+  if (!CAN_USE_DEV_PROXY) {
+    return {
+      state: 'error',
+      message: directError || 'Cloud sync failed.',
+      updatedAt: now,
+      source: source || 'unknown',
+      lessonId: lesson?.id || null,
+      diagnostics: {
+        host,
+        path: 'direct',
+        directError,
+      },
+    };
+  }
+
   const { anonKey } = getSupabaseConfig();
   const proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/lesson_drafts?on_conflict=lesson_id`, {
     method: 'POST',

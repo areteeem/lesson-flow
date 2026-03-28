@@ -8,6 +8,7 @@ import { getSupabaseClient, getSupabaseConfig } from './supabaseClient.js';
 import { ensureLiveUser, persistLivePayload } from './liveSupabaseData.js';
 
 const DEV_PROXY_BASE = '/__supabase';
+const CAN_USE_DEV_PROXY = Boolean(import.meta.env.DEV);
 
 function buildSupabaseHeaders(extra = {}) {
   const { anonKey } = getSupabaseConfig();
@@ -21,12 +22,15 @@ function buildSupabaseHeaders(extra = {}) {
 async function fetchSupabaseWithFallback(path, options = {}) {
   const { url } = getSupabaseConfig();
   const directUrl = `${url}${path}`;
-  const proxyUrl = `${DEV_PROXY_BASE}${path}`;
 
   try {
     const response = await fetch(directUrl, options);
     return { response, path: 'direct' };
   } catch (directError) {
+    if (!CAN_USE_DEV_PROXY) {
+      throw directError;
+    }
+    const proxyUrl = `${DEV_PROXY_BASE}${path}`;
     const response = await fetch(proxyUrl, options);
     return { response, path: 'proxy', directError };
   }
