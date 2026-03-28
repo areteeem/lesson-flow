@@ -86,13 +86,26 @@ export async function testCloudSyncConnection() {
         };
       }
 
+      const proxyText = await proxyResponse.text();
+      const hasTableHint = proxyText.includes('PGRST205') || proxyText.includes('lesson_drafts');
+      const likelyCause = proxyResponse.status === 404
+        ? (hasTableHint ? 'missing_table' : 'proxy_inactive')
+        : 'other';
+      const detailedMessage = likelyCause === 'missing_table'
+        ? 'Direct fetch failed and lesson_drafts is missing in Supabase.'
+        : likelyCause === 'proxy_inactive'
+          ? 'Direct fetch failed and dev proxy returned 404. Restart npm run dev to reload Vite proxy.'
+          : `Direct fetch failed and proxy returned HTTP ${proxyResponse.status}`;
+
       return {
         ok: false,
-        message: `Direct fetch failed and proxy returned HTTP ${proxyResponse.status}`,
+        message: detailedMessage,
         diagnostics: {
           host,
           status: proxyResponse.status,
           path: 'proxy',
+          likelyCause,
+          response: proxyText || null,
           directError: error?.message || String(error),
         },
       };
@@ -207,9 +220,17 @@ async function tryProxyUpsert({ payload, now, lesson, source, host, directError 
   }
 
   const proxyErrorText = await proxyResponse.text();
+  const hasTableHint = proxyErrorText.includes('PGRST205') || proxyErrorText.includes('lesson_drafts');
+  const likelyCause = proxyResponse.status === 404
+    ? (hasTableHint ? 'missing_table' : 'proxy_inactive')
+    : 'other';
   const failedViaProxy = {
     state: 'error',
-    message: `Cloud sync failed via proxy (HTTP ${proxyResponse.status})`,
+    message: likelyCause === 'missing_table'
+      ? 'Cloud sync failed: lesson_drafts table is missing in Supabase.'
+      : likelyCause === 'proxy_inactive'
+        ? 'Cloud sync failed via proxy (HTTP 404). Restart npm run dev to reload proxy config.'
+        : `Cloud sync failed via proxy (HTTP ${proxyResponse.status})`,
     updatedAt: now,
     source: source || 'unknown',
     lessonId: lesson?.id || null,
@@ -217,6 +238,7 @@ async function tryProxyUpsert({ payload, now, lesson, source, host, directError 
       host,
       path: 'proxy',
       status: proxyResponse.status,
+      likelyCause,
       response: proxyErrorText || null,
       directError,
     },

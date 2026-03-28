@@ -205,6 +205,9 @@ export default function SettingsPage({ onBack }) {
                     {connectionTest?.diagnostics?.host && (
                       <div className="mt-0.5">Host: <span className="font-medium text-zinc-800">{connectionTest.diagnostics.host}</span></div>
                     )}
+                    {connectionTest?.diagnostics?.likelyCause && (
+                      <div className="mt-0.5">Likely cause: <span className="font-medium text-zinc-800">{connectionTest.diagnostics.likelyCause}</span></div>
+                    )}
                     {connectionTest?.diagnostics?.thrown && (
                       <div className="mt-0.5">Thrown: <span className="font-medium text-zinc-800">{connectionTest.diagnostics.thrown}</span></div>
                     )}
