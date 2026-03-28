@@ -9,6 +9,29 @@ import { ensureLiveUser, persistLivePayload } from './liveSupabaseData.js';
 
 const DEV_PROXY_BASE = '/__supabase';
 
+function buildSupabaseHeaders(extra = {}) {
+  const { anonKey } = getSupabaseConfig();
+  return {
+    apikey: anonKey,
+    Authorization: `Bearer ${anonKey}`,
+    ...extra,
+  };
+}
+
+async function fetchSupabaseWithFallback(path, options = {}) {
+  const { url } = getSupabaseConfig();
+  const directUrl = `${url}${path}`;
+  const proxyUrl = `${DEV_PROXY_BASE}${path}`;
+
+  try {
+    const response = await fetch(directUrl, options);
+    return { response, path: 'direct' };
+  } catch (directError) {
+    const response = await fetch(proxyUrl, options);
+    return { response, path: 'proxy', directError };
+  }
+}
+
 function createLocalChannel({ sessionId, onStatus }) {
   if (!supportsLocalLiveTransport()) return null;
   const channel = new BroadcastChannel(getLiveChannelName(sessionId));
@@ -42,6 +65,10 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
   let isReady = false;
   let isClosed = false;
   let realtimeChannel = null;
+  let pollTimerId = null;
+  let subscribeTimeoutId = null;
+  let usingPolling = false;
+  let lastSeenEventId = 0;
 
   const wrapper = {
     mode: 'supabase',
@@ -64,9 +91,114 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
     close() {
       isClosed = true;
       onStatus?.({ state: 'disconnected', mode: 'supabase' });
+      if (pollTimerId) {
+        window.clearInterval(pollTimerId);
+        pollTimerId = null;
+      }
+      if (subscribeTimeoutId) {
+        window.clearTimeout(subscribeTimeoutId);
+        subscribeTimeoutId = null;
+      }
       if (realtimeChannel) client.removeChannel(realtimeChannel);
     },
   };
+
+  function flushQueue() {
+    while (queue.length > 0) {
+      const next = queue.shift();
+      void publishEvent(next);
+    }
+  }
+
+  async function publishEventViaRest(envelope) {
+    const { response, path } = await fetchSupabaseWithFallback('/rest/v1/live_events', {
+      method: 'POST',
+      headers: buildSupabaseHeaders({
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      }),
+      body: JSON.stringify(envelope),
+    });
+
+    if (!response.ok) {
+      onStatus?.({ state: 'error', mode: 'supabase', error: `Live event failed via ${path} (HTTP ${response.status})` });
+      return;
+    }
+  }
+
+  async function pollLiveEvents() {
+    const params = new URLSearchParams();
+    params.set('select', 'id,payload,sender_client_id');
+    params.set('session_id', `eq.${sessionId}`);
+    params.set('order', 'id.asc');
+    params.set('limit', '60');
+    if (lastSeenEventId > 0) {
+      params.set('id', `gt.${lastSeenEventId}`);
+    }
+
+    const { response } = await fetchSupabaseWithFallback(`/rest/v1/live_events?${params.toString()}`, {
+      method: 'GET',
+      headers: buildSupabaseHeaders(),
+    });
+
+    if (!response.ok) return;
+
+    const rows = await response.json();
+    if (!Array.isArray(rows) || rows.length === 0) return;
+
+    for (const row of rows) {
+      if (Number(row?.id || 0) > lastSeenEventId) {
+        lastSeenEventId = Number(row.id || lastSeenEventId);
+      }
+      if (!row || row.sender_client_id === senderClientId) continue;
+      wrapper.onmessage?.({ data: row.payload || null });
+    }
+  }
+
+  async function primePollingCursor() {
+    const params = new URLSearchParams();
+    params.set('select', 'id');
+    params.set('session_id', `eq.${sessionId}`);
+    params.set('order', 'id.desc');
+    params.set('limit', '1');
+
+    const { response } = await fetchSupabaseWithFallback(`/rest/v1/live_events?${params.toString()}`, {
+      method: 'GET',
+      headers: buildSupabaseHeaders(),
+    });
+    if (!response.ok) return;
+
+    const rows = await response.json();
+    if (Array.isArray(rows) && rows[0]?.id) {
+      lastSeenEventId = Number(rows[0].id) || 0;
+    }
+  }
+
+  async function startPollingFallback(reason) {
+    if (isClosed || usingPolling) return;
+    usingPolling = true;
+    isReady = true;
+
+    onStatus?.({
+      state: 'connected',
+      mode: 'supabase',
+      detail: `Realtime unavailable, fallback polling enabled (${reason}).`,
+    });
+
+    try {
+      await primePollingCursor();
+      await pollLiveEvents();
+    } catch {
+      // Ignore initial polling failures; interval will retry.
+    }
+
+    flushQueue();
+
+    pollTimerId = window.setInterval(() => {
+      if (isClosed) return;
+      void pollLiveEvents();
+    }, 1500);
+  }
 
   async function publishEvent(payload) {
     await persistLivePayload(payload, role || 'student');
@@ -83,31 +215,18 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
     try {
       const { error } = await client.from('live_events').insert(envelope);
       if (error) {
-        // Try proxy fallback for browser fetch errors
         if ((error.message || '').toLowerCase().includes('failed to fetch')) {
-          try {
-            const proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/live_events`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                apikey: getSupabaseConfig().anonKey,
-                Authorization: `Bearer ${getSupabaseConfig().anonKey}`,
-                Prefer: 'return=minimal',
-              },
-              body: JSON.stringify(envelope),
-            });
-            if (!proxyResponse.ok) {
-              onStatus?.({ state: 'error', mode: 'supabase', error: `Live event failed (HTTP ${proxyResponse.status})` });
-            }
-          } catch (proxyError) {
-            onStatus?.({ state: 'error', mode: 'supabase', error: error.message || 'Failed to write live event.' });
-          }
-        } else {
-          onStatus?.({ state: 'error', mode: 'supabase', error: error.message || 'Failed to write live event.' });
+          await publishEventViaRest(envelope);
+          return;
         }
+        onStatus?.({ state: 'error', mode: 'supabase', error: error.message || 'Failed to write live event.' });
       }
     } catch (error) {
-      onStatus?.({ state: 'error', mode: 'supabase', error: error?.message || 'Failed to write live event.' });
+      try {
+        await publishEventViaRest(envelope);
+      } catch {
+        onStatus?.({ state: 'error', mode: 'supabase', error: error?.message || 'Failed to write live event.' });
+      }
     }
   }
 
@@ -134,23 +253,36 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
         }
       );
 
+    subscribeTimeoutId = window.setTimeout(() => {
+      void startPollingFallback('subscribe-timeout');
+    }, 6500);
+
     realtimeChannel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
+        if (subscribeTimeoutId) {
+          window.clearTimeout(subscribeTimeoutId);
+          subscribeTimeoutId = null;
+        }
+        if (pollTimerId) {
+          window.clearInterval(pollTimerId);
+          pollTimerId = null;
+        }
+        usingPolling = false;
         isReady = true;
         onStatus?.({ state: 'connected', mode: 'supabase' });
-        while (queue.length > 0) {
-          const next = queue.shift();
-          void publishEvent(next);
-        }
+        flushQueue();
       }
       if (status === 'CHANNEL_ERROR') {
-        onStatus?.({ state: 'error', mode: 'supabase', error: 'Supabase realtime channel error.' });
+        onStatus?.({ state: 'error', mode: 'supabase', error: 'Supabase realtime channel error. Switching to polling fallback.' });
+        void startPollingFallback('channel-error');
       }
       if (status === 'TIMED_OUT') {
-        onStatus?.({ state: 'error', mode: 'supabase', error: 'Supabase realtime channel timed out.' });
+        onStatus?.({ state: 'error', mode: 'supabase', error: 'Supabase realtime channel timed out. Switching to polling fallback.' });
+        void startPollingFallback('channel-timeout');
       }
       if (status === 'CLOSED' && !isClosed) {
         onStatus?.({ state: 'disconnected', mode: 'supabase' });
+        void startPollingFallback('channel-closed');
       }
     });
   }
@@ -183,7 +315,7 @@ export function createLiveChannel({
     state: 'unavailable',
     mode,
     error: mode === 'supabase'
-      ? 'Supabase transport is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
+      ? 'Supabase transport is unavailable. Check env keys, network access, and dev proxy restart.'
       : 'No supported live transport is available.',
   });
   return null;
