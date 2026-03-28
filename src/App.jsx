@@ -100,12 +100,12 @@ function EditorPage() {
 
   const handleSave = useCallback((lesson) => {
     const saved = saveLesson(lesson);
-    setCurrentLesson(saved);
     try {
       sessionStorage.setItem('lf_current_lesson', JSON.stringify(saved));
     } catch {
       // Ignore session storage write failures.
     }
+    return saved;
   }, [saveLesson]);
 
   const handlePlay = useCallback((lesson) => {

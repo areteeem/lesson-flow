@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { loadAppSettings, saveAppSettings } from '../utils/appSettings';
+import { getCloudSyncAvailability, readCloudSyncStatus } from '../utils/cloudSync';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FOCUS_OPTIONS = ['vocabulary', 'reading', 'speaking', 'listening', 'writing', 'grammar', 'mixed'];
@@ -8,30 +10,11 @@ const LESSON_CATEGORIES = [
   'Conversation', 'Exam Practice', 'Grammar', 'Vocabulary', 'Reading',
 ];
 
-const SETTINGS_KEY = 'lesson-flow-settings';
-
-function loadSettings() {
-  try {
-    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function saveSettings(settings) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    // Ignore storage write failures and keep the current settings in memory.
-  }
-}
-
-export { loadSettings };
-
 export default function SettingsPage({ onBack }) {
-  const [settings, setSettings] = useState(loadSettings);
+  const [settings, setSettings] = useState(loadAppSettings);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState('defaults');
+  const [, setStatusTick] = useState(0);
 
   const update = (key, value) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -39,8 +22,19 @@ export default function SettingsPage({ onBack }) {
   };
 
   const handleSave = () => {
-    saveSettings(settings);
+    saveAppSettings(settings);
     setSaved(true);
+  };
+
+  const cloudAvailability = getCloudSyncAvailability();
+  const cloudStatus = readCloudSyncStatus();
+  const formatTime = (timestamp) => {
+    if (!timestamp) return 'never';
+    try {
+      return new Date(timestamp).toLocaleString();
+    } catch {
+      return 'unknown';
+    }
   };
 
   const TABS = [
@@ -150,6 +144,27 @@ export default function SettingsPage({ onBack }) {
                   </select>
                 </label>
               )}
+            </div>
+          </section>
+
+          {/* Cloud Sync */}
+          <section className="border border-zinc-200 bg-white p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Cloud Sync</div>
+              <button type="button" onClick={() => setStatusTick((v) => v + 1)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-900">Refresh Status</button>
+            </div>
+            <div className="space-y-3 text-sm text-zinc-700">
+              <label className="flex items-center gap-3">
+                <input type="checkbox" checked={settings.cloudSyncEnabled !== false} onChange={(e) => update('cloudSyncEnabled', e.target.checked)} />
+                Enable background cloud sync for lesson edits
+              </label>
+              <div className="border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-600">
+                <div>Availability: <span className="font-medium text-zinc-800">{cloudAvailability.available ? 'Ready' : cloudAvailability.reason}</span></div>
+                <div className="mt-1">Current state: <span className="font-medium text-zinc-800">{cloudStatus?.state || 'idle'}</span></div>
+                <div className="mt-1">Message: <span className="font-medium text-zinc-800">{cloudStatus?.message || 'No sync attempts yet'}</span></div>
+                <div className="mt-1">Last cloud update: <span className="font-medium text-zinc-800">{formatTime(cloudStatus?.updatedAt)}</span></div>
+                <div className="mt-2 text-zinc-500">For full cloud sync, create table lesson_drafts in Supabase with columns lesson_id (text primary key), title (text), payload (jsonb), client_updated_at (timestamptz), updated_at (timestamptz).</div>
+              </div>
             </div>
           </section>
 

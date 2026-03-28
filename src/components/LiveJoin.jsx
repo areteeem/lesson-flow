@@ -56,7 +56,7 @@ export default function LiveJoin({ onExit }) {
       }
     }, 4000);
     return () => window.clearInterval(id);
-  }, [joined]);
+  }, [joined, playerId]);
 
   useEffect(() => {
     if (!joined || !channelRef.current) return undefined;

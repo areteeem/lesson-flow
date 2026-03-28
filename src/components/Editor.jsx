@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generateDSL, parseLesson } from '../parser';
 import { exportLesson, importDsl, importLesson, printLessonReport, printStudentLesson } from '../storage';
-import { loadSettings } from './SettingsPage';
+import { loadAppSettings } from '../utils/appSettings';
+import { syncLessonToCloud } from '../utils/cloudSync';
 import { addCustomTemplate } from './GuidePanel';
 import { createLessonTemplate, deleteBlockFromTree } from '../utils/builder';
 import { flattenBlocks } from '../utils/lesson';
@@ -67,6 +68,32 @@ function AutoGrowField({ value, onChange, placeholder, className = '' }) {
       placeholder={placeholder}
       className={`w-full resize-none overflow-hidden border border-zinc-200 px-3 py-2 text-sm outline-none transition focus:border-zinc-900 ${className}`}
     />
+  );
+}
+
+function formatSaveTime(timestamp) {
+  if (!timestamp) return 'never';
+  try {
+    return new Date(timestamp).toLocaleTimeString();
+  } catch {
+    return 'unknown';
+  }
+}
+
+function SaveStatusTag({ saveState }) {
+  const tone = saveState.status === 'cloud_error'
+    ? 'border-red-200 bg-red-50 text-red-700'
+    : saveState.status === 'synced'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : saveState.status === 'saving_local' || saveState.status === 'syncing_cloud'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : 'border-zinc-200 bg-zinc-50 text-zinc-600';
+
+  return (
+    <div className={`inline-flex items-center gap-2 border px-2 py-0.5 text-[10px] ${tone}`}>
+      <span className="font-medium uppercase tracking-[0.12em]">{saveState.label}</span>
+      <span className="normal-case tracking-normal">{saveState.detail}</span>
+    </div>
   );
 }
 
@@ -262,6 +289,15 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   const [focusMode, setFocusMode] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [saveState, setSaveState] = useState({
+    status: 'idle',
+    label: 'idle',
+    detail: 'No saves yet',
+    lastLocalSavedAt: null,
+    lastCloudSavedAt: null,
+    lastAttemptAt: null,
+    source: 'manual',
+  });
 
   useEffect(() => {
     const next = createStateFromLesson(lesson);
@@ -300,21 +336,102 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     payloadRef.current = buildPayload();
   });
 
+  const performSave = useCallback((source = 'manual') => {
+    if (!payloadRef.current) return Promise.resolve();
+
+    const payload = payloadRef.current;
+    setSaveState((currentValue) => ({
+      ...currentValue,
+      status: 'saving_local',
+      label: source === 'auto' ? 'auto-save' : source === 'background' ? 'background-save' : 'saving',
+      detail: source === 'auto' ? 'Saving local changes in background…' : 'Saving locally…',
+      lastAttemptAt: Date.now(),
+      source,
+    }));
+
+    const job = (async () => {
+      try {
+        const saved = await Promise.resolve(onSave(payload));
+        const localSavedAt = saved?.updatedAt || Date.now();
+        setSaveState((currentValue) => ({
+          ...currentValue,
+          status: 'syncing_cloud',
+          label: 'syncing',
+          detail: 'Saved locally, syncing cloud…',
+          lastLocalSavedAt: localSavedAt,
+        }));
+
+        const cloudState = await syncLessonToCloud(saved || payload, { source });
+
+        if (cloudState.state === 'synced') {
+          setSaveState((currentValue) => ({
+            ...currentValue,
+            status: 'synced',
+            label: 'saved',
+            detail: 'Saved locally and to cloud',
+            lastCloudSavedAt: cloudState.updatedAt || Date.now(),
+            lastLocalSavedAt: currentValue.lastLocalSavedAt || localSavedAt,
+          }));
+          return;
+        }
+
+        if (cloudState.state === 'disabled') {
+          setSaveState((currentValue) => ({
+            ...currentValue,
+            status: 'saved_local',
+            label: 'saved',
+            detail: 'Saved locally (cloud sync disabled)',
+            lastLocalSavedAt: currentValue.lastLocalSavedAt || localSavedAt,
+          }));
+          return;
+        }
+
+        if (cloudState.state === 'unavailable') {
+          setSaveState((currentValue) => ({
+            ...currentValue,
+            status: 'saved_local',
+            label: 'saved-local',
+            detail: 'Saved locally (cloud unavailable)',
+            lastLocalSavedAt: currentValue.lastLocalSavedAt || localSavedAt,
+          }));
+          return;
+        }
+
+        setSaveState((currentValue) => ({
+          ...currentValue,
+          status: 'cloud_error',
+          label: 'cloud-error',
+          detail: cloudState.message || 'Saved locally, cloud sync failed',
+          lastLocalSavedAt: currentValue.lastLocalSavedAt || localSavedAt,
+        }));
+      } catch (error) {
+        setSaveState((currentValue) => ({
+          ...currentValue,
+          status: 'cloud_error',
+          label: 'save-error',
+          detail: error?.message || 'Save failed',
+        }));
+      }
+    })();
+
+    return job;
+  }, [onSave]);
+
   // Auto-save: debounced save (configurable interval from settings)
   const scheduleAutoSave = () => {
-    const appSettings = loadSettings();
+    const appSettings = loadAppSettings();
     if (appSettings.autoSave === false) return;
     const delay = (appSettings.autoSaveInterval || 5) * 1000;
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
     autoSaveRef.current = setTimeout(() => {
-      if (payloadRef.current) onSave(payloadRef.current);
+      void performSave('auto');
     }, delay);
   };
 
   // Save immediately (for visibility change / beforeunload)
   const saveNow = () => {
     if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
-    if (payloadRef.current) onSave(payloadRef.current);
+    if (payloadRef.current) void performSave('background');
   };
 
   // Warn before closing tab with unsaved work + save on visibility change
@@ -334,7 +451,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
       if (dslParseTimer.current) clearTimeout(dslParseTimer.current);
     };
-  }, []);
+  }, [performSave]);
 
   const commit = (nextDsl, nextParsed) => {
     setHist(({ entries, index }) => ({
@@ -474,7 +591,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     return [
       { id: 'undo', label: 'Undo', shortcut: 'Ctrl+Z', group: 'Edit', action: undo },
       { id: 'redo', label: 'Redo', shortcut: 'Ctrl+Shift+Z', group: 'Edit', action: redo },
-      { id: 'save', label: 'Save Lesson', shortcut: 'Ctrl+S', group: 'File', action: () => onSave(payload) },
+      { id: 'save', label: 'Save Lesson', shortcut: 'Ctrl+S', group: 'File', action: () => { void performSave('manual'); } },
       { id: 'play', label: 'Play Lesson', group: 'File', action: () => onPlay(payload) },
       { id: 'settings', label: 'Lesson Settings', group: 'Edit', action: () => setShowLessonSettings(true) },
       { id: 'mode-dsl', label: 'Switch to DSL Editor', group: 'Mode', action: () => setMode('dsl') },
@@ -489,7 +606,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
       { id: 'back', label: 'Back to Home', group: 'Navigation', action: onBack },
       ...blockCommands,
     ];
-  }, [allBlocks, dsl, focusMode, mode, parsed.title, showDebugPanel]);
+  }, [allBlocks, dsl, focusMode, mode, parsed.title, showDebugPanel, performSave]);
 
   const loadTemplate = (kind, customDsl = null) => {
     let next;
@@ -540,6 +657,9 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
                 {!!parsed.settings?.grammarTopic && <span className="inline-block max-w-[200px] truncate bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">{parsed.settings.grammarTopic}</span>}
                 {!!parsed.settings?.focus && [].concat(parsed.settings.focus).filter(Boolean).map((f) => <span key={f} className="inline-block bg-zinc-100 px-2 py-0.5 text-[10px] font-medium capitalize text-zinc-500">{f}</span>)}
                 {!!parsed.settings?.difficulty && [].concat(parsed.settings.difficulty).filter(Boolean).map((d) => <span key={d} className="inline-block border border-zinc-300 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-700">{d}</span>)}
+                <SaveStatusTag saveState={saveState} />
+                <span className="inline-block border border-zinc-200 bg-white px-2 py-0.5 text-[10px] text-zinc-500">Local: {formatSaveTime(saveState.lastLocalSavedAt)}</span>
+                <span className="inline-block border border-zinc-200 bg-white px-2 py-0.5 text-[10px] text-zinc-500">Cloud: {formatSaveTime(saveState.lastCloudSavedAt)}</span>
               </div>
             </div>
           </div>
@@ -587,7 +707,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
               )}
             </div>
 
-            <IconButton title="Save lesson" onClick={() => onSave(payload)}>
+            <IconButton title="Save lesson" onClick={() => { void performSave('manual'); }}>
               <SaveIcon />
             </IconButton>
             <IconButton title="Play lesson" onClick={() => onPlay(payload)} variant="primary">
