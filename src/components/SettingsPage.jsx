@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { loadAppSettings, saveAppSettings } from '../utils/appSettings';
-import { getCloudSyncAvailability, readCloudSyncStatus } from '../utils/cloudSync';
+import { getCloudSyncAvailability, readCloudSyncStatus, testCloudSyncConnection } from '../utils/cloudSync';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FOCUS_OPTIONS = ['vocabulary', 'reading', 'speaking', 'listening', 'writing', 'grammar', 'mixed'];
@@ -15,6 +15,8 @@ export default function SettingsPage({ onBack }) {
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState('defaults');
   const [, setStatusTick] = useState(0);
+  const [connectionTest, setConnectionTest] = useState(null);
+  const [runningConnectionTest, setRunningConnectionTest] = useState(false);
 
   const update = (key, value) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -28,12 +30,29 @@ export default function SettingsPage({ onBack }) {
 
   const cloudAvailability = getCloudSyncAvailability();
   const cloudStatus = readCloudSyncStatus();
+  const effectiveState = cloudAvailability.available ? 'ready' : (cloudStatus?.state || 'idle');
+  const effectiveMessage = cloudAvailability.available
+    ? 'Cloud config detected. Save a lesson to run sync.'
+    : (cloudStatus?.message || 'No sync attempts yet');
   const formatTime = (timestamp) => {
     if (!timestamp) return 'never';
     try {
       return new Date(timestamp).toLocaleString();
     } catch {
       return 'unknown';
+    }
+  };
+
+  const runConnectionTest = async () => {
+    setRunningConnectionTest(true);
+    try {
+      const result = await testCloudSyncConnection();
+      setConnectionTest({
+        ...result,
+        testedAt: Date.now(),
+      });
+    } finally {
+      setRunningConnectionTest(false);
     }
   };
 
@@ -151,7 +170,12 @@ export default function SettingsPage({ onBack }) {
           <section className="border border-zinc-200 bg-white p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Cloud Sync</div>
-              <button type="button" onClick={() => setStatusTick((v) => v + 1)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-900">Refresh Status</button>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setStatusTick((v) => v + 1)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-900">Refresh Status</button>
+                <button type="button" onClick={runConnectionTest} disabled={runningConnectionTest} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-60">
+                  {runningConnectionTest ? 'Testing…' : 'Test Connection'}
+                </button>
+              </div>
             </div>
             <div className="space-y-3 text-sm text-zinc-700">
               <label className="flex items-center gap-3">
@@ -160,9 +184,34 @@ export default function SettingsPage({ onBack }) {
               </label>
               <div className="border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-600">
                 <div>Availability: <span className="font-medium text-zinc-800">{cloudAvailability.available ? 'Ready' : cloudAvailability.reason}</span></div>
-                <div className="mt-1">Current state: <span className="font-medium text-zinc-800">{cloudStatus?.state || 'idle'}</span></div>
-                <div className="mt-1">Message: <span className="font-medium text-zinc-800">{cloudStatus?.message || 'No sync attempts yet'}</span></div>
-                <div className="mt-1">Last cloud update: <span className="font-medium text-zinc-800">{formatTime(cloudStatus?.updatedAt)}</span></div>
+                <div className="mt-1">Current state: <span className="font-medium text-zinc-800">{effectiveState}</span></div>
+                <div className="mt-1">Message: <span className="font-medium text-zinc-800">{effectiveMessage}</span></div>
+                <div className="mt-1">Last sync attempt: <span className="font-medium text-zinc-800">{formatTime(cloudStatus?.updatedAt)}</span></div>
+                {cloudStatus?.diagnostics?.host && (
+                  <div className="mt-1">Supabase host: <span className="font-medium text-zinc-800">{cloudStatus.diagnostics.host}</span></div>
+                )}
+                {cloudStatus?.diagnostics?.thrown && (
+                  <div className="mt-1">Thrown error: <span className="font-medium text-zinc-800">{cloudStatus.diagnostics.thrown}</span></div>
+                )}
+                {cloudStatus?.diagnostics?.probe?.status && (
+                  <div className="mt-1">Endpoint probe: <span className="font-medium text-zinc-800">HTTP {cloudStatus.diagnostics.probe.status}</span></div>
+                )}
+                {connectionTest && (
+                  <div className="mt-2 border border-zinc-200 bg-white p-2 text-[11px]">
+                    <div>Connection test: <span className={`font-medium ${connectionTest.ok ? 'text-emerald-700' : 'text-red-700'}`}>{connectionTest.ok ? 'ok' : 'failed'}</span></div>
+                    <div className="mt-0.5">Result: <span className="font-medium text-zinc-800">{connectionTest.message}</span></div>
+                    <div className="mt-0.5">Checked: <span className="font-medium text-zinc-800">{formatTime(connectionTest.testedAt)}</span></div>
+                    {connectionTest?.diagnostics?.status && (
+                      <div className="mt-0.5">HTTP: <span className="font-medium text-zinc-800">{connectionTest.diagnostics.status}</span></div>
+                    )}
+                    {connectionTest?.diagnostics?.host && (
+                      <div className="mt-0.5">Host: <span className="font-medium text-zinc-800">{connectionTest.diagnostics.host}</span></div>
+                    )}
+                    {connectionTest?.diagnostics?.thrown && (
+                      <div className="mt-0.5">Thrown: <span className="font-medium text-zinc-800">{connectionTest.diagnostics.thrown}</span></div>
+                    )}
+                  </div>
+                )}
                 <div className="mt-2 text-zinc-500">For full cloud sync, create table lesson_drafts in Supabase with columns lesson_id (text primary key), title (text), payload (jsonb), client_updated_at (timestamptz), updated_at (timestamptz).</div>
               </div>
             </div>
