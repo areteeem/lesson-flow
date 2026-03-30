@@ -6,41 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { PersonIcon, GearIcon, QuestionIcon } from './components/Icons';
 import DebugPanel from './components/DebugPanel';
 import { recordDebugEvent } from './utils/debug';
-
-const THEME_KEY = 'lf_theme';
-
-function getInitialTheme() {
-  try {
-    const stored = localStorage.getItem(THEME_KEY);
-    if (stored === 'light' || stored === 'dark') return stored;
-  } catch {
-    // Ignore storage issues and fallback to system theme.
-  }
-  return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-function ThemeToggle({ theme, onToggle }) {
-  return (
-    <div className="fixed right-6 top-6 z-40 border border-zinc-200 bg-white p-0.5 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
-      <button
-        type="button"
-        onClick={() => onToggle('light')}
-        className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${theme === 'light' ? 'bg-zinc-900 text-white' : 'text-zinc-500'}`}
-        aria-label="Switch to light theme"
-      >
-        Light
-      </button>
-      <button
-        type="button"
-        onClick={() => onToggle('dark')}
-        className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${theme === 'dark' ? 'bg-zinc-900 text-white' : 'text-zinc-500'}`}
-        aria-label="Switch to dark theme"
-      >
-        Dark
-      </button>
-    </div>
-  );
-}
+import { applyThemePreference, getThemePreference } from './utils/theme';
 
 const Editor = lazy(() => import('./components/Editor'));
 const GuidePanel = lazy(() => import('./components/GuidePanel'));
@@ -281,7 +247,6 @@ export default function App() {
   const isJoinMode = location.pathname.startsWith('/live/join');
   const isHome = location.pathname === '/';
   const [showGuide, setShowGuide] = useState(false);
-  const [theme, setTheme] = useState(getInitialTheme);
 
   const handleApplyGuidePresetFromHome = useCallback((config) => {
     const nextLesson = createPromptPresetLesson(config, null);
@@ -315,17 +280,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      // Ignore storage write failures.
-    }
-  }, [theme]);
+    applyThemePreference(getThemePreference());
+  }, []);
 
   return (
     <>
-      <ThemeToggle theme={theme} onToggle={setTheme} />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/editor/:lessonId" element={<EditorPage />} />

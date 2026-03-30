@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { loadAppSettings, saveAppSettings } from '../utils/appSettings';
 import { getCloudSyncAvailability, readCloudSyncStatus, testCloudSyncConnection } from '../utils/cloudSync';
+import { getThemePreference, setThemePreference } from '../utils/theme';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FOCUS_OPTIONS = ['vocabulary', 'reading', 'speaking', 'listening', 'writing', 'grammar', 'mixed'];
@@ -17,6 +18,7 @@ export default function SettingsPage({ onBack }) {
   const [, setStatusTick] = useState(0);
   const [connectionTest, setConnectionTest] = useState(null);
   const [runningConnectionTest, setRunningConnectionTest] = useState(false);
+  const [theme, setTheme] = useState(getThemePreference);
 
   const update = (key, value) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -52,6 +54,11 @@ export default function SettingsPage({ onBack }) {
     } finally {
       setRunningConnectionTest(false);
     }
+  };
+
+  const handleThemeChange = (value) => {
+    const next = setThemePreference(value);
+    setTheme(next);
   };
 
   const TABS = [
@@ -137,6 +144,26 @@ export default function SettingsPage({ onBack }) {
           <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'display' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Display & Behavior</div>
             <div className="space-y-3">
+              <div className="border border-zinc-200 bg-zinc-50 p-3">
+                <div className="mb-2 text-xs font-medium text-zinc-700">Theme</div>
+                <div className="inline-flex border border-zinc-200 bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleThemeChange('light')}
+                    className={`px-3 py-1.5 text-xs uppercase tracking-[0.14em] ${theme === 'light' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}
+                  >
+                    Light
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleThemeChange('dark')}
+                    className={`px-3 py-1.5 text-xs uppercase tracking-[0.14em] ${theme === 'dark' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}
+                  >
+                    Dark
+                  </button>
+                </div>
+                <div className="mt-2 text-[11px] text-zinc-500">Applied instantly and persisted across sessions.</div>
+              </div>
               <label className="flex items-center gap-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={settings.showHintsDefault !== false} onChange={(e) => update('showHintsDefault', e.target.checked)} />
                 Show hints by default
