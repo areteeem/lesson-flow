@@ -4,6 +4,29 @@ import { taskRegexEntries } from './config/taskRegistry';
 import { validateBlockSchema, applySchemaFixes } from './config/dslSchema';
 
 const MAX_DSL_SIZE = 512_000; // 500KB limit
+const PARSE_CACHE_LIMIT = 20;
+const parseCache = new Map();
+
+function cloneParseResult(value) {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+function getCachedParse(dsl) {
+  const hit = parseCache.get(dsl);
+  if (!hit) return null;
+  // Refresh LRU order.
+  parseCache.delete(dsl);
+  parseCache.set(dsl, hit);
+  return cloneParseResult(hit);
+}
+
+function setCachedParse(dsl, result) {
+  parseCache.set(dsl, cloneParseResult(result));
+  if (parseCache.size <= PARSE_CACHE_LIMIT) return;
+  const oldest = parseCache.keys().next().value;
+  parseCache.delete(oldest);
+}
 
 /** Sanitize a URL field — reject javascript: and data: URIs */
 function sanitizeUrl(url) {
@@ -953,6 +976,11 @@ export function parseLesson(dsl, existingBlocks) {
     return { title: 'Untitled Lesson', settings: { showHints: true, showExplanations: true }, lesson: { title: 'Untitled Lesson', slides: [], tasks: [] }, blocks: [], warnings: [`DSL input exceeds maximum size of ${Math.round(MAX_DSL_SIZE / 1024)}KB.`] };
   }
 
+  if (!existingBlocks) {
+    const cached = getCachedParse(dsl);
+    if (cached) return cached;
+  }
+
   const cleaned = preprocessDsl(dsl);
   const warnings = [];
   const lines = cleaned.split('\n');
@@ -1017,7 +1045,7 @@ export function parseLesson(dsl, existingBlocks) {
     restoreBlockIds(blocks, existingBlocks);
   }
 
-  return {
+  const result = {
     title,
     settings,
     lesson: {
@@ -1028,6 +1056,10 @@ export function parseLesson(dsl, existingBlocks) {
     blocks,
     warnings,
   };
+
+  if (!existingBlocks) setCachedParse(dsl, result);
+
+  return result;
 }
 
 function pushList(lines, label, items) {

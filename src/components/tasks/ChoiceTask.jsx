@@ -9,7 +9,7 @@ function normalizeAnswers(value) {
   return value.toString().split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
 }
 
-export default function ChoiceTask({ block, onComplete, existingResult }) {
+export default function ChoiceTask({ block, onComplete, onProgress, existingResult }) {
   const multi = block.multiple || block.taskType === 'multi_select';
   const correctAnswers = useMemo(() => normalizeAnswers(block.correct || block.answer), [block.correct, block.answer]);
   const shuffleSeed = useShuffleSeed();
@@ -20,10 +20,16 @@ export default function ChoiceTask({ block, onComplete, existingResult }) {
   const toggle = (option) => {
     if (submitted) return;
     if (multi) {
-      setSelected((current) => current.includes(option) ? current.filter((item) => item !== option) : [...current, option]);
+      setSelected((current) => {
+        const next = current.includes(option) ? current.filter((item) => item !== option) : [...current, option];
+        onProgress?.({ submitted: false, response: next });
+        return next;
+      });
       return;
     }
-    setSelected([option]);
+    const next = [option];
+    setSelected(next);
+    onProgress?.({ submitted: false, response: next });
   };
 
   const submit = () => {

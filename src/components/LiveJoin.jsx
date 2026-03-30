@@ -5,8 +5,30 @@ import { recordDebugEvent } from '../utils/debug';
 import { getLiveSessionIdFromSearch, getLiveTransportLabel, supportsConfiguredLiveTransport } from '../utils/liveTransport';
 import { createLiveChannel } from '../utils/liveChannel';
 import { ensureSession } from '../utils/accountAuth';
+import { fetchStudentResponses } from '../utils/liveSupabaseData';
 
 const PHASE = { WAITING: 'waiting', RUNNING: 'running', FINISHED: 'finished' };
+
+function getLocalResponseKey(sessionId, playerId) {
+  return `lf_live_responses_${sessionId}_${playerId}`;
+}
+
+function loadLocalResponses(sessionId, playerId) {
+  try {
+    const raw = localStorage.getItem(getLocalResponseKey(sessionId, playerId));
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalResponses(sessionId, playerId, responses) {
+  try {
+    localStorage.setItem(getLocalResponseKey(sessionId, playerId), JSON.stringify(responses || {}));
+  } catch {
+    // Ignore storage failures.
+  }
+}
 
 export default function LiveJoin({ onExit }) {
   const initialSessionId = useMemo(() => (typeof window !== 'undefined' ? getLiveSessionIdFromSearch(window.location.search) : ''), []);
@@ -37,6 +59,8 @@ export default function LiveJoin({ onExit }) {
   const [transportMode, setTransportMode] = useState(() => (typeof window !== 'undefined' ? getLiveTransportLabel(window.location.search) : 'broadcast-local'));
 
   const channelRef = useRef(null);
+  const activeSessionRef = useRef('');
+  const lastSignatureRef = useRef({});
   const lastSyncRef = useRef(0);
   const joinAckRef = useRef(false);
   const joinTimeoutRef = useRef(null);
@@ -71,6 +95,46 @@ export default function LiveJoin({ onExit }) {
     return () => window.clearInterval(id);
   }, [joined, playerId]);
 
+  const sendResponseUpdate = (sessionId, blockId, result, mode = 'submit') => {
+    const answerPayload = result?.response ?? result ?? null;
+    const answerSignature = JSON.stringify(answerPayload);
+    const signatureKey = `${blockId}:${mode}`;
+    if (lastSignatureRef.current[signatureKey] === answerSignature) return;
+    lastSignatureRef.current[signatureKey] = answerSignature;
+
+    setResults((current) => {
+      const next = {
+        ...current,
+        [blockId]: {
+          ...(current[blockId] || {}),
+          ...(result || {}),
+          answer: answerPayload,
+          taskId: blockId,
+          timestamp: Date.now(),
+          submitMode: mode,
+        },
+      };
+      if (sessionId) saveLocalResponses(sessionId, playerId, next);
+      return next;
+    });
+
+    channelRef.current?.postMessage({
+      type: 'response_update',
+      sessionId,
+      playerId,
+      name: name.trim(),
+      blockId,
+      mode,
+      result: {
+        ...(result || {}),
+        answer: answerPayload,
+        taskId: blockId,
+        timestamp: Date.now(),
+      },
+      timestamp: Date.now(),
+    });
+  };
+
   const handleJoin = () => {
     if (!supportsConfiguredLiveTransport(typeof window !== 'undefined' ? window.location.search : '')) {
       setError('No compatible live transport is available. Configure Supabase transport with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, or use BroadcastChannel fallback.');
@@ -78,6 +142,7 @@ export default function LiveJoin({ onExit }) {
     }
     if (!pin.trim() || !name.trim()) return;
     const sessionId = pin.trim();
+    activeSessionRef.current = sessionId;
     const ch = createLiveChannel({
       sessionId,
       role: 'student',
@@ -96,8 +161,23 @@ export default function LiveJoin({ onExit }) {
 
     channelRef.current = ch;
     joinAckRef.current = false;
+    lastSignatureRef.current = {};
     setError('');
     setTransportMode(ch.mode || transportMode);
+
+    const localResponses = loadLocalResponses(sessionId, playerId);
+    if (Object.keys(localResponses).length > 0) {
+      setResults(localResponses);
+    }
+
+    void fetchStudentResponses(sessionId, playerId).then((remoteResponses) => {
+      if (!remoteResponses || Object.keys(remoteResponses).length === 0) return;
+      setResults((current) => {
+        const merged = { ...remoteResponses, ...current };
+        saveLocalResponses(sessionId, playerId, merged);
+        return merged;
+      });
+    });
 
     ch.onmessage = (e) => {
       const msg = e.data;
@@ -126,6 +206,21 @@ export default function LiveJoin({ onExit }) {
 
     ch.postMessage({ type: 'join', sessionId, playerId, name: name.trim() });
     ch.postMessage({ type: 'request_sync', sessionId, playerId });
+
+    // Replay local answers so host dashboard restores immediately on reconnect.
+    Object.entries(localResponses).forEach(([blockId, result]) => {
+      ch.postMessage({
+        type: 'response_update',
+        sessionId,
+        playerId,
+        name: name.trim(),
+        blockId,
+        mode: 'restore',
+        result,
+        timestamp: Date.now(),
+      });
+    });
+
     lastSyncRef.current = Date.now();
     setStatus('joining');
     recordDebugEvent('live_join_attempt', { pin: sessionId, playerId, name: name.trim(), transport: ch.mode || transportMode });
@@ -143,14 +238,17 @@ export default function LiveJoin({ onExit }) {
   useEffect(() => {
     return () => {
       if (joinTimeoutRef.current) window.clearTimeout(joinTimeoutRef.current);
-      channelRef.current?.postMessage({ type: 'leave', sessionId: pin.trim(), playerId });
+      channelRef.current?.postMessage({ type: 'leave', sessionId: activeSessionRef.current || pin.trim(), playerId });
       channelRef.current?.close();
     };
   }, [pin, playerId]);
 
   const handleComplete = (blockId, result) => {
-    setResults((current) => ({ ...current, [blockId]: result }));
-    channelRef.current?.postMessage({ type: 'response_update', sessionId: pin.trim(), playerId, name: name.trim(), blockId, result, timestamp: Date.now() });
+    sendResponseUpdate(activeSessionRef.current || pin.trim(), blockId, result, 'submit');
+  };
+
+  const handleProgress = (blockId, result) => {
+    sendResponseUpdate(activeSessionRef.current || pin.trim(), blockId, result, 'change');
   };
 
   if (!joined) {
@@ -193,7 +291,7 @@ export default function LiveJoin({ onExit }) {
         {phase === PHASE.RUNNING && (
           <div className="w-full max-w-6xl">
             <div className="mb-4 text-sm text-zinc-400">Live block {Math.min((session?.currentIndex ?? 0) + 1, Math.max(blocks.length, 1))} / {blocks.length || 1}</div>
-            <LessonStage blocks={blocks} currentIndex={session?.currentIndex || 0} results={results} onCompleteBlock={handleComplete} emptyMessage="The teacher advanced to a block that is currently unavailable." />
+            <LessonStage blocks={blocks} currentIndex={session?.currentIndex || 0} results={results} onCompleteBlock={handleComplete} onProgressBlock={handleProgress} emptyMessage="The teacher advanced to a block that is currently unavailable." />
           </div>
         )}
 

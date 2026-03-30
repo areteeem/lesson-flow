@@ -4,6 +4,12 @@ import { generateDSL } from '../parser';
 import { DotsVerticalIcon, ChevronRightIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, PlusIcon } from './Icons';
 import PromptModal from './PromptModal';
 
+const SORT_OPTIONS = {
+  last_opened: 'Last opened',
+  date_created: 'Date created',
+  name: 'Name',
+};
+
 // ─── Folder tree helpers ──────────────────────
 function getAllDescendantIds(folder) {
   return [folder.id, ...(folder.children || []).flatMap(getAllDescendantIds)];
@@ -197,6 +203,7 @@ function FolderNode({ folder, depth, selectedFolder, onSelectFolder, onAdd, onRe
 
 export default function RecentLessons({ lessons, sessions, onCreate, onSelect, onDelete, onDeleteSession, onImport, onSave, folders = [], onSaveFolders }) {
   const inputRef = useRef(null);
+  const mainRef = useRef(null);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolder, setSelectedFolder] = useState(null);
@@ -204,6 +211,23 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
   const [renamingLesson, setRenamingLesson] = useState(null);
   const [movingLesson, setMovingLesson] = useState(null);
   const [folderPromptParent, setFolderPromptParent] = useState(null);
+  const [sortBy, setSortBy] = useState(() => {
+    try {
+      return localStorage.getItem('lf_lessons_sort') || 'last_opened';
+    } catch {
+      return 'last_opened';
+    }
+  });
+  const [createTemplate, setCreateTemplate] = useState(null);
+  const [renderCount, setRenderCount] = useState(48);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('lf_lessons_sort', sortBy);
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [sortBy]);
 
   const handleDuplicate = (lesson) => {
     const copy = { ...lesson, id: crypto.randomUUID(), title: `${lesson.title || 'Untitled'} (Copy)`, createdAt: Date.now(), updatedAt: Date.now() };
@@ -256,12 +280,46 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
       const target = findFolder(folders, selectedFolder);
       allowedIds = target ? new Set(getAllDescendantIds(target)) : new Set();
     }
-    return lessons.filter((lesson) => {
+    const visible = lessons.filter((lesson) => {
       if (q && !(lesson.title || '').toLowerCase().includes(q)) return false;
       if (allowedIds && !allowedIds.has(lesson.folder)) return false;
       return true;
     });
-  }, [lessons, searchQuery, selectedFolder, folders]);
+
+    if (sortBy === 'name') {
+      return visible.sort((left, right) => (left.title || '').localeCompare(right.title || ''));
+    }
+
+    if (sortBy === 'date_created') {
+      return visible.sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0));
+    }
+
+    return visible.sort((left, right) => {
+      const leftOpened = left.openedAt || left.updatedAt || 0;
+      const rightOpened = right.openedAt || right.updatedAt || 0;
+      return rightOpened - leftOpened;
+    });
+  }, [lessons, searchQuery, selectedFolder, folders, sortBy]);
+
+  const renderedLessons = useMemo(() => filteredLessons.slice(0, renderCount), [filteredLessons, renderCount]);
+
+  useEffect(() => {
+    setRenderCount(48);
+  }, [searchQuery, selectedFolder, sortBy, lessons.length]);
+
+  useEffect(() => {
+    const node = mainRef.current;
+    if (!node) return undefined;
+    const onScroll = () => {
+      if (renderCount >= filteredLessons.length) return;
+      const threshold = node.scrollHeight - node.clientHeight - 400;
+      if (node.scrollTop >= threshold) {
+        setRenderCount((current) => Math.min(current + 32, filteredLessons.length));
+      }
+    };
+    node.addEventListener('scroll', onScroll, { passive: true });
+    return () => node.removeEventListener('scroll', onScroll);
+  }, [filteredLessons.length, renderCount]);
 
   const handleImport = async (event) => {
     const file = event.target.files?.[0];
@@ -283,6 +341,14 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
         </div>
         <div className="flex items-center gap-2">
           <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search lessons…" className="w-full sm:w-56 border border-zinc-200 px-3 py-1.5 text-sm outline-none focus:border-zinc-900" />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 outline-none focus:border-zinc-900"
+            aria-label="Sort lessons"
+          >
+            {Object.entries(SORT_OPTIONS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
           <button type="button" onClick={() => inputRef.current?.click()} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:border-zinc-900">Import</button>
           <input ref={inputRef} type="file" accept="application/json" className="hidden" onChange={handleImport} />
         </div>
@@ -308,14 +374,14 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
             </div>
           </div>
           <div className="border-b border-zinc-200 p-4">
-            <button type="button" onClick={() => onCreate('blank')} className="mb-2 w-full border border-zinc-900 bg-zinc-900 px-3 py-2.5 text-sm font-medium text-white">
+            <button type="button" onClick={() => setCreateTemplate('blank')} className="mb-2 w-full border border-zinc-900 bg-zinc-900 px-3 py-2.5 text-sm font-medium text-white">
               + New Lesson
             </button>
             <div className="grid grid-cols-2 gap-1.5 text-xs">
-              <button type="button" onClick={() => onCreate('grammar')} className="border border-zinc-200 px-2 py-1.5 text-zinc-600 hover:border-zinc-900">Grammar</button>
-              <button type="button" onClick={() => onCreate('vocabulary')} className="border border-zinc-200 px-2 py-1.5 text-zinc-600 hover:border-zinc-900">Vocabulary</button>
-              <button type="button" onClick={() => onCreate('reading')} className="border border-zinc-200 px-2 py-1.5 text-zinc-600 hover:border-zinc-900">Reading</button>
-              <button type="button" onClick={() => onCreate('catalog')} className="border border-zinc-200 px-2 py-1.5 text-zinc-600 hover:border-zinc-900">All Types</button>
+              <button type="button" onClick={() => setCreateTemplate('grammar')} className="border border-zinc-200 px-2 py-1.5 text-zinc-600 hover:border-zinc-900">Grammar</button>
+              <button type="button" onClick={() => setCreateTemplate('vocabulary')} className="border border-zinc-200 px-2 py-1.5 text-zinc-600 hover:border-zinc-900">Vocabulary</button>
+              <button type="button" onClick={() => setCreateTemplate('reading')} className="border border-zinc-200 px-2 py-1.5 text-zinc-600 hover:border-zinc-900">Reading</button>
+              <button type="button" onClick={() => setCreateTemplate('catalog')} className="border border-zinc-200 px-2 py-1.5 text-zinc-600 hover:border-zinc-900">All Types</button>
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -335,7 +401,7 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
         </aside>
 
         {/* Main content area */}
-        <main className="min-h-0 flex-1 overflow-auto p-5">
+        <main ref={mainRef} className="min-h-0 flex-1 overflow-auto p-5">
           {/* Lesson grid */}
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
@@ -343,19 +409,27 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
               {selectedFolder && ` in ${folderPath(folders, selectedFolder) || 'folder'}`}
             </div>
             {/* Mobile create button */}
-            <button type="button" onClick={() => onCreate('blank')} className="border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white lg:hidden">+ New</button>
+            <button type="button" onClick={() => setCreateTemplate('blank')} className="border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white lg:hidden">+ New</button>
           </div>
 
           {filteredLessons.length === 0 && (
             <div className="border border-dashed border-zinc-300 bg-white px-6 py-12 text-center">
               <div className="text-sm text-zinc-500">{searchQuery ? 'No lessons match your search.' : 'No lessons yet. Create your first one!'}</div>
-              {!searchQuery && <button type="button" onClick={() => onCreate('blank')} className="mt-4 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Create Lesson</button>}
+              {!searchQuery && <button type="button" onClick={() => setCreateTemplate('blank')} className="mt-4 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Create Lesson</button>}
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{filteredLessons.map((lesson) => (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{renderedLessons.map((lesson) => (
             <div key={lesson.id} className="group relative flex flex-col border border-zinc-200 bg-white transition hover:border-zinc-900">
-              <button type="button" onClick={() => onSelect(lesson)} className="flex-1 p-4 text-left">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = { ...lesson, openedAt: Date.now() };
+                  onSave(next);
+                  onSelect(next);
+                }}
+                className="flex-1 p-4 text-left"
+              >
                 <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-400">{(lesson.folder && folderPath(folders, lesson.folder)) || 'Uncategorized'}</div>
                 <div className="mt-1 text-sm font-semibold text-zinc-900">{lesson.title || 'Untitled lesson'}</div>
                 <div className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-500">{previewText(lesson)}</div>
@@ -379,6 +453,13 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
               )}
             </div>
           ))}</div>
+          {renderCount < filteredLessons.length && (
+            <div className="mt-4 text-center">
+              <button type="button" onClick={() => setRenderCount((current) => Math.min(current + 64, filteredLessons.length))} className="border border-zinc-200 px-3 py-2 text-xs text-zinc-600 hover:border-zinc-900">
+                Load more lessons ({filteredLessons.length - renderCount} remaining)
+              </button>
+            </div>
+          )}
 
           {/* Recent sessions section */}
           {sessions.length > 0 && (
@@ -436,6 +517,19 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
         placeholder="Folder name"
         onConfirm={(name) => { onSaveFolders(addFolder(folders, folderPromptParent === '__root__' ? null : folderPromptParent, name)); setFolderPromptParent(null); }}
         onCancel={() => setFolderPromptParent(null)}
+      />
+      <PromptModal
+        open={Boolean(createTemplate)}
+        title="New Lesson"
+        placeholder="Lesson title"
+        defaultValue=""
+        onConfirm={(title) => {
+          const value = title.trim();
+          if (!value) return;
+          onCreate({ template: createTemplate, title: value });
+          setCreateTemplate(null);
+        }}
+        onCancel={() => setCreateTemplate(null)}
       />
     </div>
   );

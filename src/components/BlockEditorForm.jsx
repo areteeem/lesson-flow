@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { serializeBlockField, updateBlockField } from '../utils/builder';
-import { isSelectionBasedTask } from '../config/dslSchema';
 import { PALETTE_COLORS, CATEGORY_COLORS, DIALOGUE_COLORS } from '../config/constants';
 import MarkdownComposer from './MarkdownComposer';
 
@@ -48,78 +47,276 @@ function TextArea({ value, onChange, rows = 4 }) {
   return <AutoGrowTextarea value={value} onChange={onChange} rows={rows} />;
 }
 
-function MediaInput({ value, onChange }) {
-  const [dragging, setDragging] = useState(false);
-  const fileRef = useRef(null);
+const MEDIA_LIBRARY_KEY = 'lf_media_library';
 
-  const handleFile = (file) => {
-    if (!file) return;
-    const MAX_SIZE = 5 * 1024 * 1024;
-    if (file.size > MAX_SIZE) return;
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'video/mp4', 'video/webm'];
-    if (!allowedTypes.includes(file.type)) return;
+function detectMediaType(value = '') {
+  if (!value) return 'none';
+  if (/\.(gif)(\?|$)/i.test(value) || value.startsWith('data:image/gif')) return 'gif';
+  if (/\.(png|jpe?g|webp|svg|bmp|avif)(\?|$)/i.test(value) || value.startsWith('data:image/')) return 'image';
+  if (/\.(mp3|wav|ogg|m4a)(\?|$)/i.test(value) || value.startsWith('data:audio/')) return 'audio';
+  if (/\.(mp4|webm|mov)(\?|$)/i.test(value) || value.startsWith('data:video/')) return 'video';
+  return 'unknown';
+}
+
+function loadMediaLibrary() {
+  try {
+    const raw = localStorage.getItem(MEDIA_LIBRARY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMediaLibrary(items) {
+  try {
+    localStorage.setItem(MEDIA_LIBRARY_KEY, JSON.stringify(items.slice(0, 50)));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function resizeImageToDataUrl(file, maxWidth = 1280) {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => onChange(reader.result);
+    reader.onerror = () => reject(new Error('Could not read image.'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const ratio = Math.min(1, maxWidth / (image.width || maxWidth));
+        const width = Math.max(1, Math.round(image.width * ratio));
+        const height = Math.max(1, Math.round(image.height * ratio));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas is not available.'));
+          return;
+        }
+        ctx.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
+      };
+      image.onerror = () => reject(new Error('Could not load image.'));
+      image.src = String(reader.result || '');
+    };
     reader.readAsDataURL(file);
+  });
+}
+
+function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
+  const fileRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [urlValue, setUrlValue] = useState(currentValue || '');
+  const [resizeWidth, setResizeWidth] = useState(1280);
+  const [library, setLibrary] = useState(() => loadMediaLibrary());
+
+  useEffect(() => {
+    if (open) {
+      setUrlValue(currentValue || '');
+      setError('');
+      setLibrary(loadMediaLibrary());
+    }
+  }, [open, currentValue]);
+
+  async function handleFile(file) {
+    if (!file) return;
+    setError('');
+
+    const isGif = file.type === 'image/gif';
+    const maxSize = isGif ? 10 * 1024 * 1024 : 7 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError(isGif ? 'GIF is too large. Keep GIF uploads under 10MB.' : 'File is too large. Keep uploads under 7MB.');
+      return;
+    }
+
+    if (file.type.startsWith('image/') && !isGif) {
+      try {
+        const dataUrl = await resizeImageToDataUrl(file, resizeWidth);
+        addToLibrary(dataUrl);
+        onSelect(dataUrl);
+        onClose();
+      } catch {
+        setError('Could not process this image. Try another file.');
+      }
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      addToLibrary(result);
+      onSelect(result);
+      onClose();
+    };
+    reader.onerror = () => setError('Could not read this file.');
+    reader.readAsDataURL(file);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPaste = async (event) => {
+      const files = Array.from(event.clipboardData?.files || []);
+      if (files.length > 0) {
+        event.preventDefault();
+        await handleFile(files[0]);
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [open, resizeWidth]);
+
+  if (!open) return null;
+
+  const addToLibrary = (url) => {
+    const item = {
+      id: crypto.randomUUID(),
+      url,
+      type: detectMediaType(url),
+      createdAt: Date.now(),
+    };
+    const next = [item, ...library.filter((entry) => entry.url !== url)];
+    setLibrary(next);
+    saveMediaLibrary(next);
   };
 
-  const onDrop = (e) => {
-    e.preventDefault();
+  const onDrop = async (event) => {
+    event.preventDefault();
     setDragging(false);
-    const file = e.dataTransfer?.files?.[0];
-    if (file) handleFile(file);
+    const file = event.dataTransfer?.files?.[0];
+    if (file) await handleFile(file);
   };
 
-  const isImage = value && (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(value) || value.startsWith('data:image/'));
-  const isAudio = value && (/\.(mp3|wav|ogg)(\?|$)/i.test(value) || value.startsWith('data:audio/'));
-  const isVideo = value && (/\.(mp4|webm)(\?|$)/i.test(value) || value.startsWith('data:video/'));
+  const submitUrl = () => {
+    const clean = urlValue.trim();
+    if (!clean) {
+      setError('Paste a media URL first.');
+      return;
+    }
+    addToLibrary(clean);
+    onSelect(clean);
+    onClose();
+  };
+
+  const openSearch = (provider) => {
+    const q = encodeURIComponent((searchQuery || urlValue || '').trim() || 'education gif');
+    const map = {
+      google: `https://www.google.com/search?tbm=isch&q=${q}`,
+      bing: `https://www.bing.com/images/search?q=${q}`,
+      giphy: `https://giphy.com/search/${encodeURIComponent((searchQuery || 'education').trim())}`,
+    };
+    window.open(map[provider], '_blank', 'noopener,noreferrer');
+  };
 
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={value || ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Paste URL or drop a file"
-          className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
-        />
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="shrink-0 border border-zinc-200 px-3 py-2 text-xs text-zinc-600 transition hover:border-zinc-400"
-        >
-          Browse
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,audio/*,video/*"
-          className="hidden"
-          onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ''; }}
-        />
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-4xl border border-zinc-200 bg-white" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3">
+          <div>
+            <div className="text-sm font-semibold text-zinc-900">Media Picker</div>
+            <div className="text-[11px] text-zinc-500">Drop, upload, paste (Ctrl+V), or search images/GIFs.</div>
+          </div>
+          <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600">Close</button>
+        </div>
+
+        <div className="grid gap-4 p-4 md:grid-cols-2">
+          <div className="space-y-3">
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              className={`flex min-h-[160px] items-center justify-center border-2 border-dashed p-4 text-center ${dragging ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-300'}`}
+            >
+              <div>
+                <div className="text-xs font-medium text-zinc-700">Drag and drop media here</div>
+                <div className="mt-1 text-[11px] text-zinc-500">or click Upload, or paste from clipboard</div>
+                <button type="button" onClick={() => fileRef.current?.click()} className="mt-3 border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs text-white">Upload</button>
+                <input ref={fileRef} type="file" accept="image/*,audio/*,video/*" className="hidden" onChange={async (e) => { await handleFile(e.target.files?.[0]); e.target.value = ''; }} />
+              </div>
+            </div>
+
+            <div className="border border-zinc-200 p-3">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Image Resize</div>
+              <div className="mt-2 flex items-center gap-3">
+                <input type="range" min="480" max="1920" step="80" value={resizeWidth} onChange={(e) => setResizeWidth(Number(e.target.value))} className="w-full" />
+                <span className="w-16 text-right text-xs text-zinc-600">{resizeWidth}px</span>
+              </div>
+              <div className="mt-1 text-[11px] text-zinc-500">Applied to uploaded and pasted non-GIF images for faster loading.</div>
+            </div>
+
+            <div className="border border-zinc-200 p-3">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Paste Media Link</div>
+              <div className="mt-2 flex gap-2">
+                <input value={urlValue} onChange={(e) => setUrlValue(e.target.value)} placeholder="https://..." className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+                <button type="button" onClick={submitUrl} className="border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white">Use</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="border border-zinc-200 p-3">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Search Web</div>
+              <div className="mt-2 flex gap-2">
+                <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search images or GIFs" className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" onClick={() => openSearch('google')} className="border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-700">Google Images</button>
+                <button type="button" onClick={() => openSearch('bing')} className="border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-700">Bing Images</button>
+                <button type="button" onClick={() => openSearch('giphy')} className="border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-700">GIPHY</button>
+              </div>
+              <div className="mt-1 text-[11px] text-zinc-500">Search opens in a new tab. Paste the selected media link here.</div>
+            </div>
+
+            <div className="border border-zinc-200 p-3">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reusable Media Library</div>
+              <div className="grid max-h-56 grid-cols-2 gap-2 overflow-auto">
+                {library.map((entry) => (
+                  <button key={entry.id} type="button" onClick={() => { onSelect(entry.url); onClose(); }} className="border border-zinc-200 p-1 text-left hover:border-zinc-900">
+                    {detectMediaType(entry.url) === 'image' || detectMediaType(entry.url) === 'gif'
+                      ? <img src={entry.url} alt="" loading="lazy" decoding="async" className="h-20 w-full object-cover" />
+                      : <div className="flex h-20 items-center justify-center bg-zinc-50 text-[10px] uppercase text-zinc-500">{detectMediaType(entry.url)}</div>}
+                    <div className="mt-1 truncate text-[10px] text-zinc-500">{new Date(entry.createdAt).toLocaleDateString()}</div>
+                  </button>
+                ))}
+                {library.length === 0 && <div className="col-span-2 border border-dashed border-zinc-200 px-3 py-5 text-center text-[11px] text-zinc-500">No saved assets yet.</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {error && <div className="border-t border-zinc-200 px-4 py-2 text-xs text-red-600">{error}</div>}
       </div>
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        className={[
-          'flex min-h-[80px] items-center justify-center border-2 border-dashed transition',
-          dragging ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200',
-        ].join(' ')}
-      >
-        {isImage && <img src={value} alt="" className="max-h-40 object-contain" />}
-        {isAudio && <audio src={value} controls className="w-full max-w-xs" />}
-        {isVideo && <video src={value} controls className="max-h-40" />}
-        {!isImage && !isAudio && !isVideo && (
-          <span className="text-xs text-zinc-400">{value ? 'Preview unavailable' : 'Drop image, audio, or video here'}</span>
+    </div>
+  );
+}
+
+function MediaInput({ value, onChange }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const mediaType = detectMediaType(value || '');
+
+  return (
+    <div className="space-y-3">
+      <div className="border border-zinc-200 bg-zinc-50 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Media</div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setPickerOpen(true)} className="border border-zinc-900 bg-zinc-900 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white">{value ? 'Replace' : 'Add media'}</button>
+            {value && <button type="button" onClick={() => onChange('')} className="border border-zinc-200 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-600">Delete</button>}
+          </div>
+        </div>
+
+        {!value && <div className="border border-dashed border-zinc-300 px-3 py-6 text-center text-xs text-zinc-500">No media selected. Click Add media to upload, drop, paste, or search.</div>}
+        {mediaType === 'image' && <img src={value} alt="" loading="lazy" decoding="async" className="max-h-56 w-full object-contain" />}
+        {mediaType === 'gif' && <img src={value} alt="" loading="lazy" decoding="async" className="max-h-56 w-full object-contain" />}
+        {mediaType === 'audio' && <audio src={value} controls className="w-full" />}
+        {mediaType === 'video' && <video src={value} controls autoPlay loop muted className="max-h-56 w-full" />}
+        {mediaType === 'unknown' && value && (
+          <div className="border border-zinc-200 px-3 py-4 text-center text-xs text-zinc-500">Preview unavailable. You can still use this link.</div>
         )}
       </div>
-      {value && (
-        <button type="button" onClick={() => onChange('')} className="text-[10px] text-zinc-400 underline">
-          Clear media
-        </button>
-      )}
+      <MediaPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={onChange} currentValue={value || ''} />
     </div>
   );
 }
@@ -754,8 +951,6 @@ function DialogueEditor({ block, onChange }) {
 
 export default function BlockEditorForm({ block, onChange, compact = false }) {
   if (!block) return null;
-
-  const usesRichText = block.type !== 'task';
 
   const area = (field, label, rows = compact ? 3 : 4, help = '') => (
     <Field label={label} help={help}>

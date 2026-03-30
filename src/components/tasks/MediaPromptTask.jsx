@@ -18,7 +18,7 @@ function MediaFrame({ block }) {
       />
       {zoomed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setZoomed(false)}>
-          <img src={media} alt="" className="max-h-[90vh] max-w-[90vw] object-contain" />
+          <img src={media} alt="" loading="lazy" decoding="async" className="max-h-[90vh] max-w-[90vw] object-contain" />
           <button type="button" onClick={() => setZoomed(false)} className="absolute right-4 top-4 border border-white/30 bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70">✕ Close</button>
         </div>
       )}

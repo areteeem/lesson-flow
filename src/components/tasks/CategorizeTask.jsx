@@ -2,8 +2,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
+import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
 
-export default function CategorizeTask({ block, onComplete }) {
+export default function CategorizeTask({ block, onComplete, onProgress }) {
   const shuffleSeed = useShuffleSeed();
   const categories = useMemo(() => block.shuffle === false ? (block.categories || []) : stableShuffle(block.categories || [], `${block.id || block.question}-${shuffleSeed}-categories`), [block.categories, block.id, block.question, block.shuffle, shuffleSeed]);
 
@@ -54,6 +55,7 @@ export default function CategorizeTask({ block, onComplete }) {
         next[cat] = items.filter((i) => i.id !== item.id);
       }
       next[category] = [...(next[category] || []), item];
+      onProgress?.({ submitted: false, response: next });
       return next;
     });
     setDraggedItem(null);
@@ -62,10 +64,14 @@ export default function CategorizeTask({ block, onComplete }) {
 
   const returnToBank = (item, category) => {
     if (submitted) return;
-    setBuckets((prev) => ({
-      ...prev,
-      [category]: (prev[category] || []).filter((i) => i.id !== item.id),
-    }));
+    setBuckets((prev) => {
+      const next = {
+        ...prev,
+        [category]: (prev[category] || []).filter((i) => i.id !== item.id),
+      };
+      onProgress?.({ submitted: false, response: next });
+      return next;
+    });
     setBank((prev) => [...prev, item]);
   };
 
@@ -131,8 +137,7 @@ export default function CategorizeTask({ block, onComplete }) {
                 draggable
                 onDragStart={(e) => {
                   setDraggedItem(item);
-                  e.dataTransfer.setData('application/json', JSON.stringify(item));
-                  e.dataTransfer.effectAllowed = 'move';
+                  configureDragStart(e, JSON.stringify(item), 'application/json');
                 }}
                 onDragEnd={() => setDraggedItem(null)}
                 onClick={() => handleBankPress(item)}
@@ -167,14 +172,14 @@ export default function CategorizeTask({ block, onComplete }) {
               key={category}
               onDrop={(e) => {
                 e.preventDefault();
-                const data = e.dataTransfer.getData('application/json');
+                const data = readDropData(e, 'application/json');
                 if (data) {
                   try {
                     placeItem(JSON.parse(data), category);
                   } catch { /* ignore */ }
                 }
               }}
-              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+              onDragOver={normalizeDragOver}
               onClick={() => handleCategoryClick(category)}
               className={[
                 'min-h-28 border p-3 transition',

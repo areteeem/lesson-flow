@@ -2,8 +2,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
+import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
 
-export default function DragMatchTask({ block, onComplete }) {
+export default function DragMatchTask({ block, onComplete, onProgress }) {
   const pairs = block.pairs || [];
   const shuffleSeed = useShuffleSeed();
 
@@ -46,6 +47,7 @@ export default function DragMatchTask({ block, onComplete }) {
         if (lId === leftItemId) delete next[tId];
       }
       next[targetId] = leftItemId;
+      onProgress?.({ submitted: false, response: next });
       return next;
     });
     setDraggedId(null);
@@ -57,6 +59,7 @@ export default function DragMatchTask({ block, onComplete }) {
     setPlacements((prev) => {
       const next = { ...prev };
       delete next[targetId];
+      onProgress?.({ submitted: false, response: next });
       return next;
     });
   };
@@ -132,8 +135,7 @@ export default function DragMatchTask({ block, onComplete }) {
                   draggable={!submitted && !isPlaced}
                   onDragStart={(e) => {
                     setDraggedId(item.id);
-                    e.dataTransfer.setData('text/plain', String(item.id));
-                    e.dataTransfer.effectAllowed = 'move';
+                    configureDragStart(e, String(item.id));
                   }}
                   onDragEnd={() => setDraggedId(null)}
                   onClick={() => handleItemPress(item.id)}
@@ -168,10 +170,10 @@ export default function DragMatchTask({ block, onComplete }) {
                   key={target.id}
                   onDrop={(e) => {
                     e.preventDefault();
-                    const leftId = Number(e.dataTransfer.getData('text/plain'));
+                    const leftId = Number(readDropData(e));
                     if (!isNaN(leftId)) handleDrop(target.id, leftId);
                   }}
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                  onDragOver={normalizeDragOver}
                   onClick={() => handleTargetClick(target.id)}
                   className={[
                     'flex items-center gap-3 border px-4 py-3 transition',

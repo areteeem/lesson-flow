@@ -50,7 +50,7 @@ function TypingIndicator() {
   );
 }
 
-export default function DialogueTask({ block, onComplete }) {
+export default function DialogueTask({ block, onComplete, onProgress }) {
   const lines = useMemo(() => parseDialogueLines(block.text), [block.text]);
   const speakerMap = useMemo(() => {
     const map = new Map();
@@ -234,7 +234,11 @@ export default function DialogueTask({ block, onComplete }) {
                           value={val}
                           onChange={(e) => {
                             const idx = globalIdx;
-                            setValues((c) => c.map((v, i) => i === idx ? e.target.value : v));
+                            setValues((c) => {
+                              const next = c.map((v, i) => i === idx ? e.target.value : v);
+                              onProgress?.({ submitted: false, response: next });
+                              return next;
+                            });
                           }}
                           disabled={submitted}
                           placeholder="…"

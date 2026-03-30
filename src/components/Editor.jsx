@@ -275,12 +275,10 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   const autoSaveRef = useRef(null);
   const dslParseTimer = useRef(null);
   const [mode, setMode] = useState('builder');
+  const initialState = useMemo(() => createStateFromLesson(lesson), [lesson]);
   // Combined history state — eliminates stale-closure bugs on fast edits
-  const [hist, setHist] = useState(() => {
-    const initial = createStateFromLesson(lesson);
-    return { entries: [initial], index: 0 };
-  });
-  const [selectedBlockId, setSelectedBlockId] = useState(() => createStateFromLesson(lesson).parsed.blocks[0]?.id || null);
+  const [hist, setHist] = useState(() => ({ entries: [initialState], index: 0 }));
+  const [selectedBlockId, setSelectedBlockId] = useState(() => initialState.parsed.blocks[0]?.id || null);
   const [showHotkeys, setShowHotkeys] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showLessonSettings, setShowLessonSettings] = useState(false);
@@ -300,10 +298,10 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   });
 
   useEffect(() => {
-    const next = createStateFromLesson(lesson);
+    const next = initialState;
     setHist({ entries: [next], index: 0 });
     setSelectedBlockId(next.parsed.blocks[0]?.id || null);
-  }, [lesson]);
+  }, [initialState]);
 
   const current = hist.entries[hist.index] || hist.entries[hist.entries.length - 1] || createStateFromLesson(lesson);
   const parsed = current.parsed;
@@ -468,7 +466,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     dslParseTimer.current = setTimeout(() => {
       const nextParsed = parseLesson(nextDsl, parsed.blocks);
       commit(nextDsl, nextParsed);
-    }, 250);
+    }, 180);
   }, [parsed.blocks]);
 
   // Builder edits: generate DSL for persistence but keep original blocks

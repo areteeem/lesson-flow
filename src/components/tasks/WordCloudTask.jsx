@@ -32,7 +32,7 @@ function buildWordLayout(words, containerWidth) {
   });
 }
 
-export default function WordCloudTask({ block, onComplete }) {
+export default function WordCloudTask({ block, onComplete, onProgress }) {
   const containerRef = useRef(null);
   const [input, setInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -83,7 +83,11 @@ export default function WordCloudTask({ block, onComplete }) {
   const addWord = useCallback(() => {
     const word = input.trim();
     if (!word) return;
-    setUserWords((prev) => [...prev, word]);
+    setUserWords((prev) => {
+      const next = [...prev, word];
+      onProgress?.({ submitted: false, response: next });
+      return next;
+    });
     setInput('');
   }, [input]);
 

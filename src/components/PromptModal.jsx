@@ -22,12 +22,13 @@ export default function PromptModal({ open, title, placeholder, defaultValue = '
         <div className="mb-4 text-sm font-semibold text-zinc-900">{title}</div>
         <input
           ref={inputRef}
-          key={defaultValue}
           name="value"
+          key={defaultValue}
           defaultValue={defaultValue}
           placeholder={placeholder}
           className="mb-4 w-full border border-zinc-200 px-3 py-2.5 text-sm outline-none transition focus:border-zinc-900"
           onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+          required
           autoFocus
         />
         <div className="flex justify-end gap-2">

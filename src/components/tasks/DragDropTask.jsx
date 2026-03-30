@@ -3,7 +3,7 @@ import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
-export default function DragDropTask({ block, onComplete }) {
+export default function DragDropTask({ block, onComplete, onProgress }) {
   const pairs = block.pairs || [];
   const shuffleSeed = useShuffleSeed();
 
@@ -42,6 +42,7 @@ export default function DragDropTask({ block, onComplete }) {
       }
       // If target already has an item, it goes back to bank
       next[leftValue] = item.id;
+      onProgress?.({ submitted: false, response: next });
       return next;
     });
     setDraggedItem(null);
@@ -53,6 +54,7 @@ export default function DragDropTask({ block, onComplete }) {
     setPlacements((prev) => {
       const next = { ...prev };
       delete next[leftValue];
+      onProgress?.({ submitted: false, response: next });
       return next;
     });
   };

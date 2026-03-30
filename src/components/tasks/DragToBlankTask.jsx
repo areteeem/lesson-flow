@@ -3,8 +3,9 @@ import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { BLANK_MARKER_RE } from '../../utils/patterns';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
+import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
 
-export default function DragToBlankTask({ block, onComplete }) {
+export default function DragToBlankTask({ block, onComplete, onProgress }) {
   const sentence = block.text || block.sentence || '';
   const tokens = sentence.split(BLANK_MARKER_RE);
   const answers = block.blanks || [];
@@ -49,6 +50,7 @@ export default function DragToBlankTask({ block, onComplete }) {
         }
       }
       next[blankIdx] = item.word;
+      onProgress?.({ submitted: false, response: next });
       return next;
     });
     setPlacedIds((current) => {
@@ -66,7 +68,11 @@ export default function DragToBlankTask({ block, onComplete }) {
     const releasedId = placedIds[blankIdx];
     const releasedWord = values[blankIdx];
     setPool((p) => [...p, { id: releasedId, word: releasedWord }]);
-    setValues((current) => current.map((v, i) => i === blankIdx ? '' : v));
+    setValues((current) => {
+      const next = current.map((v, i) => i === blankIdx ? '' : v);
+      onProgress?.({ submitted: false, response: next });
+      return next;
+    });
     setPlacedIds((current) => current.map((v, i) => i === blankIdx ? null : v));
   };
 
@@ -135,7 +141,7 @@ export default function DragToBlankTask({ block, onComplete }) {
               type="button"
               onDrop={(event) => {
                 event.preventDefault();
-                const data = event.dataTransfer.getData('application/json');
+                const data = readDropData(event, 'application/json');
                 if (data) {
                   try {
                     fillBlank(currentBlank, JSON.parse(data));
@@ -144,7 +150,7 @@ export default function DragToBlankTask({ block, onComplete }) {
                   }
                 }
               }}
-              onDragOver={(event) => event.preventDefault()}
+              onDragOver={normalizeDragOver}
               onClick={() => {
                 if (selectedItem) {
                   fillBlank(currentBlank, selectedItem);
@@ -191,7 +197,7 @@ export default function DragToBlankTask({ block, onComplete }) {
             onDragStart={(event) => {
               setDraggedItem(item);
               setSelectedItemId(item.id);
-              event.dataTransfer.setData('application/json', JSON.stringify(item));
+              configureDragStart(event, JSON.stringify(item), 'application/json');
             }}
             onDragEnd={() => setDraggedItem(null)}
             onClick={() => handlePoolItemPress(item)}

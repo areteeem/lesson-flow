@@ -210,3 +210,57 @@ export async function fetchManualScores(sessionId) {
     return {};
   }
 }
+
+export async function fetchSessionResponses(sessionId) {
+  const client = getSupabaseClient();
+  if (!client || !sessionId) return {};
+
+  try {
+    const { data, error } = await client
+      .from('live_responses')
+      .select('player_id,block_id,result_payload,updated_at')
+      .eq('session_id', sessionId);
+
+    if (error || !Array.isArray(data)) return {};
+
+    return data.reduce((acc, row) => {
+      const playerId = String(row.player_id || '');
+      const blockId = String(row.block_id || '');
+      if (!playerId || !blockId) return acc;
+      if (!acc[playerId]) acc[playerId] = {};
+      acc[playerId][blockId] = {
+        ...(row.result_payload || {}),
+        savedAt: row.updated_at || null,
+      };
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+export async function fetchStudentResponses(sessionId, playerId) {
+  const client = getSupabaseClient();
+  if (!client || !sessionId || !playerId) return {};
+
+  try {
+    const { data, error } = await client
+      .from('live_responses')
+      .select('block_id,result_payload,updated_at')
+      .eq('session_id', sessionId)
+      .eq('player_id', playerId);
+
+    if (error || !Array.isArray(data)) return {};
+    return data.reduce((acc, row) => {
+      const blockId = String(row.block_id || '');
+      if (!blockId) return acc;
+      acc[blockId] = {
+        ...(row.result_payload || {}),
+        savedAt: row.updated_at || null,
+      };
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}

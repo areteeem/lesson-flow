@@ -27,7 +27,7 @@ function extractAnswersFromText(lines) {
   return answers;
 }
 
-export default function DialogueDragTask({ block, onComplete }) {
+export default function DialogueDragTask({ block, onComplete, onProgress }) {
   const lines = useMemo(() => parseDialogueLines(block.text), [block.text]);
   const speakerMap = useMemo(() => {
     const map = new Map();
@@ -79,6 +79,7 @@ export default function DialogueDragTask({ block, onComplete }) {
         if (oldId !== null) setPool((p) => [...p, { id: oldId, word: next[idx] }]);
       }
       next[idx] = item.word;
+      onProgress?.({ submitted: false, response: next });
       return next;
     });
     setPlacedIds((c) => { const n = [...c]; n[idx] = item.id; return n; });
@@ -89,7 +90,11 @@ export default function DialogueDragTask({ block, onComplete }) {
   const releaseBlank = (idx) => {
     if (submitted || !values[idx]) return;
     setPool((p) => [...p, { id: placedIds[idx], word: values[idx] }]);
-    setValues((c) => c.map((v, i) => i === idx ? '' : v));
+    setValues((c) => {
+      const next = c.map((v, i) => i === idx ? '' : v);
+      onProgress?.({ submitted: false, response: next });
+      return next;
+    });
     setPlacedIds((c) => c.map((v, i) => i === idx ? null : v));
   };
 

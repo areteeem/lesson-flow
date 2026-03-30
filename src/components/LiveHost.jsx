@@ -1,14 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LessonStage from './LessonStage';
 import { getBlockLabel, getTaskBlocks, getTaskPoints, isGradableTask, validateLessonStructure } from '../utils/lesson';
 import { recordDebugEvent } from '../utils/debug';
 import { normalizeScore } from '../utils/grading';
 import { buildLiveJoinUrl, buildLiveQrUrl, createLiveSessionId, getLiveSessionIdFromSearch, getLiveTransportLabel, supportsConfiguredLiveTransport } from '../utils/liveTransport';
 import { createLiveChannel } from '../utils/liveChannel';
-import { deleteManualScores, fetchManualScores, persistManualScore } from '../utils/liveSupabaseData';
+import { deleteManualScores, fetchManualScores, fetchSessionResponses, persistManualScore } from '../utils/liveSupabaseData';
 import { ensureSession } from '../utils/accountAuth';
 
 const PHASE = { LOBBY: 'lobby', RUNNING: 'running', FINISHED: 'finished' };
+
+function normalizeAnswerForBucket(answer) {
+  if (answer === null || answer === undefined || answer === '') return '(empty)';
+  if (typeof answer === 'string' || typeof answer === 'number' || typeof answer === 'boolean') return String(answer);
+  try {
+    return JSON.stringify(answer);
+  } catch {
+    return String(answer);
+  }
+}
 
 export default function LiveHost({ lesson, onExit }) {
   const hostPlayerId = useMemo(() => {
@@ -49,14 +59,21 @@ export default function LiveHost({ lesson, onExit }) {
   const [students, setStudents] = useState({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [reviewStudentId, setReviewStudentId] = useState('');
+  const [hostTab, setHostTab] = useState('live');
+  const [expandedStudentId, setExpandedStudentId] = useState('');
   const [manualPoints, setManualPoints] = useState({});
   const [transportStatus, setTransportStatus] = useState('connecting');
   const [transportMode, setTransportMode] = useState(() => (typeof window !== 'undefined' ? getLiveTransportLabel(window.location.search) : 'broadcast-local'));
   const [transportError, setTransportError] = useState('');
   const currentBlock = blocks[currentIndex] || null;
 
+  useEffect(() => {
+    if (phase === PHASE.FINISHED) setHostTab('results');
+  }, [phase]);
+
   const joinUrl = useMemo(() => buildLiveJoinUrl(sessionId), [sessionId]);
   const qrUrl = useMemo(() => buildLiveQrUrl(joinUrl), [joinUrl]);
+  const allTaskBlocks = useMemo(() => getTaskBlocks(blocks), [blocks]);
   const gradableTasks = useMemo(() => getTaskBlocks(blocks).filter(isGradableTask), [blocks]);
 
   const updateStudent = useCallback((playerId, updater) => {
@@ -320,6 +337,45 @@ export default function LiveHost({ lesson, onExit }) {
     };
   }, [sessionId, transportMode]);
 
+  useEffect(() => {
+    if (transportMode !== 'supabase') return undefined;
+    let stopped = false;
+
+    const loadResponses = async () => {
+      const remote = await fetchSessionResponses(sessionId);
+      if (stopped || !remote || Object.keys(remote).length === 0) return;
+      setStudents((prev) => {
+        const next = { ...prev };
+        Object.entries(remote).forEach(([studentId, responses]) => {
+          const existing = next[studentId] || {
+            name: 'Student',
+            joinedAt: Date.now(),
+            lastSeen: Date.now(),
+            responses: {},
+          };
+          next[studentId] = {
+            ...existing,
+            responses: {
+              ...(responses || {}),
+              ...(existing.responses || {}),
+            },
+          };
+        });
+        return next;
+      });
+    };
+
+    void loadResponses();
+    const timer = window.setInterval(() => {
+      void loadResponses();
+    }, 7000);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [sessionId, transportMode]);
+
   const classStats = useMemo(() => {
     const ids = Object.keys(students);
     if (ids.length === 0) {
@@ -340,6 +396,89 @@ export default function LiveHost({ lesson, onExit }) {
       submissions: totals.submissions,
     };
   }, [students, gradableTasks.length, computeStudentStats]);
+
+  const studentRows = useMemo(() => {
+    return Object.entries(students).map(([studentId, student]) => {
+      const stats = computeStudentStats(studentId);
+      const answers = allTaskBlocks.map((block) => {
+        const result = student.responses?.[block.id] || null;
+        return {
+          taskId: block.id,
+          answer: result?.answer ?? result?.response ?? null,
+          isCorrect: result?.correct === true,
+          timestamp: result?.timestamp || result?.savedAt || null,
+          submitted: result?.submitted === true,
+        };
+      });
+      return {
+        studentId,
+        name: student.name || 'Student',
+        score: stats.pct,
+        answers,
+      };
+    });
+  }, [students, allTaskBlocks, computeStudentStats]);
+
+  const taskAnalytics = useMemo(() => {
+    return allTaskBlocks.map((block, index) => {
+      const answers = studentRows
+        .map((row) => row.answers.find((a) => a.taskId === block.id))
+        .filter(Boolean);
+      const submitted = answers.filter((a) => a.submitted);
+      const correctCount = submitted.filter((a) => a.isCorrect).length;
+      const percentCorrect = submitted.length > 0 ? Math.round((correctCount / submitted.length) * 100) : 0;
+
+      const mistakesMap = new Map();
+      submitted
+        .filter((a) => !a.isCorrect)
+        .forEach((a) => {
+          const key = normalizeAnswerForBucket(a.answer);
+          mistakesMap.set(key, (mistakesMap.get(key) || 0) + 1);
+        });
+
+      const mistakes = [...mistakesMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([answer, count]) => ({ answer, count }));
+
+      return {
+        taskId: block.id,
+        label: getBlockLabel(block, index),
+        percentCorrect,
+        totalSubmitted: submitted.length,
+        mistakes,
+      };
+    });
+  }, [allTaskBlocks, studentRows]);
+
+  const exportResultsJson = () => {
+    const payload = {
+      sessionId,
+      exportedAt: new Date().toISOString(),
+      students: studentRows.map((row) => ({
+        sessionId,
+        studentId: row.studentId,
+        name: row.name,
+        score: row.score,
+        answers: row.answers,
+      })),
+      tasks: taskAnalytics,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `live-results-${sessionId}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportResultsPdf = () => {
+    window.print();
+  };
 
   if (!supportsLive || validation.issues.length > 0) {
     return (
@@ -362,6 +501,14 @@ export default function LiveHost({ lesson, onExit }) {
         <div className="flex items-center gap-3">
           <div className="text-sm font-semibold">{lesson?.title || 'Live Lesson'}</div>
           <span className="border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-mono tracking-wider">PIN: {pin}</span>
+          <div className="ml-1 flex items-center gap-1 border border-zinc-700 bg-zinc-900 p-0.5">
+            <button type="button" onClick={() => setHostTab('live')} className={`px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${hostTab === 'live' ? 'bg-white text-zinc-900' : 'text-zinc-400'}`}>
+              Live
+            </button>
+            <button type="button" onClick={() => setHostTab('results')} className={`px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${hostTab === 'results' ? 'bg-white text-zinc-900' : 'text-zinc-400'}`}>
+              Results
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{transportMode}</span>
@@ -371,7 +518,96 @@ export default function LiveHost({ lesson, onExit }) {
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center p-4 sm:p-6">
-        {phase === PHASE.LOBBY && (
+        {hostTab === 'results' && (
+          <div className="w-full max-w-6xl">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Results Dashboard</div>
+                <div className="mt-1 text-sm text-zinc-300">Real-time student outcomes and task analytics for session {sessionId}.</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={exportResultsJson} className="border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:text-white">Export JSON</button>
+                <button type="button" onClick={exportResultsPdf} className="border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:text-white">Print PDF</button>
+              </div>
+            </div>
+
+            <div className="mb-5 overflow-hidden border border-zinc-800 bg-zinc-900">
+              <table className="w-full text-left text-xs text-zinc-300">
+                <thead className="bg-zinc-950/60 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-2">Student</th>
+                    <th className="px-3 py-2">Score</th>
+                    <th className="px-3 py-2">Answered</th>
+                    <th className="px-3 py-2">Expand</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studentRows.map((row) => {
+                    const answeredCount = row.answers.filter((a) => a.submitted).length;
+                    const isExpanded = expandedStudentId === row.studentId;
+                    return (
+                      <Fragment key={row.studentId}>
+                        <tr key={row.studentId} className="border-t border-zinc-800">
+                          <td className="px-3 py-2 font-medium">{row.name}</td>
+                          <td className="px-3 py-2">{row.score}%</td>
+                          <td className="px-3 py-2">{answeredCount}/{allTaskBlocks.length}</td>
+                          <td className="px-3 py-2">
+                            <button type="button" onClick={() => setExpandedStudentId(isExpanded ? '' : row.studentId)} className="border border-zinc-700 px-2 py-1 text-[10px] text-zinc-400 hover:text-white">
+                              {isExpanded ? 'Hide' : 'Show'}
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="border-t border-zinc-800 bg-zinc-950/40">
+                            <td colSpan={4} className="px-3 py-3">
+                              <div className="space-y-1">
+                                {row.answers.map((answer, idx) => {
+                                  const tone = answer.submitted ? (answer.isCorrect ? 'border-emerald-700 bg-emerald-950/30 text-emerald-200' : 'border-red-700 bg-red-950/30 text-red-200') : 'border-zinc-700 bg-zinc-900 text-zinc-400';
+                                  return (
+                                    <div key={`${answer.taskId}-${idx}`} className={`border px-2 py-2 text-[11px] ${tone}`}>
+                                      <div className="font-medium">{taskAnalytics.find((t) => t.taskId === answer.taskId)?.label || answer.taskId}</div>
+                                      <div className="mt-0.5">Answer: {normalizeAnswerForBucket(answer.answer)}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                  {studentRows.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-4 text-center text-zinc-500">No student responses yet.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="border border-zinc-800 bg-zinc-900 p-4">
+              <div className="mb-3 text-[10px] uppercase tracking-[0.16em] text-zinc-500">Per-Task Analytics</div>
+              <div className="space-y-2">
+                {taskAnalytics.map((task) => (
+                  <div key={task.taskId} className="border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-300">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{task.label}</span>
+                      <span>{task.percentCorrect}% correct ({task.totalSubmitted} submitted)</span>
+                    </div>
+                    {task.mistakes.length > 0 && (
+                      <div className="mt-1 text-[11px] text-zinc-400">
+                        Most common mistakes: {task.mistakes.map((m) => `${m.answer} (${m.count})`).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {hostTab === 'live' && phase === PHASE.LOBBY && (
           <div className="w-full max-w-lg text-center">
             <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Game PIN</div>
             <div className="mt-2 text-5xl font-black tracking-wider sm:text-6xl">{pin}</div>
@@ -409,7 +645,7 @@ export default function LiveHost({ lesson, onExit }) {
           </div>
         )}
 
-        {phase === PHASE.RUNNING && (
+        {hostTab === 'live' && phase === PHASE.RUNNING && (
           <div className="w-full max-w-6xl">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -425,7 +661,7 @@ export default function LiveHost({ lesson, onExit }) {
           </div>
         )}
 
-        {phase === PHASE.FINISHED && (
+        {hostTab === 'live' && phase === PHASE.FINISHED && (
           <div className="w-full max-w-md text-center">
             <div className="mb-6 text-2xl font-black">Live lesson complete</div>
             <div className="mb-4 text-sm text-zinc-400">Students have reached the safe final state. The host can exit cleanly at any time.</div>

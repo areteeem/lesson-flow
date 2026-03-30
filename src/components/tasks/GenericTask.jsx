@@ -125,7 +125,7 @@ function MediaRenderer({ block, onComplete }) {
         <div className="border border-zinc-200 bg-zinc-50 p-4">
           {block.taskType === 'video_questions' && media ? <video controls className="w-full" src={media} /> : null}
           {block.taskType === 'audio_transcription' && media ? <audio controls className="w-full" src={media} /> : null}
-          {['image_labeling', 'map_geography_label', 'hotspot_selection'].includes(block.taskType) && media ? <img src={media} alt={block.title || block.taskType} className="w-full object-contain" /> : null}
+          {['image_labeling', 'map_geography_label', 'hotspot_selection'].includes(block.taskType) && media ? <img src={media} alt={block.title || block.taskType} loading="lazy" decoding="async" className="w-full object-contain" /> : null}
           {!media && <div className="flex min-h-48 items-center justify-center text-sm text-zinc-500">Attach `Media`, `Image`, `Video`, or `Audio` in DSL.</div>}
         </div>
         <div className="space-y-3">

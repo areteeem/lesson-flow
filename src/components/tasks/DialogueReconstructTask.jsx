@@ -31,7 +31,7 @@ function stableShuffleLocal(arr, seed) {
   return copy;
 }
 
-export default function DialogueReconstructTask({ block, onComplete }) {
+export default function DialogueReconstructTask({ block, onComplete, onProgress }) {
   const correctOrder = useMemo(() => parseLines(block.text), [block.text]);
   const speakerMap = useMemo(() => {
     const map = new Map();
@@ -84,6 +84,7 @@ export default function DialogueReconstructTask({ block, onComplete }) {
       const [moved] = next.splice(from, 1);
       const adj = to > from ? to - 1 : to;
       next.splice(adj, 0, moved);
+      onProgress?.({ submitted: false, response: next.map((line) => `${line.speaker}: ${line.content}`) });
       return next;
     });
   };
@@ -148,6 +149,7 @@ export default function DialogueReconstructTask({ block, onComplete }) {
     setItems((prev) => {
       const next = [...prev];
       [next[idx], next[target]] = [next[target], next[idx]];
+      onProgress?.({ submitted: false, response: next.map((line) => `${line.speaker}: ${line.content}`) });
       return next;
     });
   };

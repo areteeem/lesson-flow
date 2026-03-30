@@ -29,6 +29,8 @@ function useSwipe(onSwipeLeft, onSwipeRight) {
 }
 
 export default function LessonPlayer({ lesson, onExit }) {
+  const SIDEBAR_ITEM_HEIGHT = 76;
+  const SIDEBAR_OVERSCAN = 6;
   const validation = useMemo(() => validateLessonStructure(lesson), [lesson]);
   const blocks = useMemo(() => normalizeVisibleBlocks(lesson?.blocks || []), [lesson]);
   const sessionKey = lesson?.id ? `lf-player-${lesson.id}` : null;
@@ -47,6 +49,20 @@ export default function LessonPlayer({ lesson, onExit }) {
   const [fontSettings, setFontSettings] = useState(loadFontSettings);
   const [showFontPanel, setShowFontPanel] = useState(false);
   const shellRef = useRef(null);
+  const sidebarViewportRef = useRef(null);
+  const [sidebarScrollTop, setSidebarScrollTop] = useState(0);
+  const [sidebarHeight, setSidebarHeight] = useState(560);
+
+  useEffect(() => {
+    if (!sidebarOpen || !sidebarViewportRef.current) return undefined;
+    const viewport = sidebarViewportRef.current;
+    const updateHeight = () => setSidebarHeight(viewport.clientHeight || 560);
+    updateHeight();
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [sidebarOpen]);
 
   useEffect(() => {
     if (blocks.length === 0) {
@@ -201,17 +217,50 @@ export default function LessonPlayer({ lesson, onExit }) {
   const completedCount = blocks.filter(isComplete).length;
   const progressWidth = blocks.length > 0 ? `${(completedCount / blocks.length) * 100}%` : '0%';
   const current = blocks[currentIndex] || null;
+  const virtualWindow = useMemo(() => {
+    const total = blocks.length;
+    if (total <= 60) {
+      return {
+        topPadding: 0,
+        bottomPadding: 0,
+        start: 0,
+        end: total,
+      };
+    }
+
+    const visible = Math.max(8, Math.ceil(sidebarHeight / SIDEBAR_ITEM_HEIGHT));
+    const start = Math.max(0, Math.floor(sidebarScrollTop / SIDEBAR_ITEM_HEIGHT) - SIDEBAR_OVERSCAN);
+    const end = Math.min(total, start + visible + SIDEBAR_OVERSCAN * 2);
+    return {
+      topPadding: start * SIDEBAR_ITEM_HEIGHT,
+      bottomPadding: (total - end) * SIDEBAR_ITEM_HEIGHT,
+      start,
+      end,
+    };
+  }, [blocks.length, sidebarHeight, sidebarScrollTop, SIDEBAR_ITEM_HEIGHT, SIDEBAR_OVERSCAN]);
+
+  const visibleBlocks = useMemo(() => {
+    if (blocks.length <= 60) return blocks;
+    return blocks.slice(virtualWindow.start, virtualWindow.end);
+  }, [blocks, virtualWindow]);
 
   return (
     <div ref={shellRef} className="player-shell flex min-h-screen bg-[#f7f7f5]" style={getFontCSSVars(effectiveFontSettings)}>
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex">
           <button type="button" onClick={() => setSidebarOpen(false)} className="absolute inset-0 bg-black/20" />
-          <aside className="relative z-10 h-full w-[min(24rem,88vw)] overflow-y-auto border-r border-zinc-200 bg-white p-4 md:w-96 md:p-5">
+          <aside
+            ref={sidebarViewportRef}
+            onScroll={(event) => setSidebarScrollTop(event.currentTarget.scrollTop)}
+            className="relative z-10 h-full w-[min(24rem,88vw)] overflow-y-auto border-r border-zinc-200 bg-white p-4 md:w-96 md:p-5"
+          >
             <div className="mb-1 text-sm font-semibold text-zinc-900">Lesson Map</div>
             <div className="mb-4 text-xs text-zinc-500">{completedCount} of {blocks.length} completed</div>
             <div className="space-y-1.5">
-              {blocks.map((block, index) => (
+              {virtualWindow.topPadding > 0 && <div style={{ height: `${virtualWindow.topPadding}px` }} />}
+              {visibleBlocks.map((block, offset) => {
+                const index = blocks.length <= 60 ? offset : virtualWindow.start + offset;
+                return (
                 <button key={block.id} type="button" onClick={() => { setCurrentIndex(index); setSidebarOpen(false); }} className={[
                   'w-full border px-3 py-2.5 text-left transition',
                   index === currentIndex ? 'border-zinc-900 bg-zinc-950 text-white' : isComplete(block) ? 'border-zinc-200 bg-zinc-50 text-zinc-500' : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50',
@@ -224,7 +273,9 @@ export default function LessonPlayer({ lesson, onExit }) {
                     {isComplete(block) && <span className="shrink-0 text-base">✓</span>}
                   </div>
                 </button>
-              ))}
+              );
+              })}
+              {virtualWindow.bottomPadding > 0 && <div style={{ height: `${virtualWindow.bottomPadding}px` }} />}
             </div>
           </aside>
         </div>

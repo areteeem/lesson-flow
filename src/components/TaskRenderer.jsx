@@ -96,7 +96,7 @@ const MAP = {
   text_linking: TextLinkingTask,
 };
 
-export default function TaskRenderer({ block, onComplete, existingResult }) {
+export default function TaskRenderer({ block, onComplete, onProgress, existingResult }) {
   const Component = MAP[block.taskType];
   const [attempt, setAttempt] = useState(0);
   const [feedback, setFeedback] = useState(null);
@@ -110,6 +110,11 @@ export default function TaskRenderer({ block, onComplete, existingResult }) {
     setFeedback(result?.correct ? 'correct' : 'wrong');
     setTimeout(() => setFeedback(null), 1200);
     onComplete?.(result);
+  };
+
+  const handleProgress = (result) => {
+    setLastResult(result);
+    onProgress?.(result);
   };
 
   const retry = () => {
@@ -130,7 +135,9 @@ export default function TaskRenderer({ block, onComplete, existingResult }) {
       )}
       <div key={attempt}>
         <ErrorBoundary message={`Failed to render task: ${block.taskType}`}>
-          {Component ? <Component block={block} onComplete={handleComplete} existingResult={attempt === 0 ? existingResult : undefined} /> : <GenericTask block={block} onComplete={handleComplete} existingResult={attempt === 0 ? existingResult : undefined} />}
+          {Component
+            ? <Component block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} />
+            : <GenericTask block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} />}
         </ErrorBoundary>
       </div>
       {(hints.length > 0 || (lastResult?.submitted && !lastResult?.correct)) && (

@@ -13,7 +13,7 @@ function splitBlankTokens(text = '') {
   return text.split(BLANK_MARKER_RE).filter((token) => token !== '');
 }
 
-export default function TextEntryTask({ block, onComplete, existingResult }) {
+export default function TextEntryTask({ block, onComplete, onProgress, existingResult }) {
   const tokens = useMemo(() => splitBlankTokens(block.text || ''), [block.text]);
   const inlineBlankCount = tokens.filter((token) => /(\{\}|_{3,}|\[blank\]|\[\d+\])/i.test(token)).length;
   const inlineMode = ['fill_typing', 'dialogue_completion', 'type_in_blank'].includes(block.taskType) && inlineBlankCount > 0;
@@ -114,7 +114,11 @@ export default function TextEntryTask({ block, onComplete, existingResult }) {
               <input
                 key={index}
                 value={value}
-                onChange={(event) => setValues((current) => current.map((entry, currentIndex) => currentIndex === blankIndex ? event.target.value : entry))}
+                onChange={(event) => setValues((current) => {
+                  const next = current.map((entry, currentIndex) => currentIndex === blankIndex ? event.target.value : entry);
+                  onProgress?.({ submitted: false, response: next });
+                  return next;
+                })}
                 disabled={submitted}
                 placeholder={block.placeholder || `Blank ${blankIndex + 1}`}
                 className={[
@@ -139,7 +143,11 @@ export default function TextEntryTask({ block, onComplete, existingResult }) {
                 <textarea
                   rows={2}
                   value={values[index] || ''}
-                  onChange={(event) => setValues((current) => current.map((entry, currentIndex) => currentIndex === index ? event.target.value : entry))}
+                  onChange={(event) => setValues((current) => {
+                    const next = current.map((entry, currentIndex) => currentIndex === index ? event.target.value : entry);
+                    onProgress?.({ submitted: false, response: next });
+                    return next;
+                  })}
                   disabled={submitted}
                   placeholder="Correct this sentence..."
                   className={[
@@ -168,7 +176,11 @@ export default function TextEntryTask({ block, onComplete, existingResult }) {
                   key={index}
                   rows={block.taskType === 'open' ? 5 : 2}
                   value={value}
-                  onChange={(event) => setValues((current) => current.map((entry, currentIndex) => currentIndex === index ? event.target.value : entry))}
+                  onChange={(event) => setValues((current) => {
+                    const next = current.map((entry, currentIndex) => currentIndex === index ? event.target.value : entry);
+                    onProgress?.({ submitted: false, response: next });
+                    return next;
+                  })}
                   disabled={submitted && block.taskType !== 'open'}
                   placeholder={block.placeholder || `Answer ${index + 1}`}
                   className={[
