@@ -289,7 +289,12 @@ export function saveSession(session) {
     id: session.id || crypto.randomUUID(),
     timestamp: session.timestamp || Date.now(),
   };
-  sessions.unshift(payload);
+  const existingIndex = sessions.findIndex((entry) => entry.id === payload.id);
+  if (existingIndex >= 0) {
+    sessions[existingIndex] = payload;
+  } else {
+    sessions.unshift(payload);
+  }
   saveScopedDomainData('sessions', sessions, { updatedAt: payload.timestamp || Date.now() });
   return payload;
 }

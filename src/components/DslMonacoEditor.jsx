@@ -195,7 +195,7 @@ function registerDslLanguage(monaco) {
   });
 }
 
-function mapWarningsToMarkers(warnings, lines, monaco) {
+function classifyWarnings(warnings, lines) {
   return warnings.map((msg) => {
     let lineNum = 1;
     // Try to find a task/slide label from the warning, e.g. Task "Q1" or Slide "S1"
@@ -234,17 +234,26 @@ function mapWarningsToMarkers(warnings, lines, monaco) {
       }
     }
 
-    const severity = msg.includes('error') || msg.includes('Error') ? monaco.MarkerSeverity.Error
-      : msg.includes('Unknown') || msg.includes('Ignored') ? monaco.MarkerSeverity.Warning
+    const sev = msg.includes('error') || msg.includes('Error') ? 'error'
+      : msg.includes('Unknown') || msg.includes('Ignored') ? 'warning' : 'info';
+
+    return { msg, sev, lineNum };
+  });
+}
+
+function mapWarningsToMarkers(warnings, lines, monaco) {
+  return classifyWarnings(warnings, lines).map((item) => {
+    const severity = item.sev === 'error' ? monaco.MarkerSeverity.Error
+      : item.sev === 'warning' ? monaco.MarkerSeverity.Warning
       : monaco.MarkerSeverity.Info;
 
     return {
       severity,
-      message: msg,
-      startLineNumber: lineNum,
+      message: item.msg,
+      startLineNumber: item.lineNum,
       startColumn: 1,
-      endLineNumber: lineNum,
-      endColumn: (lines[lineNum - 1] || '').length + 1,
+      endLineNumber: item.lineNum,
+      endColumn: (lines[item.lineNum - 1] || '').length + 1,
     };
   });
 }
@@ -264,6 +273,13 @@ export default function DslMonacoEditor({ value, onChange }) {
       setTimeout(() => setCopied(null), 1500);
     });
   };
+
+  const warningReport = useCallback(() => {
+    const lines = (value || '').split('\n');
+    const classified = classifyWarnings(warnings, lines);
+    if (classified.length === 0) return 'No issues detected.';
+    return classified.map((entry) => `- Line ${entry.lineNum}: ${entry.msg}`).join('\n');
+  }, [value, warnings]);
 
   const validate = useCallback((text) => {
     const monaco = monacoRef.current;
@@ -319,10 +335,10 @@ export default function DslMonacoEditor({ value, onChange }) {
           {copied === 'dsl' ? '✓ Copied' : 'Copy DSL'}
         </button>
         <button type="button" onClick={() => {
-          const prompt = `Fix the following Lesson DSL. Return ONLY the corrected DSL, no explanations:\n\n${value || ''}${warnings.length ? `\n\nCurrent issues:\n${warnings.map((w) => `- ${w}`).join('\n')}` : ''}`;
+          const prompt = `Fix the following Lesson DSL. Return ONLY the corrected DSL, no explanations:\n\n${value || ''}${warnings.length ? `\n\nCurrent issues with line numbers:\n${warningReport()}` : ''}`;
           copyToClipboard(prompt, 'fix');
         }} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
-          {copied === 'fix' ? '✓ Copied' : 'Copy DSL + Issues'}
+          {copied === 'fix' ? '✓ Copied' : 'Copy DSL + Issues (lines)'}
         </button>
         <button type="button" onClick={() => setShowPasteFix((v) => !v)} className={`border px-2 py-1 text-[10px] font-medium transition ${showPasteFix ? 'border-emerald-600 bg-emerald-600/20 text-emerald-400' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>
           {showPasteFix ? 'Cancel Paste' : 'Paste Fix'}
@@ -380,18 +396,7 @@ export default function DslMonacoEditor({ value, onChange }) {
       </div>
       {warnings.length > 0 && (() => {
         const lines = (value || '').split('\n');
-        const classified = warnings.map((msg) => {
-          const sev = msg.includes('error') || msg.includes('Error') ? 'error'
-            : msg.includes('Unknown') || msg.includes('Ignored') ? 'warning' : 'info';
-          const labelMatch = msg.match(/(?:Task|Slide)\s+"([^"]+)"/);
-          let lineNum = 1;
-          if (labelMatch) {
-            for (let j = 0; j < lines.length; j++) {
-              if (lines[j].toLowerCase().includes(labelMatch[1].toLowerCase())) { lineNum = j + 1; break; }
-            }
-          }
-          return { msg, sev, lineNum };
-        });
+        const classified = classifyWarnings(warnings, lines);
         const errors = classified.filter((c) => c.sev === 'error');
         const warns = classified.filter((c) => c.sev === 'warning');
         const infos = classified.filter((c) => c.sev === 'info');

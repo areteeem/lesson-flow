@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 import { TASK_REGISTRY, getTaskDefinition } from '../config/taskRegistry';
 import { getCatalogDsl, getSlideDslExample, getTaskDslExample } from '../utils/builder';
@@ -47,6 +47,7 @@ export default function GuidePanel({ onClose, onApplyPreset }) {
   const [quickIncludeSpeaking, setQuickIncludeSpeaking] = useState(true);
   const [quickIncludeVocabulary, setQuickIncludeVocabulary] = useState(true);
   const [quickIncludeReading, setQuickIncludeReading] = useState(true);
+  const [quickReadingWordCount, setQuickReadingWordCount] = useState(180);
   const [quickIncludeGrammar, setQuickIncludeGrammar] = useState(true);
   const [quickCopied, setQuickCopied] = useState(false);
   const [level, setLevel] = useState('A2');
@@ -66,6 +67,12 @@ export default function GuidePanel({ onClose, onApplyPreset }) {
   const [importLevel, setImportLevel] = useState('B1');
   const [importCopied, setImportCopied] = useState(false);
 
+  useEffect(() => {
+    if (focus === 'reading' || focus === 'mixed' || templatePreset === 'reading' || templatePreset === 'mixed') {
+      setQuickIncludeReading(true);
+    }
+  }, [focus, templatePreset]);
+
   const availableTasks = useMemo(() => TASK_REGISTRY.filter((entry) => isTaskAllowed(entry, excludeInputTextTasks)), [excludeInputTextTasks]);
 
   const markdownLines = [
@@ -75,6 +82,9 @@ export default function GuidePanel({ onClose, onApplyPreset }) {
 
   const qualityRules = [
     '- Return only raw DSL text (not code fences, not a JSON block, not markdown). Treat the output as a plain .txt file containing only DSL.',
+    '- NEVER leave a selected slide or task block empty. Every generated #SLIDE and #TASK must include meaningful, non-placeholder instructional content.',
+    '- For every generated #TASK block: Question is required; Hint is required; Explanation is required; and grading fields (Answer/Correct) must be present where applicable.',
+    '- For every generated #SLIDE block: include a non-empty Title and non-empty content fields relevant to that slide type.',
     '- Every slide must contain meaningful content. Never leave Content:, Left:, Right:, or Dialogue: empty.',
     '- For multiline fields (Content, Left, Right, Text, Dialogue, etc.), always put the value on the NEXT line after the field name. Good:\nContent:\n### Title\nSome text\n\nBad: Content: ### Title',
     '- Media, Image, Video, and Audio fields must contain a single raw URL. Never wrap URLs in markdown links or images like [text](url) or ![alt](url).',
@@ -220,6 +230,7 @@ Requirements:
 - Minimum ${slideCount} slides and ${taskCount} tasks
 - Slide types to use: ${selectedSlides.join(', ')}
 - Task types: ${selectedTaskNames}
+- Cover every selected slide/task type at least once where possible, and never return empty placeholder blocks.
 - ${excludeInputTextTasks ? 'EXCLUDE input-text tasks (fill_typing, short_answer, long_answer, dialogue_completion, error_correction, flash_response, memory_recall, keyword_expand).' : 'Input-text tasks are allowed only when they truly add value.'}
 - MOST slides should be full-width #SLIDE (single column). Only use two-column or LinkTo sparingly.
 - Include hints and explanations for every task
@@ -277,7 +288,7 @@ ${taskExamples || getCatalogDsl()}`;
 - Then create 2–3 tasks: MULTIPLE_CHOICE, TRUE_FALSE, DRAG_TO_BLANK, ERROR_CORRECTION, FILL_TYPING, or ORDER.
 - Tasks should test the grammar point with varied difficulty.`);
     if (quickIncludeReading) sectionBlocks.push(`### Reading section (per part)
-- Create a #SLIDE with a reading passage (150–300 words for the given level) in Content. Use markdown headings and paragraphs.
+  - Create a #SLIDE with a reading passage (${Math.max(60, Number(quickReadingWordCount) || 180)} words target, +/- 20%) in Content. Use markdown headings and paragraphs.
 - Then create 3–5 comprehension tasks using: MULTIPLE_CHOICE (about the text), TRUE_FALSE (statements about the text), SHORT_ANSWER, or READING_HIGHLIGHT (find specific words).
 - The reading text should relate to the part theme and contain examples of the target grammar.`);
 
@@ -311,6 +322,7 @@ FORMAT RULES (MUST follow every one):
 - Start with #LESSON block with Title, LessonTopic, GrammarTopic fields.
 - Every #SLIDE block needs Title and Content (on the NEXT line after "Content:").
 - Every #TASK block needs Question, the appropriate data fields (Options/Items/Blanks/Pairs/Cards depending on type), Answer/Correct, Hint, and Explanation.
+- Do not generate empty placeholders. Every block must be fully authored and classroom-ready.
 - For multiline fields (Content, Text, Left, Right, Dialogue, Explanation), put the value on the NEXT line:
   Content:
   ### My Heading
@@ -412,7 +424,7 @@ ${exampleDialogueFill}
 ${exampleHighlight}
 
 Now generate the COMPLETE lesson with all ${quickParts} parts. Each part should have ~${quickTasksPerPart} tasks and relevant slides. Output ONLY the DSL text, nothing else.`;
-  }, [quickTopic, quickGrammar, quickLevel, quickHardness, quickDuration, quickParts, quickTasksPerPart, quickIncludeSpeaking, quickIncludeVocabulary, quickIncludeReading, quickIncludeGrammar]);
+  }, [quickTopic, quickGrammar, quickLevel, quickHardness, quickDuration, quickParts, quickTasksPerPart, quickIncludeSpeaking, quickIncludeVocabulary, quickIncludeReading, quickIncludeGrammar, quickReadingWordCount]);
 
   const templateEntries = [
     ...customTemplates.map((t) => ({ key: `custom-${t.id}`, label: t.name, kind: 'Custom', category: 'My Templates', value: t.dsl, customId: t.id })),
@@ -548,6 +560,19 @@ Output ONLY the DSL text, nothing else.`;
                     </label>
                   ))}
                 </div>
+                {quickIncludeReading && (
+                  <label className="mt-3 block text-xs text-zinc-600">
+                    Reading passage target word count
+                    <input
+                      type="number"
+                      min={60}
+                      max={1200}
+                      value={quickReadingWordCount}
+                      onChange={(event) => setQuickReadingWordCount(Math.max(60, Math.min(1200, Number(event.target.value) || 180)))}
+                      className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                    />
+                  </label>
+                )}
               </div>
 
               {quickPrompt ? (

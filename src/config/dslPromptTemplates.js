@@ -385,6 +385,8 @@ export function buildGenerationPrompt(config = {}) {
   parts.push('- If media is required, provide Media with a valid URL or a clear placeholder URL');
   parts.push('- Use straight ASCII punctuation and plain URLs only');
   parts.push('- For multiline fields, place content on lines below the key (not inline after the colon)');
+  parts.push('- Every generated #SLIDE and #TASK must be fully authored: no empty Title, Content, Question, Hint, or Explanation placeholders');
+  parts.push('- If slideTypes/taskTypes are provided, include each requested type at least once unless impossible for pedagogy');
   parts.push('- Return ONLY the DSL, no explanations or markdown fences');
 
   parts.push('\n## Parser safety checklist');
