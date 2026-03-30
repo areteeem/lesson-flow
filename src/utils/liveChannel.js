@@ -10,11 +10,22 @@ import { ensureLiveUser, persistLivePayload } from './liveSupabaseData.js';
 const DEV_PROXY_BASE = '/__supabase';
 const CAN_USE_DEV_PROXY = Boolean(import.meta.env.DEV);
 
-function buildSupabaseHeaders(extra = {}) {
+async function buildSupabaseHeaders(client, extra = {}) {
   const { anonKey } = getSupabaseConfig();
+  let accessToken = anonKey;
+
+  try {
+    const { data } = await client.auth.getSession();
+    if (data?.session?.access_token) {
+      accessToken = data.session.access_token;
+    }
+  } catch {
+    // Fall back to anon key for diagnostics and degraded connectivity modes.
+  }
+
   return {
     apikey: anonKey,
-    Authorization: `Bearer ${anonKey}`,
+    Authorization: `Bearer ${accessToken}`,
     ...extra,
   };
 }
@@ -115,12 +126,13 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
   }
 
   async function publishEventViaRest(envelope) {
+    const headers = await buildSupabaseHeaders(client, {
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    });
     const { response, path } = await fetchSupabaseWithFallback('/rest/v1/live_events', {
       method: 'POST',
-      headers: buildSupabaseHeaders({
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      }),
+      headers,
       body: JSON.stringify(envelope),
     });
 
@@ -131,6 +143,7 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
   }
 
   async function pollLiveEvents() {
+    const headers = await buildSupabaseHeaders(client);
     const params = new URLSearchParams();
     params.set('select', 'id,payload,sender_client_id');
     params.set('session_id', `eq.${sessionId}`);
@@ -142,7 +155,7 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
 
     const { response } = await fetchSupabaseWithFallback(`/rest/v1/live_events?${params.toString()}`, {
       method: 'GET',
-      headers: buildSupabaseHeaders(),
+      headers,
     });
 
     if (!response.ok) return;
@@ -160,6 +173,7 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
   }
 
   async function primePollingCursor() {
+    const headers = await buildSupabaseHeaders(client);
     const params = new URLSearchParams();
     params.set('select', 'id');
     params.set('session_id', `eq.${sessionId}`);
@@ -168,7 +182,7 @@ function createSupabaseChannel({ sessionId, role, playerId, name, onStatus }) {
 
     const { response } = await fetchSupabaseWithFallback(`/rest/v1/live_events?${params.toString()}`, {
       method: 'GET',
-      headers: buildSupabaseHeaders(),
+      headers,
     });
     if (!response.ok) return;
 

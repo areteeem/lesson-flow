@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { exportSession, printSessionReport, saveSession } from '../storage';
 import { summarizeResults } from '../utils/grading';
+import { syncSessionGradeToCloud } from '../utils/gradingCloud';
 
 function statusTone(entry) {
   if (entry.correct === true) return 'border-emerald-200 bg-emerald-50 text-emerald-800';
@@ -45,6 +46,8 @@ function computeTakeaways(breakdown) {
 
 export default function GradingScreen({ lesson, blocks, results, studentName, onStudentNameChange, onRestart, onExit }) {
   const [saved, setSaved] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState('idle');
+  const [cloudMessage, setCloudMessage] = useState('');
   const safeBlocks = Array.isArray(blocks) ? blocks.filter(Boolean) : [];
   const summary = useMemo(() => summarizeResults(safeBlocks, results), [safeBlocks, results]);
   const takeaways = useMemo(() => computeTakeaways(summary.breakdown), [summary.breakdown]);
@@ -66,6 +69,29 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
     breakdown: summary.breakdown,
     lessonPreview: lesson?.dsl || lesson?.blocks?.map((block) => block.title || block.question || block.instruction || '').find(Boolean) || '',
     timestamp: Date.now(),
+  };
+
+  const handleSaveSession = async () => {
+    const savedSession = saveSession(sessionPayload);
+    setSaved(true);
+    setCloudStatus('syncing');
+    setCloudMessage('Saved locally. Syncing grading data to cloud...');
+
+    const result = await syncSessionGradeToCloud(savedSession);
+    if (result.state === 'synced') {
+      setCloudStatus('synced');
+      setCloudMessage('Saved locally and synced to cloud.');
+      return;
+    }
+
+    if (result.state === 'unavailable') {
+      setCloudStatus('local-only');
+      setCloudMessage(`Saved locally (${result.reason || 'cloud unavailable'}).`);
+      return;
+    }
+
+    setCloudStatus('error');
+    setCloudMessage(`Saved locally. Cloud sync failed: ${result.reason || 'unknown error'}.`);
   };
 
   return (
@@ -111,11 +137,16 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
                   <input value={studentName} onChange={(event) => onStudentNameChange(event.target.value)} placeholder="Enter student name" className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
                 </label>
                 <div className="mt-4 grid gap-3">
-                  <button type="button" disabled={saved} onClick={() => { saveSession(sessionPayload); setSaved(true); }} className={`border px-4 py-3 text-sm font-medium transition ${saved ? 'border-emerald-300 bg-emerald-50 text-emerald-700 cursor-default' : 'border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800'}`}>{saved ? 'Saved ✓' : 'Save session'}</button>
+                  <button type="button" disabled={saved} onClick={handleSaveSession} className={`border px-4 py-3 text-sm font-medium transition ${saved ? 'border-emerald-300 bg-emerald-50 text-emerald-700 cursor-default' : 'border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800'}`}>{saved ? 'Saved ✓' : 'Save session'}</button>
                   <button type="button" onClick={() => exportSession(sessionPayload)} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Export JSON</button>
                   <button type="button" onClick={() => printSessionReport(sessionPayload)} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Print / PDF</button>
                 </div>
                 {saved && <div className="mt-3 text-sm text-emerald-700">Session saved locally.</div>}
+                {saved && cloudStatus !== 'idle' && (
+                  <div className={`mt-2 text-xs ${cloudStatus === 'synced' ? 'text-emerald-700' : cloudStatus === 'syncing' ? 'text-zinc-500' : cloudStatus === 'error' ? 'text-red-600' : 'text-zinc-500'}`}>
+                    {cloudMessage}
+                  </div>
+                )}
               </>
             )}
           </div>

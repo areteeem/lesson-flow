@@ -4,7 +4,8 @@ import { Md } from '../FormattedText';
 export default function ScaleTask({ block, onComplete, existingResult }) {
   const min = Number(block.min ?? 1);
   const max = Number(block.max ?? 5);
-  const answer = Number(block.answer ?? block.correct ?? min);
+  const hasAnswerKey = (block.answer ?? block.correct) !== undefined && String(block.answer ?? block.correct).trim() !== '';
+  const answer = Number(hasAnswerKey ? (block.answer ?? block.correct) : min);
   const steps = useMemo(() => Array.from({ length: max - min + 1 }, (_, i) => min + i), [min, max]);
   const labels = block.labels || {};
   const [value, setValue] = useState(existingResult?.response ?? null);
@@ -12,6 +13,11 @@ export default function ScaleTask({ block, onComplete, existingResult }) {
 
   const submit = () => {
     if (value === null) return;
+    if (!hasAnswerKey) {
+      setSubmitted(true);
+      onComplete?.({ submitted: true, correct: true, score: 1, response: value, correctAnswer: null });
+      return;
+    }
     const distance = Math.abs(value - answer);
     const range = max - min || 1;
     const score = Math.max(0, 1 - distance / range);
@@ -76,7 +82,8 @@ export default function ScaleTask({ block, onComplete, existingResult }) {
       )}
 
       {!submitted && <button type="button" onClick={submit} disabled={value === null} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>}
-      {submitted && <div className={value === answer ? 'mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800' : 'mt-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800'}>Expected value: {answer}</div>}
+      {submitted && hasAnswerKey && <div className={value === answer ? 'mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800' : 'mt-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800'}>Expected value: {answer}</div>}
+      {submitted && !hasAnswerKey && <div className="mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Response saved ✓</div>}
       {submitted && block.explanation && <div className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>}
     </div>
   );

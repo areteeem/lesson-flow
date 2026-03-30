@@ -36,6 +36,40 @@ to anon
 using (true)
 with check (true);
 
+-- 0.1 Account snapshots table (cross-device account sync)
+create table if not exists public.account_snapshots (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  payload jsonb not null,
+  client_updated_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+alter table public.account_snapshots enable row level security;
+
+drop policy if exists "account_snapshots_select_own" on public.account_snapshots;
+drop policy if exists "account_snapshots_insert_own" on public.account_snapshots;
+drop policy if exists "account_snapshots_update_own" on public.account_snapshots;
+
+create policy "account_snapshots_select_own"
+on public.account_snapshots
+for select
+to authenticated
+using (auth.uid() = user_id);
+
+create policy "account_snapshots_insert_own"
+on public.account_snapshots
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+create policy "account_snapshots_update_own"
+on public.account_snapshots
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
 -- 1. Live Users table
 create table if not exists public.live_users (
   user_id text primary key,

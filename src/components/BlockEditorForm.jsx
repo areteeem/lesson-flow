@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { serializeBlockField, updateBlockField } from '../utils/builder';
-import { PALETTE_COLORS, CATEGORY_COLORS, DIALOGUE_COLORS } from '../config/constants';
+import { CATEGORY_COLORS, DIALOGUE_COLORS } from '../config/constants';
 import MarkdownComposer from './MarkdownComposer';
 
 function Field({ label, help, children }) {
@@ -346,52 +346,82 @@ function apply(onChange, block, field, value) {
   onChange(updateBlockField(block, field, value));
 }
 
-function AnswerSelector({ block, onChange, multiple = false }) {
-  const options = block.options || [];
+function OptionListEditor({ block, onChange, multiple = false, allowCorrect = true }) {
+  const options = (block.options || []).map((option) => String(option));
+  const safeOptions = options.length > 0 ? options : [''];
   const currentAnswers = (block.answer || '').split('|').map((a) => a.trim()).filter(Boolean);
-  const isSelected = (opt) => currentAnswers.includes(opt);
+  const isSelected = (option) => currentAnswers.includes(option);
 
-  const toggle = (opt) => {
+  const updateOptions = (next) => {
+    const normalized = next.map((entry) => entry.trimEnd());
+    onChange({
+      ...block,
+      options: normalized,
+      answer: currentAnswers.filter((answer) => normalized.includes(answer)).join(' | '),
+    });
+  };
+
+  const updateOption = (index, value) => {
+    const next = [...safeOptions];
+    next[index] = value;
+    updateOptions(next);
+  };
+
+  const addOption = () => updateOptions([...safeOptions, '']);
+
+  const removeOption = (index) => {
+    if (safeOptions.length <= 1) {
+      updateOptions(['']);
+      return;
+    }
+    updateOptions(safeOptions.filter((_, idx) => idx !== index));
+  };
+
+  const toggle = (option) => {
+    if (!allowCorrect) return;
     if (multiple) {
-      const next = isSelected(opt) ? currentAnswers.filter((a) => a !== opt) : [...currentAnswers, opt];
+      const next = isSelected(option) ? currentAnswers.filter((a) => a !== option) : [...currentAnswers, option];
       onChange({ ...block, answer: next.join(' | ') });
     } else {
-      onChange({ ...block, answer: opt });
+      onChange({ ...block, answer: option });
     }
   };
 
-  if (options.length === 0) {
-    return <div className="border border-dashed border-zinc-200 px-4 py-4 text-center text-xs text-zinc-400">Add options above, then tap the correct answer{multiple ? '(s)' : ''} here.</div>;
-  }
-
   return (
     <div className="space-y-2">
-      <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">
-        Tap correct answer{multiple ? '(s)' : ''}
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">Options</div>
+        <button type="button" onClick={addOption} className="border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:border-zinc-400">+ Option</button>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {options.map((opt, i) => {
-          const color = PALETTE_COLORS[i % PALETTE_COLORS.length];
-          const active = isSelected(opt);
+      <div className="space-y-2">
+        {safeOptions.map((option, index) => {
+          const active = isSelected(option);
           return (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => toggle(opt)}
-              className={[
-                'flex min-h-[48px] items-center gap-3 border-2 px-4 py-3 text-left text-sm font-medium transition',
-                active ? `${color.activeBg} ${color.activeText} border-transparent` : `${color.bg} ${color.border} text-zinc-800 ${color.hoverBorder}`,
-              ].join(' ')}
-            >
-              <span className={active ? 'flex h-5 w-5 shrink-0 items-center justify-center border-2 border-white/50 text-[10px] font-bold' : 'flex h-5 w-5 shrink-0 items-center justify-center border-2 border-zinc-300 text-[10px] font-bold text-zinc-400'}>
-                {active ? '✓' : String.fromCharCode(65 + i)}
-              </span>
-              <span className="flex-1">{opt}</span>
-            </button>
+            <div key={`${index}-${option}`} className="flex items-center gap-2 border border-zinc-200 px-2 py-2">
+              <span className="w-5 text-center text-[10px] text-zinc-400">{index + 1}</span>
+              <input
+                value={option}
+                onChange={(event) => updateOption(index, event.target.value)}
+                placeholder={`Option ${index + 1}`}
+                className="min-w-0 flex-1 border border-zinc-200 px-2 py-1.5 text-sm outline-none focus:border-zinc-900"
+              />
+              {allowCorrect && (
+                <button
+                  type="button"
+                  onClick={() => toggle(option)}
+                  disabled={!option.trim()}
+                  className={active ? 'border border-zinc-900 bg-zinc-900 px-2 py-1 text-[10px] text-white' : 'border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:border-zinc-400 disabled:opacity-40'}
+                  title={multiple ? 'Toggle as correct answer' : 'Set as correct answer'}
+                >
+                  {multiple ? (active ? 'Correct' : 'Mark') : (active ? 'Correct' : 'Set')}
+                </button>
+              )}
+              <button type="button" onClick={() => removeOption(index)} className="px-1 text-zinc-300 hover:text-red-500">×</button>
+            </div>
           );
         })}
       </div>
-      {currentAnswers.length === 0 && <div className="text-[10px] text-amber-600">No correct answer selected yet.</div>}
+      {allowCorrect && currentAnswers.length === 0 && <div className="text-[10px] text-amber-600">No correct answer selected yet.</div>}
     </div>
   );
 }
@@ -951,6 +981,12 @@ function DialogueEditor({ block, onChange }) {
 
 export default function BlockEditorForm({ block, onChange, compact = false }) {
   if (!block) return null;
+  const [showTaskMenu, setShowTaskMenu] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(Boolean((block.explanation || '').trim()));
+
+  useEffect(() => {
+    setShowExplanation(Boolean((block.explanation || '').trim()));
+  }, [block.id, block.explanation]);
 
   const area = (field, label, rows = compact ? 3 : 4, help = '') => (
     <Field label={label} help={help}>
@@ -1016,9 +1052,28 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
       {/* Toggle bar */}
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-100 pb-3">
         <Toggle checked={block.enabled !== false} onChange={(value) => apply(onChange, block, 'enabled', value)} />
-        {block.taskType === 'random_wheel' && <Toggle checked={Boolean(block.repeat)} onChange={(value) => apply(onChange, block, 'repeat', value)} label="Repeat" />}
-        {['multiple_choice', 'multi_select', 'opinion_survey'].includes(block.taskType) && <Toggle checked={Boolean(block.multiple)} onChange={(value) => apply(onChange, block, 'multiple', value)} label="Allow multiple" />}
-        {block.type === 'task' && <Toggle checked={block.shuffle !== false} onChange={(value) => apply(onChange, block, 'shuffle', value)} label="Shuffle" />}
+        {block.type === 'task' && (
+          <div className="relative ml-auto">
+            <button type="button" onClick={() => setShowTaskMenu((value) => !value)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-400" title="Task options">⋮</button>
+            {showTaskMenu && (
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-[240px] border border-zinc-200 bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
+                <div className="space-y-1">
+                  <Toggle checked={block.shuffle !== false} onChange={(value) => apply(onChange, block, 'shuffle', value)} label="Shuffle" />
+                  {block.taskType === 'random_wheel' && <Toggle checked={Boolean(block.repeat)} onChange={(value) => apply(onChange, block, 'repeat', value)} label="Repeat" />}
+                  {['multiple_choice', 'multi_select', 'opinion_survey', 'video_questions'].includes(block.taskType) && <Toggle checked={Boolean(block.multiple)} onChange={(value) => apply(onChange, block, 'multiple', value)} label="Allow multiple" />}
+                  <Toggle
+                    checked={showExplanation}
+                    onChange={(value) => {
+                      setShowExplanation(value);
+                      if (!value && (block.explanation || '').trim()) apply(onChange, block, 'explanation', '');
+                    }}
+                    label="Show description"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Primary: Question / Title */}
@@ -1028,7 +1083,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
       {block.type !== 'task' && richArea('content', 'Content', compact ? 8 : 10, 'Supports Markdown: headings, lists, bold, tables')}
       {block.type === 'task' && input('hint', 'Hint', 'Optional hint shown before answering')}
       {block.type === 'task' && input('points', 'Points', 'Scoring weight for this question (default 1)')}
-      {block.type === 'task' && taskPrompt('explanation', 'Explanation', 4, 'Shown after submission and supports formatting')}
+      {block.type === 'task' && showExplanation && taskPrompt('explanation', 'Description', 4, 'Optional text shown after submission and supports formatting')}
 
       {['two_column_text_task', 'image_task', 'video_task'].includes(block.type) && (
         <div className="grid gap-4 md:grid-cols-2">
@@ -1069,15 +1124,14 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
 
       {block.type === 'task' && (
         <>
-          {['multiple_choice', 'multi_select', 'true_false', 'yes_no', 'either_or', 'opinion_survey'].includes(block.taskType) && area('options', 'Options', 5, 'One option per line')}
-          {['multiple_choice', 'multi_select', 'true_false', 'yes_no', 'either_or'].includes(block.taskType) && (
-            <AnswerSelector block={block} onChange={onChange} multiple={block.taskType === 'multi_select' || block.multiple} />
-          )}
+          {['multiple_choice', 'multi_select', 'true_false', 'yes_no', 'either_or'].includes(block.taskType) && <OptionListEditor block={block} onChange={onChange} multiple={block.taskType === 'multi_select' || block.multiple} allowCorrect />}
+          {['opinion_survey'].includes(block.taskType) && <OptionListEditor block={block} onChange={onChange} multiple={Boolean(block.multiple)} allowCorrect={false} />}
+          {['video_questions'].includes(block.taskType) && <OptionListEditor block={block} onChange={onChange} multiple={Boolean(block.multiple)} allowCorrect />}
           {['short_answer', 'long_answer', 'error_correction', 'flash_response', 'choose_and_explain', 'scenario_decision', 'highlight_mistake', 'select_and_correct'].includes(block.taskType) && input('answer', 'Answer', block.taskType === 'highlight_mistake' ? 'The incorrect word in the text' : block.taskType === 'select_and_correct' ? 'The correct replacement' : 'Correct answer(s), use | for multiple')}
           {['drag_to_blank', 'fill_typing', 'short_answer', 'long_answer', 'reading_highlight', 'error_correction', 'flash_response', 'choose_and_explain', 'scenario_decision', 'conditional_branch_questions', 'highlight_differences', 'memory_recall', 'keyword_expand', 'highlight_mistake', 'select_and_correct', 'highlight_glossary', 'text_linking'].includes(block.taskType) && area('text', 'Text', 4, block.taskType === 'text_linking' ? 'The passage for students to annotate' : block.taskType === 'highlight_glossary' ? 'The passage students click to collect words' : 'Use ___ or {} for blanks in fill tasks')}
           {['fill_typing', 'drag_to_blank'].includes(block.taskType) && <InlineBlanksEditor block={block} onChange={onChange} />}
           {['dialogue_fill', 'dialogue_completion', 'dialogue_reconstruct'].includes(block.taskType) && <DialogueEditor block={block} onChange={onChange} />}
-          {['dialogue_fill', 'dialogue_completion'].includes(block.taskType) && input('answer', 'Answer', 'Correct values for each blank, separated by | (optional with {answer} syntax)')}
+          {['dialogue_fill', 'dialogue_completion'].includes(block.taskType) && !(block.text || '').includes('{') && input('answer', 'Answer', 'Correct values for each blank, separated by | (optional with {answer} syntax)')}
           {['fill_typing', 'dialogue_fill', 'drag_to_blank'].includes(block.taskType) && (
             <Toggle label="Flexible answer order (accept shifted answers for consecutive blanks)" checked={Boolean(block.flexibleOrder)} onChange={(value) => apply(onChange, block, 'flexibleOrder', value)} />
           )}
@@ -1095,6 +1149,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
           {['categorize', 'categorize_grammar'].includes(block.taskType) && <CategorizeEditor block={block} onChange={onChange} />}
           {['reading_highlight', 'highlight_differences', 'highlight_glossary', 'text_linking'].includes(block.taskType) && <HighlightEditor block={block} onChange={onChange} />}
           {['image_labeling', 'audio_transcription', 'video_questions', 'map_geography_label', 'hotspot_selection', 'image_compare_spot', 'pronunciation_shadowing', 'youtube'].includes(block.taskType) && mediaInput('media', 'Media URL', 'Direct link to image, audio, or video')}
+          {['image_labeling', 'map_geography_label', 'image_compare_spot'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label="Clickable targets" field="items" />}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && <Field label="Table editor"><TableGridEditor block={block} onChange={onChange} revealMode={block.taskType === 'table_reveal'} /></Field>}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && area('rowsText', 'Rows', 5)}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && area('columnsText', 'Columns', 2)}

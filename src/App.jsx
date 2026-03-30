@@ -14,6 +14,7 @@ const LessonPlayer = lazy(() => import('./components/LessonPlayer'));
 const RecentLessons = lazy(() => import('./components/RecentLessons'));
 const SettingsPage = lazy(() => import('./components/SettingsPage'));
 const StudentProfiles = lazy(() => import('./components/StudentProfiles'));
+const GradingConsole = lazy(() => import('./components/GradingConsole'));
 const LiveHost = lazy(() => import('./components/LiveHost'));
 const LiveJoin = lazy(() => import('./components/LiveJoin'));
 
@@ -209,6 +210,18 @@ function ProfilesRoute() {
   );
 }
 
+function GradingRoute() {
+  const { sessions } = useAppContext();
+  const navigate = useNavigate();
+  return (
+    <ErrorBoundary message="Grading console crashed.">
+      <Suspense fallback={<ScreenFallback label="Loading grading console…" />}>
+        <GradingConsole sessions={sessions} onBack={() => navigate('/')} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
 function LiveHostPage() {
   const { refresh } = useAppContext();
   const navigate = useNavigate();
@@ -291,6 +304,7 @@ export default function App() {
         <Route path="/play/:lessonId" element={<PlayPage />} />
         <Route path="/settings" element={<SettingsRoute />} />
         <Route path="/profiles" element={<ProfilesRoute />} />
+        <Route path="/grading" element={<GradingRoute />} />
         <Route path="/live/host" element={<LiveHostPage />} />
         <Route path="/live/join" element={<LiveJoinPage />} />
       </Routes>
@@ -307,6 +321,15 @@ export default function App() {
                 aria-label="Join Live Quiz"
               >
                 Join Quiz
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/grading')}
+                className="flex h-12 items-center justify-center rounded-full border border-zinc-200 bg-white px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-700 shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition hover:border-zinc-900"
+                title="Grading Console"
+                aria-label="Grading Console"
+              >
+                Grades
               </button>
               <button
                 type="button"

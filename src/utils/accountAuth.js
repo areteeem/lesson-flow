@@ -1,6 +1,28 @@
 import { getSupabaseClient } from './supabaseClient';
 
 const SESSION_USER_KEY = 'lf_session_user';
+const listeners = new Set();
+
+function notifySessionUserChanged(user) {
+  listeners.forEach((listener) => {
+    try {
+      listener(user);
+    } catch {
+      // Ignore subscriber errors so one listener cannot block others.
+    }
+  });
+}
+
+function toSessionUser(user, fallback = {}) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    email: user.email || fallback.email || null,
+    isAnonymous: Boolean(user.is_anonymous || fallback.isAnonymous),
+    createdAt: user.created_at || fallback.createdAt || new Date().toISOString(),
+    lastSignIn: new Date().toISOString(),
+  };
+}
 
 export function getSessionUser() {
   try {
@@ -24,6 +46,16 @@ export function setSessionUser(user) {
   } catch {
     // Ignore storage write failures
   }
+
+  notifySessionUserChanged(user || null);
+}
+
+export function subscribeSessionUser(listener) {
+  if (typeof listener !== 'function') return () => {};
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export async function createAnonymousSession() {
@@ -115,6 +147,41 @@ export async function signInWithEmail(email, password) {
   }
 }
 
+export async function signUpWithEmail(email, password) {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'Supabase not configured' };
+
+  try {
+    const { data, error } = await client.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      return { ok: false, error: error.message || 'Sign up failed' };
+    }
+
+    const signedUser = data?.user;
+    if (signedUser) {
+      const user = toSessionUser(signedUser, { isAnonymous: false });
+      setSessionUser(user);
+      return {
+        ok: true,
+        user,
+        pendingVerification: !data?.session,
+      };
+    }
+
+    return {
+      ok: true,
+      user: null,
+      pendingVerification: true,
+    };
+  } catch (error) {
+    return { ok: false, error: error?.message || 'Sign up failed' };
+  }
+}
+
 export async function signOut() {
   const client = getSupabaseClient();
   if (!client) {
@@ -133,6 +200,21 @@ export async function signOut() {
 }
 
 export async function ensureSession() {
+  const client = getSupabaseClient();
+  if (client) {
+    try {
+      const { data } = await client.auth.getUser();
+      if (data?.user) {
+        const existing = getSessionUser();
+        const resolved = toSessionUser(data.user, existing || {});
+        setSessionUser(resolved);
+        return resolved;
+      }
+    } catch {
+      // Ignore auth.getUser failures and continue fallback flow.
+    }
+  }
+
   let user = getSessionUser();
 
   if (!user) {

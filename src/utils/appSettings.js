@@ -1,19 +1,11 @@
-const SETTINGS_KEY = 'lesson-flow-settings';
+import { loadScopedDomainData, saveScopedDomainData } from './accountStorage';
 
 export function loadAppSettings() {
-  try {
-    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-  } catch {
-    return {};
-  }
+  return loadScopedDomainData('settings', {});
 }
 
 export function saveAppSettings(settings) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    // Ignore storage write failures and keep current settings in memory.
-  }
+  saveScopedDomainData('settings', settings);
 }
 
-export { SETTINGS_KEY };
+export const SETTINGS_KEY = 'lesson-flow-settings';

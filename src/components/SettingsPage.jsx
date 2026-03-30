@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { loadAppSettings, saveAppSettings } from '../utils/appSettings';
 import { getCloudSyncAvailability, readCloudSyncStatus, testCloudSyncConnection } from '../utils/cloudSync';
 import { getThemePreference, setThemePreference } from '../utils/theme';
+import { getSessionUser, signInWithEmail, signOut, signUpWithEmail, upgradeToEmailAccount } from '../utils/accountAuth';
+import { getAccountSyncAvailability, pullAccountSnapshotFromCloud, pushAccountSnapshotToCloud, readAccountSyncStatus, syncAccountDataBidirectional } from '../utils/accountCloudSync';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FOCUS_OPTIONS = ['vocabulary', 'reading', 'speaking', 'listening', 'writing', 'grammar', 'mixed'];
@@ -19,6 +21,12 @@ export default function SettingsPage({ onBack }) {
   const [connectionTest, setConnectionTest] = useState(null);
   const [runningConnectionTest, setRunningConnectionTest] = useState(false);
   const [theme, setTheme] = useState(getThemePreference);
+  const [sessionUser, setSessionUser] = useState(getSessionUser);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState('');
+  const [accountSyncStatus, setAccountSyncStatus] = useState(readAccountSyncStatus);
 
   const update = (key, value) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -32,6 +40,7 @@ export default function SettingsPage({ onBack }) {
 
   const cloudAvailability = getCloudSyncAvailability();
   const cloudStatus = readCloudSyncStatus();
+  const accountSyncAvailability = getAccountSyncAvailability();
   const lastSyncState = cloudStatus?.state || 'idle';
   const lastSyncMessage = cloudStatus?.message || 'No sync attempts yet';
   const formatTime = (timestamp) => {
@@ -59,6 +68,91 @@ export default function SettingsPage({ onBack }) {
   const handleThemeChange = (value) => {
     const next = setThemePreference(value);
     setTheme(next);
+  };
+
+  const refreshAccountPanels = () => {
+    setSessionUser(getSessionUser());
+    setAccountSyncStatus(readAccountSyncStatus());
+    setSettings(loadAppSettings());
+  };
+
+  const handleSignIn = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) {
+      setAuthMessage('Enter email and password.');
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthMessage('Signing in...');
+    const result = await signInWithEmail(cleanEmail, password);
+    if (!result.ok) {
+      setAuthMessage(result.error || 'Sign in failed.');
+      setAuthBusy(false);
+      return;
+    }
+
+    const syncResult = await syncAccountDataBidirectional({ source: 'settings-signin' });
+    refreshAccountPanels();
+    setAuthBusy(false);
+    setAuthMessage(syncResult.state === 'synced' ? 'Signed in and synced account data.' : 'Signed in. Cloud account sync is not ready yet.');
+  };
+
+  const handleSignUpOrUpgrade = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) {
+      setAuthMessage('Enter email and password.');
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthMessage('Creating account...');
+
+    const current = getSessionUser();
+    const result = current?.isAnonymous
+      ? await upgradeToEmailAccount(cleanEmail, password)
+      : await signUpWithEmail(cleanEmail, password);
+
+    if (!result.ok) {
+      setAuthMessage(result.error || 'Account creation failed.');
+      setAuthBusy(false);
+      return;
+    }
+
+    const syncResult = await syncAccountDataBidirectional({ source: 'settings-signup' });
+    refreshAccountPanels();
+    setAuthBusy(false);
+    if (result.pendingVerification) {
+      setAuthMessage('Account created. Verify email, then sign in to sync this device.');
+      return;
+    }
+    setAuthMessage(syncResult.state === 'synced' ? 'Account ready and synced.' : 'Account ready. Cloud account sync is not ready yet.');
+  };
+
+  const handleSignOut = async () => {
+    setAuthBusy(true);
+    await signOut();
+    refreshAccountPanels();
+    setAuthBusy(false);
+    setAuthMessage('Signed out. Local profile scope is active.');
+  };
+
+  const handlePushNow = async () => {
+    setAuthBusy(true);
+    setAuthMessage('Pushing account snapshot to cloud...');
+    const result = await pushAccountSnapshotToCloud({ source: 'settings-manual-push' });
+    refreshAccountPanels();
+    setAuthBusy(false);
+    setAuthMessage(result.state === 'pushed' ? 'Cloud snapshot updated.' : `Push failed: ${result.reason || result.state}`);
+  };
+
+  const handlePullNow = async () => {
+    setAuthBusy(true);
+    setAuthMessage('Pulling account snapshot from cloud...');
+    const result = await pullAccountSnapshotFromCloud();
+    refreshAccountPanels();
+    setAuthBusy(false);
+    setAuthMessage(result.state === 'pulled' ? 'Local account data updated from cloud.' : `Pull result: ${result.reason || result.state}`);
   };
 
   const TABS = [
@@ -203,6 +297,57 @@ export default function SettingsPage({ onBack }) {
               </div>
             </div>
             <div className="space-y-3 text-sm text-zinc-700">
+              <div className="border border-zinc-200 bg-zinc-50 p-3">
+                <div className="mb-2 text-xs font-medium text-zinc-700">Account</div>
+                <div className="text-xs text-zinc-600">
+                  Signed in as:{' '}
+                  <span className="font-medium text-zinc-800">
+                    {sessionUser?.email || sessionUser?.id || 'Local guest'}
+                  </span>
+                  {sessionUser?.isAnonymous && <span className="ml-2 text-zinc-500">(anonymous)</span>}
+                </div>
+                <div className="mt-1 text-xs text-zinc-600">
+                  Account sync availability:{' '}
+                  <span className="font-medium text-zinc-800">{accountSyncAvailability.available ? 'Ready' : accountSyncAvailability.reason}</span>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="Email"
+                    className="border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
+                  />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Password"
+                    className="border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
+                  />
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" onClick={handleSignIn} disabled={authBusy} className="border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900 disabled:opacity-60">Sign In</button>
+                  <button type="button" onClick={handleSignUpOrUpgrade} disabled={authBusy} className="border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900 disabled:opacity-60">
+                    {sessionUser?.isAnonymous ? 'Upgrade Anonymous Session' : 'Create Account'}
+                  </button>
+                  <button type="button" onClick={handleSignOut} disabled={authBusy || !sessionUser} className="border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900 disabled:opacity-60">Sign Out</button>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" onClick={handlePushNow} disabled={authBusy} className="border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900 disabled:opacity-60">Sync Account To Cloud</button>
+                  <button type="button" onClick={handlePullNow} disabled={authBusy} className="border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900 disabled:opacity-60">Pull Latest From Cloud</button>
+                </div>
+
+                <div className="mt-2 text-[11px] text-zinc-500">
+                  Account sync state: <span className="font-medium text-zinc-800">{accountSyncStatus?.state || 'idle'}</span>
+                  {accountSyncStatus?.updatedAt ? ` • ${formatTime(accountSyncStatus.updatedAt)}` : ''}
+                </div>
+                {authMessage && <div className="mt-2 text-[11px] text-zinc-600">{authMessage}</div>}
+              </div>
+
               <label className="flex items-center gap-3">
                 <input type="checkbox" checked={settings.cloudSyncEnabled !== false} onChange={(e) => update('cloudSyncEnabled', e.target.checked)} />
                 Enable background cloud sync for lesson edits
@@ -240,7 +385,9 @@ export default function SettingsPage({ onBack }) {
                     )}
                   </div>
                 )}
-                <div className="mt-2 text-zinc-500">For full cloud sync, create table lesson_drafts in Supabase with columns lesson_id (text primary key), title (text), payload (jsonb), client_updated_at (timestamptz), updated_at (timestamptz).</div>
+                <div className="mt-2 text-zinc-500">For lesson cloud sync, create table lesson_drafts with owner scope columns: lesson_id (text), user_id (uuid references auth.users(id)), title (text), payload (jsonb), client_updated_at (timestamptz), updated_at (timestamptz).</div>
+                <div className="mt-1 text-zinc-500">For account snapshot sync, create table account_snapshots with columns user_id (uuid primary key, references auth.users(id)), payload (jsonb), client_updated_at (timestamptz), updated_at (timestamptz).</div>
+                <div className="mt-2 text-zinc-500">See LIVE_MODE_SETUP.md in the project root for full live-mode and cross-device setup guidance.</div>
               </div>
             </div>
           </section>

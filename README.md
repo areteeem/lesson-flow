@@ -126,6 +126,10 @@ VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```
 
 Then apply the schema from `supabase/schema.sql` in Supabase SQL Editor.
+For account sync and grading analytics tables, also apply `supabase/migrations/20260330_account_grading.sql`.
+For tightened authenticated access policies and owner-scoped lesson drafts, apply `supabase/migrations/20260330_security_hardening.sql`.
+
+For a step-by-step cloud/live setup checklist and cross-device sync notes, see `LIVE_MODE_SETUP.md`.
 
 Required tables created by the schema:
 

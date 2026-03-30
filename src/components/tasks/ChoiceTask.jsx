@@ -35,6 +35,17 @@ export default function ChoiceTask({ block, onComplete, onProgress, existingResu
   const submit = () => {
     if (selected.length === 0) return;
     setSubmitted(true);
+    if (correctAnswers.length === 0) {
+      onComplete?.({
+        submitted: true,
+        correct: true,
+        score: 1,
+        response: selected,
+        correctAnswer: null,
+        feedback: block.explanation || block.hint || 'Response saved.',
+      });
+      return;
+    }
     const normalized = selected.map((item) => item.toLowerCase());
     const intersection = normalized.filter((item) => correctAnswers.includes(item)).length;
     const exact = normalized.length === correctAnswers.length && correctAnswers.every((item) => normalized.includes(item));

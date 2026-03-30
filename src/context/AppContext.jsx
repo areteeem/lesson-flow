@@ -1,5 +1,8 @@
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { loadLessons, loadSessions, saveLesson as storageSave, deleteLesson as storageDelete, deleteSession as storageDeleteSession, loadFolders, saveFolders as storageSaveFolders } from '../storage';
+import { ensureSession, subscribeSessionUser } from '../utils/accountAuth';
+import { syncAccountDataBidirectional } from '../utils/accountCloudSync';
+import { getActiveAccountScopeId, seedScopeFromLocal } from '../utils/accountStorage';
 
 const AppContext = createContext(null);
 
@@ -35,7 +38,32 @@ export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
-    dispatch({ type: 'REFRESH' });
+    let active = true;
+
+    const bootstrap = async () => {
+      await ensureSession();
+      seedScopeFromLocal(getActiveAccountScopeId());
+      await syncAccountDataBidirectional({ source: 'startup' });
+      if (active) {
+        dispatch({ type: 'REFRESH' });
+      }
+    };
+
+    void bootstrap();
+
+    const unsubscribe = subscribeSessionUser(() => {
+      seedScopeFromLocal(getActiveAccountScopeId());
+      void syncAccountDataBidirectional({ source: 'account-change' }).finally(() => {
+        if (active) {
+          dispatch({ type: 'REFRESH' });
+        }
+      });
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const refresh = useCallback(() => dispatch({ type: 'REFRESH' }), []);

@@ -1,5 +1,6 @@
 import { getSupabaseClient, getSupabaseConfig, isSupabaseConfigured } from './supabaseClient';
 import { loadAppSettings } from './appSettings';
+import { ensureSession, getSessionUser } from './accountAuth';
 
 const CLOUD_STATUS_KEY = 'lesson-flow-cloud-status';
 const DEV_PROXY_BASE = '/__supabase';
@@ -24,7 +25,7 @@ export function readCloudSyncStatus() {
 
 export async function testCloudSyncConnection() {
   const availability = getCloudSyncAvailability();
-  const { url, anonKey, host } = getSupabaseConfig();
+  const { host } = getSupabaseConfig();
 
   if (!availability.available) {
     return {
@@ -34,34 +35,41 @@ export async function testCloudSyncConnection() {
     };
   }
 
-  try {
-    const response = await fetch(`${url}/rest/v1/lesson_drafts?select=lesson_id&limit=1`, {
-      method: 'GET',
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
-      },
-    });
+  const user = await ensureSession();
+  if (!user?.id) {
+    return {
+      ok: false,
+      message: 'Cloud unavailable: no authenticated session',
+      diagnostics: { reason: 'no_session', host },
+    };
+  }
 
-    if (!response.ok) {
+  try {
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('lesson_drafts')
+      .select('lesson_id', { head: false, count: 'exact' })
+      .limit(1);
+
+    if (error) {
       return {
         ok: false,
-        message: `Endpoint responded with HTTP ${response.status}`,
+        message: error.message || 'Lesson draft query failed',
         diagnostics: {
           host,
-          status: response.status,
-          statusText: response.statusText,
+          code: error.code || null,
+          details: error.details || null,
+          hint: error.hint || null,
         },
       };
     }
 
     return {
       ok: true,
-      message: 'Browser can reach Supabase REST endpoint.',
+      message: 'Supabase lesson_drafts query succeeded.',
       diagnostics: {
         host,
-        status: response.status,
-        path: 'direct',
+        path: 'client',
       },
     };
   } catch (error) {
@@ -137,6 +145,27 @@ export async function testCloudSyncConnection() {
       };
     }
   }
+}
+
+async function buildSupabaseRestHeaders(extra = {}) {
+  const { anonKey } = getSupabaseConfig();
+  const client = getSupabaseClient();
+  let accessToken = anonKey;
+
+  try {
+    const { data } = await client.auth.getSession();
+    if (data?.session?.access_token) {
+      accessToken = data.session.access_token;
+    }
+  } catch {
+    // Fall back to anon key so diagnostics can still run.
+  }
+
+  return {
+    apikey: anonKey,
+    Authorization: `Bearer ${accessToken}`,
+    ...extra,
+  };
 }
 
 export function isCloudSyncEnabledInSettings() {
@@ -219,15 +248,13 @@ async function tryProxyUpsert({ payload, now, lesson, source, host, directError 
     };
   }
 
-  const { anonKey } = getSupabaseConfig();
+  const headers = await buildSupabaseRestHeaders({
+    'Content-Type': 'application/json',
+    Prefer: 'resolution=merge-duplicates,return=minimal',
+  });
   const proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/lesson_drafts?on_conflict=lesson_id`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -280,6 +307,7 @@ export async function syncLessonToCloud(lesson, meta = {}) {
   const now = Date.now();
   const availability = getCloudSyncAvailability();
   const { host } = getSupabaseConfig();
+  const sessionUser = await ensureSession();
 
   if (!availability.available) {
     const status = {
@@ -297,9 +325,26 @@ export async function syncLessonToCloud(lesson, meta = {}) {
     return status;
   }
 
+  if (!sessionUser?.id) {
+    const status = {
+      state: 'unavailable',
+      message: 'no_session',
+      updatedAt: now,
+      source: meta.source || 'unknown',
+      lessonId: lesson?.id || null,
+      diagnostics: {
+        host,
+        reason: 'no_session',
+      },
+    };
+    safeWriteStatus(status);
+    return status;
+  }
+
   const client = getSupabaseClient();
   const payload = {
     lesson_id: lesson.id,
+    user_id: sessionUser.id,
     title: lesson.title || 'Untitled Lesson',
     payload: lesson,
     client_updated_at: new Date(now).toISOString(),
@@ -307,7 +352,21 @@ export async function syncLessonToCloud(lesson, meta = {}) {
   };
 
   try {
-    const { error } = await client.from('lesson_drafts').upsert(payload, { onConflict: 'lesson_id' });
+    let error = null;
+    const scopedAttempt = await client.from('lesson_drafts').upsert(payload, { onConflict: 'lesson_id' });
+    error = scopedAttempt.error;
+
+    if (error && ((error.message || '').includes('user_id') || error.code === 'PGRST204' || error.code === '42703')) {
+      const legacyAttempt = await client.from('lesson_drafts').upsert({
+        lesson_id: payload.lesson_id,
+        title: payload.title,
+        payload: payload.payload,
+        client_updated_at: payload.client_updated_at,
+        updated_at: payload.updated_at,
+      }, { onConflict: 'lesson_id' });
+      error = legacyAttempt.error;
+    }
+
     if (error) {
       if ((error.message || '').toLowerCase().includes('failed to fetch')) {
         try {

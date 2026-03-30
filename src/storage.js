@@ -1,9 +1,6 @@
 import DOMPurify from 'dompurify';
-
-const LESSONS_KEY = 'lesson-flow-lessons';
-const SESSIONS_KEY = 'lesson-flow-sessions';
-const FOLDERS_KEY = 'lesson-flow-folders';
-const STUDENTS_KEY = 'lesson-flow-students';
+import { resolveCanonicalTaskType } from './config/taskRegistry';
+import { loadScopedDomainData, saveScopedDomainData } from './utils/accountStorage';
 
 function escapeHtml(value = '') {
   return value
@@ -17,6 +14,41 @@ function escapeHtml(value = '') {
 
 function flattenBlocks(blocks = []) {
   return blocks.flatMap((block) => [block, ...flattenBlocks(block.children || [])]);
+}
+
+function migrateTaskBlock(block) {
+  if (!block || block.type !== 'task') return block;
+  const previousType = block.taskType;
+  const canonicalType = resolveCanonicalTaskType(previousType);
+  if (canonicalType === previousType) return block;
+
+  const migrated = { ...block, taskType: canonicalType };
+
+  if (canonicalType === 'multiple_choice' && (!Array.isArray(migrated.options) || migrated.options.length === 0)) {
+    if (previousType === 'true_false') migrated.options = ['True', 'False'];
+    if (previousType === 'yes_no') migrated.options = ['Yes', 'No'];
+  }
+
+  if (canonicalType === 'order' && (!Array.isArray(migrated.items) || migrated.items.length === 0) && previousType === 'dialogue_reconstruct') {
+    migrated.items = String(migrated.text || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  return migrated;
+}
+
+function migrateLessonTasks(lesson) {
+  if (!lesson || typeof lesson !== 'object') return lesson;
+  const walk = (blocks = []) => blocks.map((block) => {
+    const migrated = migrateTaskBlock({ ...block });
+    if (Array.isArray(migrated.children) && migrated.children.length > 0) {
+      return { ...migrated, children: walk(migrated.children) };
+    }
+    return migrated;
+  });
+  return { ...lesson, blocks: walk(Array.isArray(lesson.blocks) ? lesson.blocks : []) };
 }
 
 function describeBlock(block) {
@@ -217,32 +249,18 @@ function renderStaticTaskBody(block) {
   return `${promptText}${renderStaticLines(2)}${hint}`;
 }
 
-function safeRead(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function safeWrite(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Ignore storage quota and privacy-mode write failures.
-  }
-}
-
 export function loadLessons() {
-  return safeRead(LESSONS_KEY).sort((left, right) => (right.updatedAt || 0) - (left.updatedAt || 0));
+  return loadScopedDomainData('lessons', [])
+    .map((lesson) => migrateLessonTasks(lesson))
+    .sort((left, right) => (right.updatedAt || 0) - (left.updatedAt || 0));
 }
 
 export function saveLesson(lesson) {
+  const normalizedLesson = migrateLessonTasks(lesson);
   const lessons = loadLessons();
-  const existingIndex = lessons.findIndex((entry) => entry.id === lesson.id);
+  const existingIndex = lessons.findIndex((entry) => entry.id === normalizedLesson.id);
   const payload = {
-    ...lesson,
+    ...normalizedLesson,
     updatedAt: Date.now(),
   };
   if (existingIndex >= 0) {
@@ -252,16 +270,16 @@ export function saveLesson(lesson) {
     payload.createdAt = Date.now();
     lessons.unshift(payload);
   }
-  safeWrite(LESSONS_KEY, lessons);
+  saveScopedDomainData('lessons', lessons, { updatedAt: payload.updatedAt });
   return payload;
 }
 
 export function deleteLesson(id) {
-  safeWrite(LESSONS_KEY, loadLessons().filter((lesson) => lesson.id !== id));
+  saveScopedDomainData('lessons', loadLessons().filter((lesson) => lesson.id !== id));
 }
 
 export function loadSessions() {
-  return safeRead(SESSIONS_KEY).sort((left, right) => (right.timestamp || 0) - (left.timestamp || 0));
+  return loadScopedDomainData('sessions', []).sort((left, right) => (right.timestamp || 0) - (left.timestamp || 0));
 }
 
 export function saveSession(session) {
@@ -272,26 +290,26 @@ export function saveSession(session) {
     timestamp: session.timestamp || Date.now(),
   };
   sessions.unshift(payload);
-  safeWrite(SESSIONS_KEY, sessions);
+  saveScopedDomainData('sessions', sessions, { updatedAt: payload.timestamp || Date.now() });
   return payload;
 }
 
 export function deleteSession(id) {
-  safeWrite(SESSIONS_KEY, loadSessions().filter((session) => session.id !== id));
+  saveScopedDomainData('sessions', loadSessions().filter((session) => session.id !== id));
 }
 
 // ─── Folders ──────────────────────────────────
 export function loadFolders() {
-  return safeRead(FOLDERS_KEY);
+  return loadScopedDomainData('folders', []);
 }
 
 export function saveFolders(folders) {
-  safeWrite(FOLDERS_KEY, folders);
+  saveScopedDomainData('folders', folders);
 }
 
 // ─── Student profiles ─────────────────────────
 export function loadStudentProfiles() {
-  return safeRead(STUDENTS_KEY);
+  return loadScopedDomainData('students', []);
 }
 
 export function saveStudentProfile(profile) {
@@ -299,11 +317,11 @@ export function saveStudentProfile(profile) {
   const idx = profiles.findIndex((p) => p.name === profile.name);
   if (idx >= 0) profiles[idx] = { ...profiles[idx], ...profile };
   else profiles.push(profile);
-  safeWrite(STUDENTS_KEY, profiles);
+  saveScopedDomainData('students', profiles);
 }
 
 export function deleteStudentProfile(name) {
-  safeWrite(STUDENTS_KEY, loadStudentProfiles().filter((p) => p.name !== name));
+  saveScopedDomainData('students', loadStudentProfiles().filter((p) => p.name !== name));
 }
 
 export function downloadJson(filename, data) {
@@ -387,7 +405,7 @@ export function importLesson(file) {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        resolve(JSON.parse(event.target.result));
+        resolve(migrateLessonTasks(JSON.parse(event.target.result)));
       } catch {
         reject(new Error('Invalid lesson file.'));
       }

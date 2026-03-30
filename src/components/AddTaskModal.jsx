@@ -114,7 +114,7 @@ function MiniTaskTypePreview({ definition }) {
   );
 }
 
-function MiniPreview({ definition, selectedOrder }) {
+function MiniPreview({ definition, selectedOrder, showDescription }) {
   return (
     <div className="border border-zinc-200 bg-white p-3 text-left transition group-hover:border-zinc-900">
       <div className="mb-3 overflow-hidden">
@@ -127,7 +127,7 @@ function MiniPreview({ definition, selectedOrder }) {
         </div>
         {selectedOrder > 0 && <span className="flex h-6 w-6 items-center justify-center border border-zinc-900 bg-zinc-900 text-xs font-semibold text-white">{selectedOrder}</span>}
       </div>
-      <div className="text-xs text-zinc-600">{definition.description}</div>
+      {showDescription && <div className="text-xs text-zinc-600">{definition.description}</div>}
     </div>
   );
 }
@@ -140,6 +140,7 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
   const [queue, setQueue] = useState([initialType]);
   const [activeType, setActiveType] = useState(initialType);
   const [drafts, setDrafts] = useState(() => ({ [initialType]: createDefaultBlock(initialType) }));
+  const [showDescriptions, setShowDescriptions] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -208,7 +209,10 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 pb-3">
           <div className="text-sm font-semibold text-zinc-900">Task Library</div>
-          <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700">Close</button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setShowDescriptions((value) => !value)} className={showDescriptions ? 'border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white' : 'border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700'}>Descriptions</button>
+            <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700">Close</button>
+          </div>
         </div>
 
         {/* Search */}
@@ -247,6 +251,7 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-zinc-900">{entry.label}</div>
                   <div className="truncate text-[11px] text-zinc-500">{entry.category}</div>
+                  {showDescriptions && <div className="mt-1 line-clamp-2 text-[11px] text-zinc-500">{entry.description}</div>}
                 </div>
                 <button
                   type="button"
@@ -281,7 +286,10 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
                 <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Task Library</div>
                 <div className="mt-1 text-lg font-semibold text-zinc-950">Add Question</div>
               </div>
-              <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700">Close</button>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setShowDescriptions((value) => !value)} className={showDescriptions ? 'border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs font-medium text-white' : 'border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700'}>Descriptions</button>
+                <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700">Close</button>
+              </div>
             </div>
             <div className="mt-4 space-y-3">
               <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or category" className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
@@ -311,7 +319,7 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
                       'w-full border text-left transition',
                       activeType === entry.type ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 bg-white hover:border-zinc-900',
                     ].join(' ')}>
-                      <MiniPreview definition={entry} selectedOrder={order} />
+                      <MiniPreview definition={entry} selectedOrder={order} showDescription={showDescriptions} />
                     </button>
                   </div>
                 );

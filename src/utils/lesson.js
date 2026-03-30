@@ -84,7 +84,7 @@ export function validateLessonStructure(lesson) {
 }
 
 export function isGradableTask(block) {
-  return block?.type === 'task' && !['random_wheel', 'open', 'cards'].includes(block.taskType);
+  return block?.type === 'task' && !['random_wheel', 'open', 'cards', 'opinion_survey', 'scale', 'peer_review_checklist', 'pronunciation_shadowing'].includes(block.taskType);
 }
 
 export function getTaskPoints(block) {
