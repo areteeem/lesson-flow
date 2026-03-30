@@ -139,7 +139,8 @@ export default function LessonPlayer({ lesson, onExit }) {
   const isComplete = (block) => {
     if (!block) return false;
     if (block.type === 'group') {
-      return block.children.every((child) => Boolean(results[child.id]));
+      const children = Array.isArray(block.children) ? block.children : [];
+      return children.every((child) => Boolean(results[child.id]));
     }
     if (block.type !== 'task') return true;
     return Boolean(results[block.id]);
@@ -192,31 +193,6 @@ export default function LessonPlayer({ lesson, onExit }) {
     };
   }, [lesson?.settings, fontSettings]);
 
-  if (blocks.length === 0) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-6 text-center">
-        <div className="max-w-xl border border-zinc-200 bg-white p-8">
-          <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Lesson complete</div>
-          <div className="mt-3 text-2xl font-semibold text-zinc-950">No playable blocks available</div>
-          <div className="mt-3 text-sm text-zinc-500">The player did not crash. The lesson has no visible slides or tasks, so there is nothing to render.</div>
-          {validation.issues.length > 0 && (
-            <div className="mt-4 border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-800">
-              {validation.issues.map((issue) => <div key={issue}>{issue}</div>)}
-            </div>
-          )}
-          <button type="button" onClick={handleExit} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Back to lessons</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (showGrading) {
-    return <GradingScreen lesson={lesson} blocks={blocks} results={results} studentName={studentName} onStudentNameChange={setStudentName} onRestart={() => { setResults({}); setCurrentIndex(0); setShowGrading(false); }} onExit={handleExit} />;
-  }
-
-  const completedCount = blocks.filter(isComplete).length;
-  const progressWidth = blocks.length > 0 ? `${(completedCount / blocks.length) * 100}%` : '0%';
-  const current = blocks[currentIndex] || null;
   const virtualWindow = useMemo(() => {
     const total = blocks.length;
     if (total <= 60) {
@@ -243,6 +219,32 @@ export default function LessonPlayer({ lesson, onExit }) {
     if (blocks.length <= 60) return blocks;
     return blocks.slice(virtualWindow.start, virtualWindow.end);
   }, [blocks, virtualWindow]);
+
+  const completedCount = blocks.filter(isComplete).length;
+  const progressWidth = blocks.length > 0 ? `${(completedCount / blocks.length) * 100}%` : '0%';
+  const current = blocks[currentIndex] || null;
+
+  if (blocks.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-6 text-center">
+        <div className="max-w-xl border border-zinc-200 bg-white p-8">
+          <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Lesson complete</div>
+          <div className="mt-3 text-2xl font-semibold text-zinc-950">No playable blocks available</div>
+          <div className="mt-3 text-sm text-zinc-500">The player did not crash. The lesson has no visible slides or tasks, so there is nothing to render.</div>
+          {validation.issues.length > 0 && (
+            <div className="mt-4 border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-800">
+              {validation.issues.map((issue) => <div key={issue}>{issue}</div>)}
+            </div>
+          )}
+          <button type="button" onClick={handleExit} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Back to lessons</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (showGrading) {
+    return <GradingScreen lesson={lesson} blocks={blocks} results={results} studentName={studentName} onStudentNameChange={setStudentName} onRestart={() => { setResults({}); setCurrentIndex(0); setShowGrading(false); }} onExit={handleExit} />;
+  }
 
   return (
     <div ref={shellRef} className="player-shell flex min-h-screen bg-[#f7f7f5]" style={getFontCSSVars(effectiveFontSettings)}>
