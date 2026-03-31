@@ -9,12 +9,22 @@ function normalizeAnswers(value) {
   return value.toString().split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
 }
 
-export default function ChoiceTask({ block, onComplete, onProgress, existingResult }) {
+function normalizeResponse(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    return trimmed.split('|').map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+export default function ChoiceTask({ block, onComplete, onProgress, existingResult, showCheckButton = true }) {
   const multi = block.multiple || block.taskType === 'multi_select';
   const correctAnswers = useMemo(() => normalizeAnswers(block.correct || block.answer), [block.correct, block.answer]);
   const shuffleSeed = useShuffleSeed();
   const options = useMemo(() => block.shuffle === false ? (block.options || []) : stableShuffle(block.options || [], `${block.id || block.question}-${shuffleSeed}-options`), [block.id, block.options, block.question, block.shuffle, shuffleSeed]);
-  const [selected, setSelected] = useState(() => existingResult?.response || []);
+  const [selected, setSelected] = useState(() => normalizeResponse(existingResult?.response));
   const [submitted, setSubmitted] = useState(() => Boolean(existingResult?.submitted));
 
   const toggle = (option) => {
@@ -61,6 +71,7 @@ export default function ChoiceTask({ block, onComplete, onProgress, existingResu
   };
 
   const isBinary = options.length === 2 && ['true_false', 'yes_no', 'either_or'].includes(block.taskType);
+  const showVerdict = submitted && showCheckButton;
 
   return (
     <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
@@ -74,8 +85,8 @@ export default function ChoiceTask({ block, onComplete, onProgress, existingResu
           {options.map((option) => {
             const normalized = option.toLowerCase();
             const active = selected.includes(option);
-            const correct = submitted && correctAnswers.includes(normalized);
-            const wrong = submitted && active && !correctAnswers.includes(normalized);
+            const correct = showVerdict && correctAnswers.includes(normalized);
+            const wrong = showVerdict && active && !correctAnswers.includes(normalized);
             return (
               <button
                 key={option}
@@ -99,8 +110,8 @@ export default function ChoiceTask({ block, onComplete, onProgress, existingResu
         {options.map((option, index) => {
           const normalized = option.toLowerCase();
           const active = selected.includes(option);
-          const correct = submitted && correctAnswers.includes(normalized);
-          const wrong = submitted && active && !correctAnswers.includes(normalized);
+          const correct = showVerdict && correctAnswers.includes(normalized);
+          const wrong = showVerdict && active && !correctAnswers.includes(normalized);
           return (
             <button
               key={index}
@@ -125,11 +136,11 @@ export default function ChoiceTask({ block, onComplete, onProgress, existingResu
         <div className="text-xs text-zinc-500">{multi ? 'Choose one or more answers.' : 'Choose one answer.'}</div>
         {!submitted && (
           <button type="button" onClick={submit} disabled={selected.length === 0} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
-            Check
+            {showCheckButton ? 'Check' : 'Save answer'}
           </button>
         )}
       </div>
-      {submitted && (
+      {submitted && showCheckButton && (
         <div className={[
           'mt-4 border px-4 py-3 text-sm',
           (selected.length === correctAnswers.length && correctAnswers.every((item) => selected.map((entry) => entry.toLowerCase()).includes(item)))

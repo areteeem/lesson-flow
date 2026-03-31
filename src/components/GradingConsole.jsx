@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { saveSession } from '../storage';
 import { fetchSessionsFromCloud, getGradingCloudAvailability, syncSessionGradeToCloud } from '../utils/gradingCloud';
+import { fetchAssignmentSubmissionsForOwner, updateAssignmentSubmissionGrade } from '../utils/lessonAssignments';
+import { createResultShareLink } from '../utils/resultSharing';
 
 function toNumber(value, fallback = 0) {
   const next = Number(value);
@@ -12,6 +14,7 @@ function normalizeEntry(session, entry) {
     sessionId: session.id,
     studentName: (session.studentName || 'Anonymous').trim(),
     lessonTitle: session.lessonTitle || 'Untitled Lesson',
+    origin: session.origin || session.sourceType || 'local',
     taskType: entry.taskType || 'unknown',
     label: entry.label || 'Untitled task',
     score: toNumber(entry.score, 0),
@@ -158,9 +161,128 @@ function computeQuestionRows(entries) {
     .sort((left, right) => right.attempts - left.attempts || right.lastSeen - left.lastSeen);
 }
 
+function computeHardestTaskByLesson(sessions) {
+  const lessonBuckets = new Map();
+
+  sessions.forEach((session) => {
+    const lessonTitle = session.lessonTitle || 'Untitled Lesson';
+    const breakdown = Array.isArray(session.breakdown) ? session.breakdown : [];
+    breakdown.forEach((entry) => {
+      const key = `${entry.taskType || 'unknown'}::${entry.label || 'Untitled task'}`;
+      if (!lessonBuckets.has(lessonTitle)) lessonBuckets.set(lessonTitle, new Map());
+      const taskMap = lessonBuckets.get(lessonTitle);
+      const current = taskMap.get(key) || {
+        label: entry.label || 'Untitled task',
+        taskType: entry.taskType || 'unknown',
+        attempts: 0,
+        earned: 0,
+      };
+      current.attempts += 1;
+      current.earned += Number(entry.score || 0);
+      taskMap.set(key, current);
+    });
+  });
+
+  const result = new Map();
+  lessonBuckets.forEach((taskMap, lessonTitle) => {
+    const hardest = [...taskMap.values()]
+      .map((row) => ({
+        ...row,
+        avgScore: row.attempts > 0 ? row.earned / row.attempts : 0,
+      }))
+      .sort((left, right) => left.avgScore - right.avgScore || right.attempts - left.attempts)[0] || null;
+    if (hardest) result.set(lessonTitle, hardest);
+  });
+
+  return result;
+}
+
+function formatResponsePreview(result) {
+  const response = result?.response;
+  if (response === null || response === undefined) return 'No answer submitted';
+  if (typeof response === 'string') return response;
+  if (typeof response === 'number' || typeof response === 'boolean') return String(response);
+  if (Array.isArray(response)) return response.join(' | ');
+  if (typeof response === 'object') {
+    if (Array.isArray(response.points)) return response.points.join(' | ');
+    try {
+      return JSON.stringify(response);
+    } catch {
+      return 'Structured response';
+    }
+  }
+  return 'Unsupported response';
+}
+
+function toTaskColumnKey(entry) {
+  return `${entry?.taskType || 'unknown'}::${entry?.label || 'Untitled task'}`;
+}
+
+function buildPublishedBoard(sessions, selectedLesson) {
+  if (!Array.isArray(sessions) || sessions.length === 0) {
+    return { lessonTitle: null, columns: [], rows: [] };
+  }
+
+  const resolvedLesson = selectedLesson !== 'all'
+    ? selectedLesson
+    : (sessions[0]?.lessonTitle || null);
+
+  if (!resolvedLesson) {
+    return { lessonTitle: null, columns: [], rows: [] };
+  }
+
+  const scopedSessions = sessions.filter((session) => (session.lessonTitle || 'Untitled Lesson') === resolvedLesson);
+  const columnMap = new Map();
+
+  scopedSessions.forEach((session) => {
+    const breakdown = Array.isArray(session.breakdown) ? session.breakdown : [];
+    breakdown.forEach((entry) => {
+      const key = toTaskColumnKey(entry);
+      if (columnMap.has(key)) return;
+      columnMap.set(key, {
+        id: key,
+        label: entry.label || 'Untitled task',
+        taskType: entry.taskType || 'unknown',
+      });
+    });
+  });
+
+  const columns = [...columnMap.values()];
+  const rows = scopedSessions
+    .map((session) => {
+      const cellMap = new Map();
+      const breakdown = Array.isArray(session.breakdown) ? session.breakdown : [];
+      breakdown.forEach((entry) => {
+        const key = toTaskColumnKey(entry);
+        cellMap.set(key, {
+          correct: entry.correct,
+          score: toPercent(entry.score),
+        });
+      });
+
+      return {
+        sessionId: String(session.id || ''),
+        studentName: (session.studentName || 'Anonymous').trim(),
+        timestamp: Number(session.timestamp || 0),
+        overallScore: Math.round(Number(session.score || 0)),
+        submissionState: session.submissionState || '',
+        origin: session.origin || 'local',
+        cellMap,
+      };
+    })
+    .sort((left, right) => right.timestamp - left.timestamp);
+
+  return {
+    lessonTitle: resolvedLesson,
+    columns,
+    rows,
+  };
+}
+
 export default function GradingConsole({ sessions = [], onBack }) {
   const [view, setView] = useState('lessons');
   const [search, setSearch] = useState('');
+  const [sourceType, setSourceType] = useState('all');
   const [taskType, setTaskType] = useState('all');
   const [status, setStatus] = useState('all');
   const [minScore, setMinScore] = useState(0);
@@ -169,45 +291,83 @@ export default function GradingConsole({ sessions = [], onBack }) {
   const [sessionDraft, setSessionDraft] = useState(null);
   const [manualOverallScore, setManualOverallScore] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
+  const [draftCheckState, setDraftCheckState] = useState({ checked: false, level: 'idle', message: '' });
+  const [expandedDraftRows, setExpandedDraftRows] = useState(() => new Set());
+  const [selectedQuestionId, setSelectedQuestionId] = useState('all');
   const [localOverrides, setLocalOverrides] = useState({});
   const [cloudSessions, setCloudSessions] = useState([]);
+  const [assignmentSessions, setAssignmentSessions] = useState([]);
   const [cloudLoading, setCloudLoading] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState('idle');
+  const [_cloudStatus, setCloudStatus] = useState('idle');
   const [cloudMessage, setCloudMessage] = useState('');
+  const [boardShareLink, setBoardShareLink] = useState('');
+  const [boardShareState, setBoardShareState] = useState('idle');
 
-  const refreshCloudSessions = async () => {
+  const refreshCloudSessions = useCallback(async () => {
     const availability = getGradingCloudAvailability();
     if (!availability.available) {
       setCloudStatus('unavailable');
       setCloudMessage(`Cloud: ${availability.reason}`);
       setCloudSessions([]);
+      setAssignmentSessions([]);
       return;
     }
 
     setCloudLoading(true);
     setCloudStatus('loading');
-    setCloudMessage('Loading cloud sessions...');
-    const result = await fetchSessionsFromCloud();
+    setCloudMessage('Loading cloud sessions and homework submissions...');
+
+    const [gradeResult, assignmentResult] = await Promise.all([
+      fetchSessionsFromCloud(),
+      fetchAssignmentSubmissionsForOwner(),
+    ]);
+
     setCloudLoading(false);
 
-    if (!result.ok) {
+    if (!gradeResult.ok && !assignmentResult.ok) {
       setCloudStatus('error');
-      setCloudMessage(`Cloud load failed: ${result.reason || 'unknown error'}`);
+      setCloudMessage(`Cloud load failed: ${gradeResult.reason || assignmentResult.reason || 'unknown error'}`);
       return;
     }
 
-    setCloudSessions(result.sessions || []);
+    if (gradeResult.ok) {
+      setCloudSessions(gradeResult.sessions || []);
+    } else {
+      setCloudSessions([]);
+    }
+
+    if (assignmentResult.ok) {
+      setAssignmentSessions(assignmentResult.sessions || []);
+    } else {
+      setAssignmentSessions([]);
+    }
+
     setCloudStatus('ready');
-    setCloudMessage(`Cloud sessions: ${(result.sessions || []).length}`);
-  };
+    const gradeCount = gradeResult.ok ? (gradeResult.sessions || []).length : 0;
+    const assignmentCount = assignmentResult.ok ? (assignmentResult.sessions || []).length : 0;
+    const gradeSuffix = gradeResult.ok ? '' : ` (grade: ${gradeResult.reason || 'failed'})`;
+    const assignmentSuffix = assignmentResult.ok ? '' : ` (homework: ${assignmentResult.reason || 'failed'})`;
+    setCloudMessage(`Cloud sessions: ${gradeCount}${gradeSuffix} • Homework submissions: ${assignmentCount}${assignmentSuffix}`);
+  }, []);
 
   useEffect(() => {
-    void refreshCloudSessions();
-  }, []);
+    const kickoff = window.setTimeout(() => {
+      void refreshCloudSessions();
+    }, 0);
+    return () => window.clearTimeout(kickoff);
+  }, [refreshCloudSessions]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void refreshCloudSessions();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [refreshCloudSessions]);
 
   const mergedSessions = useMemo(() => {
     const map = new Map();
-    [...cloudSessions, ...sessions].forEach((session) => {
+    [...assignmentSessions, ...cloudSessions, ...sessions].forEach((session) => {
       const key = String(session.id || session.cloudSessionId || '');
       if (!key) return;
       const existing = map.get(key);
@@ -221,9 +381,18 @@ export default function GradingConsole({ sessions = [], onBack }) {
     return [...map.values()]
       .map((session) => recalculateSessionMetrics(session))
       .sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0));
-  }, [sessions, cloudSessions, localOverrides]);
+  }, [sessions, cloudSessions, assignmentSessions, localOverrides]);
+
+  const mergedSessionsById = useMemo(() => {
+    const map = new Map();
+    mergedSessions.forEach((session) => {
+      map.set(String(session.id || ''), session);
+    });
+    return map;
+  }, [mergedSessions]);
 
   const lessonRows = useMemo(() => computeLessonRows(mergedSessions), [mergedSessions]);
+  const hardestTasksByLesson = useMemo(() => computeHardestTaskByLesson(mergedSessions), [mergedSessions]);
 
   const lessonOptions = useMemo(() => ['all', ...lessonRows.map((row) => row.lessonTitle)], [lessonRows]);
 
@@ -231,6 +400,8 @@ export default function GradingConsole({ sessions = [], onBack }) {
     const query = search.trim().toLowerCase();
     return mergedSessions.filter((session) => {
       if (selectedLesson !== 'all' && session.lessonTitle !== selectedLesson) return false;
+      const sessionOrigin = session.origin || session.sourceType || 'local';
+      if (sourceType !== 'all' && sessionOrigin !== sourceType) return false;
       if ((Number(session.score || 0)) < minScore) return false;
       if (status === 'graded' && Number(session.completedCount || 0) === 0) return false;
 
@@ -238,7 +409,7 @@ export default function GradingConsole({ sessions = [], onBack }) {
       const haystack = `${session.studentName || ''} ${session.lessonTitle || ''}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [mergedSessions, minScore, search, selectedLesson, status]);
+  }, [mergedSessions, minScore, search, selectedLesson, sourceType, status]);
 
   const selectedLessonStats = useMemo(() => {
     if (selectedLesson === 'all') return null;
@@ -260,6 +431,7 @@ export default function GradingConsole({ sessions = [], onBack }) {
 
     return entries.filter((entry) => {
       if (taskType !== 'all' && entry.taskType !== taskType) return false;
+      if (sourceType !== 'all' && entry.origin !== sourceType) return false;
       if (entry.score < (minScore / 100)) return false;
 
       if (status === 'graded' && entry.correct === null) return false;
@@ -271,10 +443,38 @@ export default function GradingConsole({ sessions = [], onBack }) {
       const haystack = `${entry.studentName} ${entry.lessonTitle} ${entry.label} ${entry.taskType}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [entries, search, taskType, status, minScore]);
+  }, [entries, search, taskType, status, minScore, sourceType]);
 
   const studentRows = useMemo(() => computeStudentRows(filteredEntries), [filteredEntries]);
   const questionRows = useMemo(() => computeQuestionRows(filteredEntries), [filteredEntries]);
+  const publishedBoard = useMemo(() => buildPublishedBoard(filteredSessions, selectedLesson), [filteredSessions, selectedLesson]);
+
+  const questionResponseRows = useMemo(() => {
+    if (selectedQuestionId === 'all') return [];
+    const [selectedTaskType, selectedLabel] = selectedQuestionId.split('::');
+
+    return mergedSessions.flatMap((session) => {
+      const breakdown = Array.isArray(session.breakdown) ? session.breakdown : [];
+      return breakdown
+        .filter((entry) => (entry.taskType || 'unknown') === selectedTaskType && (entry.label || 'Untitled task') === selectedLabel)
+        .map((entry) => {
+          const points = Math.max(1, Number(entry.points || 1));
+          const score = Number(entry.score || 0);
+          const grade = Math.round(Math.max(0, Math.min(1, score)) * points * 100) / 100;
+          return {
+            sessionId: session.id,
+            entryId: entry.id,
+            studentName: (session.studentName || 'Anonymous').trim(),
+            questionName: entry.label || 'Untitled task',
+            status: entry.correct === true ? 'correct' : entry.correct === false ? 'incorrect' : 'ungraded',
+            answer: formatResponsePreview(entry.result),
+            grade,
+            maxGrade: points,
+            handedInAt: Number(session.timestamp || 0),
+          };
+        });
+    }).sort((left, right) => right.handedInAt - left.handedInAt);
+  }, [mergedSessions, selectedQuestionId]);
 
   const openSessionEditor = (session) => {
     const normalized = recalculateSessionMetrics(session);
@@ -282,6 +482,8 @@ export default function GradingConsole({ sessions = [], onBack }) {
     setSessionDraft(normalized);
     setManualOverallScore(String(Number(normalized.score || 0)));
     setSaveMessage('');
+    setDraftCheckState({ checked: false, level: 'idle', message: '' });
+    setExpandedDraftRows(new Set());
   };
 
   const closeSessionEditor = () => {
@@ -289,6 +491,28 @@ export default function GradingConsole({ sessions = [], onBack }) {
     setSessionDraft(null);
     setManualOverallScore('');
     setSaveMessage('');
+    setDraftCheckState({ checked: false, level: 'idle', message: '' });
+    setExpandedDraftRows(new Set());
+  };
+
+  const invalidateDraftCheck = () => {
+    setDraftCheckState((current) => {
+      if (!current.checked && current.level === 'idle') return current;
+      return {
+        checked: false,
+        level: 'idle',
+        message: 'Edits changed. Run Check grading before saving.',
+      };
+    });
+  };
+
+  const toggleDraftRow = (entryId) => {
+    setExpandedDraftRows((current) => {
+      const next = new Set(current);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
   };
 
   const updateDraftEntry = (entryId, updater) => {
@@ -300,10 +524,36 @@ export default function GradingConsole({ sessions = [], onBack }) {
       });
       return recalculateSessionMetrics({ ...current, breakdown: nextBreakdown });
     });
+    invalidateDraftCheck();
+  };
+
+  const handleCheckDraft = () => {
+    if (!sessionDraft) return;
+    const breakdown = Array.isArray(sessionDraft.breakdown) ? sessionDraft.breakdown : [];
+    const ungradedCount = breakdown.filter((entry) => entry.correct === null).length;
+
+    if (ungradedCount > 0) {
+      setDraftCheckState({
+        checked: false,
+        level: 'error',
+        message: `${ungradedCount} task(s) are still ungraded. Mark each row before saving.`,
+      });
+      return;
+    }
+
+    setDraftCheckState({
+      checked: true,
+      level: 'ready',
+      message: 'Check complete. Save edits is now enabled.',
+    });
   };
 
   const handleSaveEditedSession = async () => {
     if (!sessionDraft) return;
+    if (!draftCheckState.checked) {
+      setSaveMessage('Run Check grading first to verify all rows.');
+      return;
+    }
 
     const base = recalculateSessionMetrics(sessionDraft);
     const requestedOverall = Number(manualOverallScore);
@@ -317,6 +567,7 @@ export default function GradingConsole({ sessions = [], onBack }) {
       ...base,
       score,
       earned,
+      submissionState: (Array.isArray(base.breakdown) && base.breakdown.some((entry) => entry.correct === null)) ? 'awaiting_review' : 'graded',
       timestamp: Date.now(),
     };
 
@@ -325,10 +576,71 @@ export default function GradingConsole({ sessions = [], onBack }) {
     setCloudSessions((current) => current.map((session) => (session.id === saved.id ? saved : session)));
 
     const cloudResult = await syncSessionGradeToCloud(saved);
-    if (cloudResult.state === 'synced') {
-      setSaveMessage('Saved locally and synced to cloud.');
-    } else {
-      setSaveMessage(`Saved locally. Cloud sync: ${cloudResult.reason || cloudResult.state || 'unavailable'}.`);
+    let message = cloudResult.state === 'synced'
+      ? 'Saved locally and synced to cloud.'
+      : `Saved locally. Cloud sync: ${cloudResult.reason || cloudResult.state || 'unavailable'}.`;
+
+    if (saved.submissionId) {
+      const assignmentSave = await updateAssignmentSubmissionGrade(saved.submissionId, saved);
+      if (assignmentSave.ok) {
+        message += ' Homework submission updated.';
+      } else {
+        message += ` Homework update failed: ${assignmentSave.reason || 'unknown error'}.`;
+      }
+    }
+
+    setSaveMessage(message);
+    setDraftCheckState({ checked: false, level: 'idle', message: '' });
+  };
+
+  const handleCreateBoardShareLink = async () => {
+    if (!publishedBoard?.lessonTitle || publishedBoard.rows.length === 0 || publishedBoard.columns.length === 0) {
+      setBoardShareState('empty');
+      return;
+    }
+
+    setBoardShareState('creating');
+    const payload = {
+      shareType: 'published_board',
+      lessonTitle: publishedBoard.lessonTitle,
+      createdAt: Date.now(),
+      columns: publishedBoard.columns,
+      rows: publishedBoard.rows.map((row) => ({
+        sessionId: row.sessionId,
+        studentName: row.studentName,
+        origin: row.origin,
+        overallScore: row.overallScore,
+        timestamp: row.timestamp,
+        submissionState: row.submissionState || '',
+        cells: publishedBoard.columns.map((column) => {
+          const cell = row.cellMap.get(column.id);
+          return {
+            columnId: column.id,
+            score: cell ? Number(cell.score || 0) : null,
+            correct: cell ? cell.correct : null,
+          };
+        }),
+      })),
+    };
+
+    const result = await createResultShareLink(payload, null);
+    if (!result.ok) {
+      setBoardShareState('error');
+      return;
+    }
+
+    setBoardShareLink(result.shareUrl || '');
+    setBoardShareState('ready');
+  };
+
+  const handleCopyBoardShareLink = async () => {
+    if (!boardShareLink) return;
+    try {
+      await navigator.clipboard.writeText(boardShareLink);
+      setBoardShareState('copied');
+      window.setTimeout(() => setBoardShareState('ready'), 1400);
+    } catch {
+      setBoardShareState('copy-error');
     }
   };
 
@@ -338,7 +650,7 @@ export default function GradingConsole({ sessions = [], onBack }) {
         <header className="flex flex-wrap items-center justify-between gap-3 border border-zinc-200 bg-white px-4 py-3">
           <div>
             <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Grading Console</div>
-            <div className="mt-1 text-xl font-semibold text-zinc-950">By-student and by-question analytics</div>
+            <div className="mt-1 text-xl font-semibold text-zinc-950">Lesson and response grading analytics</div>
             <div className="mt-1 text-[11px] text-zinc-500">{cloudMessage || 'Cloud status: idle'}</div>
           </div>
           <div className="flex items-center gap-2">
@@ -348,7 +660,7 @@ export default function GradingConsole({ sessions = [], onBack }) {
         </header>
 
         <section className="border border-zinc-200 bg-white p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_180px_180px_160px_140px_180px]">
+          <div className="grid gap-3 lg:grid-cols-[1fr_170px_160px_170px_160px_140px_180px]">
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -357,6 +669,13 @@ export default function GradingConsole({ sessions = [], onBack }) {
             />
             <select value={selectedLesson} onChange={(event) => setSelectedLesson(event.target.value)} className="border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
               {lessonOptions.map((lesson) => <option key={lesson} value={lesson}>{lesson === 'all' ? 'All lessons' : lesson}</option>)}
+            </select>
+            <select value={sourceType} onChange={(event) => setSourceType(event.target.value)} className="border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
+              <option value="all">All sources</option>
+              <option value="homework">Homework</option>
+              <option value="live">Live</option>
+              <option value="practice">Practice</option>
+              <option value="local">Lesson local</option>
             </select>
             <select value={taskType} onChange={(event) => setTaskType(event.target.value)} className="border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
               {taskTypes.map((type) => <option key={type} value={type}>{type === 'all' ? 'All task types' : type}</option>)}
@@ -376,8 +695,9 @@ export default function GradingConsole({ sessions = [], onBack }) {
             <button type="button" onClick={() => setView('lessons')} className={view === 'lessons' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>By lesson</button>
             <button type="button" onClick={() => setView('students')} className={view === 'students' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>By student</button>
             <button type="button" onClick={() => setView('questions')} className={view === 'questions' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>By question</button>
+            <button type="button" onClick={() => setView('board')} className={view === 'board' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Published board</button>
           </div>
-          <div className="mt-3 text-[11px] text-zinc-500">Source: local {sessions.length} + cloud {cloudSessions.length} → merged {mergedSessions.length}</div>
+          <div className="mt-3 text-[11px] text-zinc-500">Source: local {sessions.length} + grade cloud {cloudSessions.length} + homework {assignmentSessions.length} → merged {mergedSessions.length}</div>
         </section>
 
         {view === 'lessons' && (
@@ -409,6 +729,11 @@ export default function GradingConsole({ sessions = [], onBack }) {
                     <div>
                       <div className="text-sm font-semibold text-zinc-900">{row.lessonTitle}</div>
                       <div className="text-[11px] text-zinc-500">Records: {row.sessions} • Completions: {row.completedSessions}</div>
+                      {hardestTasksByLesson.get(row.lessonTitle) && (
+                        <div className="mt-1 text-[11px] text-amber-700">
+                          Hardest: {hardestTasksByLesson.get(row.lessonTitle).label} ({Math.round(hardestTasksByLesson.get(row.lessonTitle).avgScore * 100)}%)
+                        </div>
+                      )}
                     </div>
                     <div className="text-sm text-zinc-700">Avg: {row.avgScore}%</div>
                     <div className="text-sm text-zinc-700">Accuracy: {row.accuracy}%</div>
@@ -428,6 +753,10 @@ export default function GradingConsole({ sessions = [], onBack }) {
                     <div>
                       <div className="text-sm font-semibold text-zinc-900">{session.lessonTitle}</div>
                       <div className="text-[11px] text-zinc-500">{session.studentName || 'Anonymous'}</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <span className="border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-zinc-500">{session.origin || 'local'}</span>
+                        {session.submissionState && <span className="border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-amber-700">{session.submissionState}</span>}
+                      </div>
                     </div>
                     <div className="text-sm text-zinc-700">Score: {Math.round(Number(session.score || 0))}%</div>
                     <div className="text-sm text-zinc-700">Done: {session.completedCount}/{session.total || (session.breakdown || []).length}</div>
@@ -455,57 +784,94 @@ export default function GradingConsole({ sessions = [], onBack }) {
                   <div className="border border-zinc-200 px-3 py-2 text-sm text-zinc-700">Auto score: {Math.round(Number(sessionDraft.score || 0))}%</div>
                   <label className="border border-zinc-200 px-3 py-2 text-sm text-zinc-700">
                     Overall grade %
-                    <input type="number" min={0} max={100} value={manualOverallScore} onChange={(event) => setManualOverallScore(event.target.value)} className="mt-1 w-full border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-zinc-900" />
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={manualOverallScore}
+                      onChange={(event) => {
+                        setManualOverallScore(event.target.value);
+                        invalidateDraftCheck();
+                      }}
+                      className="mt-1 w-full border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-zinc-900"
+                    />
                   </label>
                 </div>
 
                 <div className="space-y-2">
-                  {(sessionDraft.breakdown || []).map((entry) => (
-                    <div key={entry.id} className="grid gap-2 border border-zinc-200 px-3 py-3 sm:grid-cols-[1fr_160px_120px_110px]">
-                      <div>
-                        <div className="text-sm font-medium text-zinc-900">{entry.label}</div>
-                        <div className="text-[11px] text-zinc-500">{entry.taskType}</div>
+                  {(sessionDraft.breakdown || []).map((entry) => {
+                    const expanded = expandedDraftRows.has(entry.id);
+                    const verdict = entry.correct === true ? 'correct' : entry.correct === false ? 'incorrect' : 'ungraded';
+                    return (
+                      <div key={entry.id} className="border border-zinc-200">
+                        <div className="grid gap-2 px-3 py-3 sm:grid-cols-[1fr_270px_120px_90px]">
+                          <button type="button" onClick={() => toggleDraftRow(entry.id)} className="text-left">
+                            <div className="text-sm font-medium text-zinc-900">{entry.label}</div>
+                            <div className="text-[11px] text-zinc-500">{entry.taskType}</div>
+                          </button>
+                          <div className="inline-flex w-full border border-zinc-200 bg-white p-0.5 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => updateDraftEntry(entry.id, (current) => ({ ...current, correct: true, score: 1 }))}
+                              className={verdict === 'correct' ? 'flex-1 bg-emerald-600 px-2 py-1.5 text-white' : 'flex-1 px-2 py-1.5 text-zinc-600 hover:bg-zinc-50'}
+                            >
+                              Correct
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateDraftEntry(entry.id, (current) => ({ ...current, correct: false, score: 0 }))}
+                              className={verdict === 'incorrect' ? 'flex-1 bg-red-600 px-2 py-1.5 text-white' : 'flex-1 px-2 py-1.5 text-zinc-600 hover:bg-zinc-50'}
+                            >
+                              Incorrect
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateDraftEntry(entry.id, (current) => ({ ...current, correct: null }))}
+                              className={verdict === 'ungraded' ? 'flex-1 bg-zinc-700 px-2 py-1.5 text-white' : 'flex-1 px-2 py-1.5 text-zinc-600 hover:bg-zinc-50'}
+                            >
+                              Ungraded
+                            </button>
+                          </div>
+                          <label className="text-xs text-zinc-500">
+                            Score %
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={toPercent(entry.score)}
+                              onChange={(event) => {
+                                const next = Math.max(0, Math.min(100, Number(event.target.value) || 0));
+                                updateDraftEntry(entry.id, (current) => ({
+                                  ...current,
+                                  score: next / 100,
+                                }));
+                              }}
+                              className="mt-1 w-full border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-zinc-900"
+                            />
+                          </label>
+                          <button type="button" onClick={() => toggleDraftRow(entry.id)} className="text-xs text-zinc-500 hover:text-zinc-900">{expanded ? 'Hide' : 'Preview'}</button>
+                        </div>
+                        {expanded && (
+                          <div className="border-t border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-700">
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Question Preview</div>
+                            <div className="mt-1">{entry?.block?.question || entry?.block?.instruction || entry.label}</div>
+                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500">Student Answer</div>
+                            <div className="mt-1 whitespace-pre-wrap">{formatResponsePreview(entry.result)}</div>
+                          </div>
+                        )}
                       </div>
-                      <select
-                        value={entry.correct === true ? 'correct' : entry.correct === false ? 'incorrect' : 'ungraded'}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          updateDraftEntry(entry.id, (current) => ({
-                            ...current,
-                            correct: next === 'correct' ? true : next === 'incorrect' ? false : null,
-                            score: next === 'correct' ? 1 : next === 'incorrect' ? 0 : current.score,
-                          }));
-                        }}
-                        className="border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
-                      >
-                        <option value="ungraded">Ungraded</option>
-                        <option value="correct">Correct</option>
-                        <option value="incorrect">Incorrect</option>
-                      </select>
-                      <label className="text-xs text-zinc-500">
-                        Score %
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={toPercent(entry.score)}
-                          onChange={(event) => {
-                            const next = Math.max(0, Math.min(100, Number(event.target.value) || 0));
-                            updateDraftEntry(entry.id, (current) => ({
-                              ...current,
-                              score: next / 100,
-                            }));
-                          }}
-                          className="mt-1 w-full border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-zinc-900"
-                        />
-                      </label>
-                      <div className="text-sm text-zinc-700">Weighted: {Math.round((Number(entry.score || 0) * 100))}%</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="mt-3 flex items-center gap-3">
-                  <button type="button" onClick={handleSaveEditedSession} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm text-white">Save edits</button>
+                  <button type="button" onClick={handleCheckDraft} className="border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:border-zinc-900">Check grading</button>
+                  <button type="button" onClick={handleSaveEditedSession} disabled={!draftCheckState.checked} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">Save edits</button>
+                  {draftCheckState.message && (
+                    <div className={`text-xs ${draftCheckState.level === 'error' ? 'text-red-600' : draftCheckState.level === 'ready' ? 'text-emerald-700' : 'text-zinc-600'}`}>
+                      {draftCheckState.message}
+                    </div>
+                  )}
                   {saveMessage && <div className="text-xs text-zinc-600">{saveMessage}</div>}
                 </div>
               </div>
@@ -532,26 +898,132 @@ export default function GradingConsole({ sessions = [], onBack }) {
               {studentRows.length === 0 && <div className="border border-dashed border-zinc-200 px-4 py-5 text-sm text-zinc-500">No student rows match the selected filters.</div>}
             </div>
           </section>
-        ) : (
+        ) : view === 'questions' ? (
           <section className="border border-zinc-200 bg-white p-4">
-            <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Questions ({questionRows.length})</div>
+            <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Question Responses</div>
+            <div className="mb-3 grid gap-3 sm:grid-cols-[1fr_200px]">
+              <select value={selectedQuestionId} onChange={(event) => setSelectedQuestionId(event.target.value)} className="border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
+                <option value="all">Select question</option>
+                {questionRows.map((row) => <option key={row.id} value={row.id}>{row.label} ({row.taskType})</option>)}
+              </select>
+              <div className="border border-zinc-200 px-3 py-2 text-sm text-zinc-700">Responses: {questionResponseRows.length}</div>
+            </div>
             <div className="space-y-2">
-              {questionRows.map((row) => (
-                <div key={row.id} className="grid gap-2 border border-zinc-200 px-3 py-3 sm:grid-cols-[1fr_140px_120px_120px_120px]">
-                  <div>
-                    <div className="text-sm font-semibold text-zinc-900">{row.label}</div>
-                    <div className="text-[11px] text-zinc-500">{row.taskType}</div>
+              {questionResponseRows.map((row) => (
+                <div key={`${row.sessionId}-${row.entryId}`} className="border border-zinc-200 px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-zinc-900">{row.studentName}</div>
+                    <div className={`border px-2 py-0.5 text-xs ${row.status === 'correct' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : row.status === 'incorrect' ? 'border-red-300 bg-red-50 text-red-700' : 'border-zinc-300 bg-zinc-50 text-zinc-600'}`}>{row.status}</div>
                   </div>
-                  <div className="text-sm text-zinc-700">Attempts: {row.attempts}</div>
-                  <div className="text-sm text-zinc-700">Avg: {row.avgScore}%</div>
-                  <div className="text-sm text-zinc-700">Accuracy: {row.accuracy}%</div>
-                  <div className="text-sm text-zinc-700">Students: {row.studentCount}</div>
+                  <div className="mt-2 text-[11px] text-zinc-500">{row.questionName}</div>
+                  <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-700">{row.answer}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+                    <span>{row.grade}/{row.maxGrade}</span>
+                    <span>{row.handedInAt ? new Date(row.handedInAt).toLocaleString() : 'n/a'}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = mergedSessionsById.get(String(row.sessionId || ''));
+                        if (target) openSessionEditor(target);
+                      }}
+                      className="border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-600 hover:border-zinc-900"
+                    >
+                      Open student work
+                    </button>
+                  </div>
                 </div>
               ))}
-              {questionRows.length === 0 && <div className="border border-dashed border-zinc-200 px-4 py-5 text-sm text-zinc-500">No question rows match the selected filters.</div>}
+              {selectedQuestionId === 'all' && <div className="border border-dashed border-zinc-200 px-4 py-5 text-sm text-zinc-500">Select one question to view all student responses.</div>}
+              {selectedQuestionId !== 'all' && questionResponseRows.length === 0 && <div className="border border-dashed border-zinc-200 px-4 py-5 text-sm text-zinc-500">No responses found for this question.</div>}
             </div>
           </section>
-        )}
+        ) : view === 'board' ? (
+          <section className="border border-zinc-200 bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Published Results Board</div>
+                <div className="mt-1 text-sm text-zinc-700">Lesson: {publishedBoard.lessonTitle || 'No lesson selected'}</div>
+              </div>
+              <div className="text-xs text-zinc-500">Rows: {publishedBoard.rows.length} • Columns: {publishedBoard.columns.length}</div>
+            </div>
+
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCreateBoardShareLink}
+                className="border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                disabled={boardShareState === 'creating'}
+              >
+                {boardShareState === 'creating' ? 'Creating board link...' : 'Create board share link'}
+              </button>
+              {boardShareLink && (
+                <button type="button" onClick={handleCopyBoardShareLink} className="border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:border-zinc-900">Copy link</button>
+              )}
+              {boardShareState === 'empty' && <span className="text-xs text-amber-700">Board is empty for current filters.</span>}
+              {boardShareState === 'error' && <span className="text-xs text-red-700">Failed to create board share link.</span>}
+              {boardShareState === 'copied' && <span className="text-xs text-emerald-700">Link copied.</span>}
+              {boardShareState === 'copy-error' && <span className="text-xs text-amber-700">Clipboard unavailable. Copy manually.</span>}
+            </div>
+
+            {boardShareLink && (
+              <div className="mb-3">
+                <input readOnly value={boardShareLink} className="w-full border border-zinc-200 px-3 py-2 text-xs text-zinc-700" />
+              </div>
+            )}
+
+            {selectedLesson === 'all' && publishedBoard.lessonTitle && (
+              <div className="mb-3 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Showing the latest lesson by default. Pick a specific lesson in the lesson filter to publish a stable board.
+              </div>
+            )}
+
+            {publishedBoard.rows.length === 0 || publishedBoard.columns.length === 0 ? (
+              <div className="border border-dashed border-zinc-200 px-4 py-5 text-sm text-zinc-500">No board data for the current filters.</div>
+            ) : (
+              <div className="overflow-auto border border-zinc-200">
+                <table className="min-w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-zinc-50 text-left text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      <th className="sticky left-0 z-10 border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2">Student</th>
+                      <th className="border-b border-r border-zinc-200 px-3 py-2">Origin</th>
+                      <th className="border-b border-r border-zinc-200 px-3 py-2">Overall</th>
+                      <th className="border-b border-r border-zinc-200 px-3 py-2">Submitted</th>
+                      {publishedBoard.columns.map((column) => (
+                        <th key={column.id} className="min-w-[120px] border-b border-r border-zinc-200 px-3 py-2">
+                          <div className="text-zinc-700">{column.label}</div>
+                          <div className="mt-0.5 text-[10px] font-normal uppercase tracking-[0.08em] text-zinc-400">{column.taskType}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {publishedBoard.rows.map((row) => (
+                      <tr key={row.sessionId} className="border-t border-zinc-200 align-top">
+                        <td className="sticky left-0 z-10 border-r border-zinc-200 bg-white px-3 py-2 font-medium text-zinc-900">{row.studentName}</td>
+                        <td className="border-r border-zinc-200 px-3 py-2 text-xs text-zinc-600">{row.origin}</td>
+                        <td className="border-r border-zinc-200 px-3 py-2 text-zinc-700">{row.overallScore}%</td>
+                        <td className="border-r border-zinc-200 px-3 py-2 text-xs text-zinc-500">{row.timestamp ? new Date(row.timestamp).toLocaleString() : 'n/a'}</td>
+                        {publishedBoard.columns.map((column) => {
+                          const cell = row.cellMap.get(column.id);
+                          const tone = cell?.correct === true
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : cell?.correct === false
+                              ? 'bg-red-50 text-red-700'
+                              : 'bg-zinc-50 text-zinc-500';
+                          return (
+                            <td key={`${row.sessionId}-${column.id}`} className={`border-r border-zinc-200 px-3 py-2 text-center text-xs ${tone}`}>
+                              {cell ? `${cell.score}%` : '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ) : null}
       </div>
     </div>
   );

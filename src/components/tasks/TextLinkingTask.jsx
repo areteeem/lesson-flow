@@ -21,8 +21,21 @@ function buildLinkedTokens(tokens, links) {
   });
 }
 
+function normalizeLinksResponse(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => ({
+      id: entry.id || nextRefId(),
+      text: String(entry.text || ''),
+      indices: Array.isArray(entry.indices) ? entry.indices.filter((index) => Number.isInteger(index)) : [],
+      note: typeof entry.note === 'string' ? entry.note : '',
+    }))
+    .filter((entry) => entry.text && entry.indices.length > 0);
+}
+
 export default function TextLinkingTask({ block, onComplete, existingResult }) {
-  const [links, setLinks] = useState(() => existingResult?.response || []);
+  const [links, setLinks] = useState(() => normalizeLinksResponse(existingResult?.response));
   const [submitted, setSubmitted] = useState(!!existingResult?.submitted);
   const [flashId, setFlashId] = useState(null);
   const [selectionStart, setSelectionStart] = useState(null);

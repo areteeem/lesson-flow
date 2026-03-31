@@ -50,7 +50,7 @@ function TypingIndicator() {
   );
 }
 
-export default function DialogueTask({ block, onComplete, onProgress }) {
+export default function DialogueTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const lines = useMemo(() => parseDialogueLines(block.text), [block.text]);
   const speakerMap = useMemo(() => {
     const map = new Map();
@@ -88,6 +88,7 @@ export default function DialogueTask({ block, onComplete, onProgress }) {
   });
   const [showTyping, setShowTyping] = useState(false);
   const chatEndRef = useRef(null);
+  const showVerdict = submitted && showCheckButton;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -179,7 +180,7 @@ export default function DialogueTask({ block, onComplete, onProgress }) {
       score,
       response: values,
       correctAnswer: answers,
-      feedback: score >= STRICT_MATCH_THRESHOLD ? 'Correct!' : 'Check the expected answers.',
+      feedback: showCheckButton ? (score >= STRICT_MATCH_THRESHOLD ? 'Correct!' : 'Check the expected answers.') : 'Response saved.',
     });
   };
 
@@ -225,8 +226,8 @@ export default function DialogueTask({ block, onComplete, onProgress }) {
                       const globalIdx = getBlankGlobalIndex(lineIdx, localBlank);
                       const val = values[globalIdx] || '';
                       const expected = (answers[globalIdx] || '').trim().toLowerCase();
-                      const correct = submitted && expected && val.trim().toLowerCase() === expected;
-                      const wrong = submitted && expected && val.trim().toLowerCase() !== expected;
+                      const correct = showVerdict && expected && val.trim().toLowerCase() === expected;
+                      const wrong = showVerdict && expected && val.trim().toLowerCase() !== expected;
                       localBlank++;
                       return (
                         <input
@@ -255,7 +256,7 @@ export default function DialogueTask({ block, onComplete, onProgress }) {
                     <Md text={line.content} />
                   )}
                 </div>
-                {submitted && hasBlanks && (() => {
+                {showVerdict && hasBlanks && (() => {
                   const start = getBlankGlobalIndex(lineIdx, 0);
                   const count = blanksPerLine[lineIdx];
                   const wrongs = [];
@@ -293,16 +294,18 @@ export default function DialogueTask({ block, onComplete, onProgress }) {
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 sm:px-6">
         <div className="text-xs text-zinc-500">
-          {submitted
+          {showVerdict
             ? `${values.filter((v, i) => v.trim().toLowerCase() === (answers[i] || '').trim().toLowerCase()).length}/${totalBlanks} correct`
-            : `${revealedCount}/${lines.length} messages`}
+            : submitted
+              ? `${values.filter((value) => value.trim()).length}/${totalBlanks} saved`
+              : `${revealedCount}/${lines.length} messages`}
         </div>
         <div className="flex gap-2">
           {canContinue && !submitted && (
             <button type="button" onClick={revealNext} className="border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-900">Continue ↓</button>
           )}
           {canSubmit && !submitted && (
-            <button type="button" onClick={submit} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Check</button>
+            <button type="button" onClick={submit} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">{showCheckButton ? 'Check' : 'Save answer'}</button>
           )}
         </div>
       </div>

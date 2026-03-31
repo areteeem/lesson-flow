@@ -96,7 +96,7 @@ const MAP = {
   text_linking: TextLinkingTask,
 };
 
-export default function TaskRenderer({ block, onComplete, onProgress, existingResult }) {
+export default function TaskRenderer({ block, onComplete, onProgress, existingResult, allowRetry = true, showCheckButton = true }) {
   const Component = MAP[block.taskType];
   const [attempt, setAttempt] = useState(0);
   const [feedback, setFeedback] = useState(null);
@@ -107,7 +107,10 @@ export default function TaskRenderer({ block, onComplete, onProgress, existingRe
 
   const handleComplete = (result) => {
     setLastResult(result);
-    setFeedback(result?.correct ? 'correct' : 'wrong');
+    const nextFeedback = showCheckButton && typeof result?.correct === 'boolean'
+      ? (result.correct ? 'correct' : 'wrong')
+      : null;
+    setFeedback(nextFeedback);
     setTimeout(() => setFeedback(null), 1200);
     onComplete?.(result);
   };
@@ -136,8 +139,8 @@ export default function TaskRenderer({ block, onComplete, onProgress, existingRe
       <div key={attempt}>
         <ErrorBoundary message={`Failed to render task: ${block.taskType}`}>
           {Component
-            ? <Component block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} />
-            : <GenericTask block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} />}
+            ? <Component block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} showCheckButton={showCheckButton} />
+            : <GenericTask block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} showCheckButton={showCheckButton} />}
         </ErrorBoundary>
       </div>
       {(hints.length > 0 || (lastResult?.submitted && !lastResult?.correct)) && (
@@ -152,7 +155,7 @@ export default function TaskRenderer({ block, onComplete, onProgress, existingRe
               💡 Hint {hintsShown > 0 ? `(${hintsShown}/${hints.length})` : ''}
             </button>
           )}
-          {lastResult?.submitted && !lastResult?.correct && (
+          {allowRetry && lastResult?.submitted && !lastResult?.correct && (
             <button type="button" onClick={retry} className="ml-auto border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:border-zinc-900 hover:text-zinc-900">↻ Try Again</button>
           )}
         </div>

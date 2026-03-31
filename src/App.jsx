@@ -7,6 +7,7 @@ import { PersonIcon, GearIcon, QuestionIcon } from './components/Icons';
 import DebugPanel from './components/DebugPanel';
 import { recordDebugEvent } from './utils/debug';
 import { applyThemePreference, getThemePreference } from './utils/theme';
+import { getSessionUser, subscribeSessionUser } from './utils/accountAuth';
 
 const Editor = lazy(() => import('./components/Editor'));
 const GuidePanel = lazy(() => import('./components/GuidePanel'));
@@ -17,6 +18,10 @@ const StudentProfiles = lazy(() => import('./components/StudentProfiles'));
 const GradingConsole = lazy(() => import('./components/GradingConsole'));
 const LiveHost = lazy(() => import('./components/LiveHost'));
 const LiveJoin = lazy(() => import('./components/LiveJoin'));
+const SharedLessonPreview = lazy(() => import('./components/SharedLessonPreview'));
+const TeacherAuthScreen = lazy(() => import('./components/TeacherAuthScreen'));
+const AssignmentPlayerPage = lazy(() => import('./components/AssignmentPlayerPage'));
+const SharedResultPage = lazy(() => import('./components/SharedResultPage'));
 
 function ScreenFallback({ label = 'Loading…' }) {
   return (
@@ -75,6 +80,10 @@ function HomePage() {
           onSelect={(lesson) => {
             persistCurrentLesson(lesson);
             navigate(`/editor/${lesson.id}`);
+          }}
+          onPractice={(lesson) => {
+            persistCurrentLesson(lesson);
+            navigate(`/play/${lesson.id}?mode=practice`);
           }}
           onDelete={(id) => deleteLesson(id)}
           onDeleteSession={(id) => deleteSession(id)}
@@ -168,6 +177,7 @@ function EditorPage() {
 function PlayPage() {
   const { refresh } = useAppContext();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [lesson] = useState(() => {
     try {
@@ -178,10 +188,12 @@ function PlayPage() {
 
   if (!lesson) return <MissingSessionScreen title="Lesson not found" description="The player session is missing or expired. Reload the lesson from the home screen." onBack={() => navigate('/')} />;
 
+  const isPracticeMode = new URLSearchParams(location.search).get('mode') === 'practice';
+
   return (
     <ErrorBoundary message="Player crashed.">
       <Suspense fallback={<ScreenFallback label="Loading lesson player…" />}>
-        <LessonPlayer lesson={lesson} onExit={() => { refresh(); navigate('/'); }} />
+        <LessonPlayer lesson={lesson} mode={isPracticeMode ? 'practice' : 'default'} onExit={() => { refresh(); navigate('/'); }} />
       </Suspense>
     </ErrorBoundary>
   );
@@ -252,14 +264,38 @@ function LiveJoinPage() {
   );
 }
 
+function SharePreviewPage() {
+  const navigate = useNavigate();
+  return (
+    <ErrorBoundary message="Shared lesson preview crashed.">
+      <Suspense fallback={<ScreenFallback label="Loading shared lesson…" />}>
+        <SharedLessonPreview
+          onMakeCopy={(lesson) => {
+            persistCurrentLesson(lesson);
+            navigate('/editor/new');
+          }}
+          onBack={() => navigate('/')}
+        />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const isPlaying = location.pathname.startsWith('/play');
   const isEditor = location.pathname.startsWith('/editor');
   const isJoinMode = location.pathname.startsWith('/live/join');
+  const isSharePreview = location.pathname.startsWith('/share/');
+  const isAssignmentMode = location.pathname.startsWith('/assign/') || location.pathname.startsWith('/assignment/');
+  const isSharedResult = location.pathname.startsWith('/result/');
   const isHome = location.pathname === '/';
   const [showGuide, setShowGuide] = useState(false);
+  const [sessionUser, setSessionUser] = useState(getSessionUser);
+
+  const teacherRoutesLocked = !isJoinMode && !isSharePreview && !isAssignmentMode && !isSharedResult;
+  const needsTeacherAuth = teacherRoutesLocked && (!sessionUser || sessionUser.isAnonymous);
 
   const handleApplyGuidePresetFromHome = useCallback((config) => {
     const nextLesson = createPromptPresetLesson(config, null);
@@ -296,6 +332,16 @@ export default function App() {
     applyThemePreference(getThemePreference());
   }, []);
 
+  useEffect(() => subscribeSessionUser((user) => setSessionUser(user)), []);
+
+  if (needsTeacherAuth) {
+    return (
+      <Suspense fallback={<ScreenFallback label="Loading teacher authentication…" />}>
+        <TeacherAuthScreen />
+      </Suspense>
+    );
+  }
+
   return (
     <>
       <Routes>
@@ -307,9 +353,13 @@ export default function App() {
         <Route path="/grading" element={<GradingRoute />} />
         <Route path="/live/host" element={<LiveHostPage />} />
         <Route path="/live/join" element={<LiveJoinPage />} />
+        <Route path="/share/:shareId" element={<SharePreviewPage />} />
+        <Route path="/assign/:assignmentId" element={<AssignmentPlayerPage />} />
+        <Route path="/assignment/:assignmentId" element={<AssignmentPlayerPage />} />
+        <Route path="/result/:shareId" element={<SharedResultPage />} />
       </Routes>
 
-      {!isPlaying && !isEditor && (
+      {!isPlaying && !isEditor && !isSharePreview && !isAssignmentMode && !isSharedResult && (
         <div className="fixed bottom-20 right-6 z-30 flex gap-2 sm:bottom-6">
           {isHome && (
             <>

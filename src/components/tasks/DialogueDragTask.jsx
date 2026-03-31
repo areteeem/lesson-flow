@@ -27,7 +27,7 @@ function extractAnswersFromText(lines) {
   return answers;
 }
 
-export default function DialogueDragTask({ block, onComplete, onProgress }) {
+export default function DialogueDragTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const lines = useMemo(() => parseDialogueLines(block.text), [block.text]);
   const speakerMap = useMemo(() => {
     const map = new Map();
@@ -60,6 +60,7 @@ export default function DialogueDragTask({ block, onComplete, onProgress }) {
   const [submitted, setSubmitted] = useState(false);
   const [preferTap, setPreferTap] = useState(false);
   const chatEndRef = useRef(null);
+  const showVerdict = submitted && showCheckButton;
 
   useEffect(() => {
     const q = window.matchMedia('(pointer: coarse)');
@@ -168,8 +169,8 @@ export default function DialogueDragTask({ block, onComplete, onProgress }) {
                     if (!BLANK_RE.test(part)) return <span key={pIdx}>{part}</span>;
                     const gIdx = getGlobalIdx(lineIdx, localBlank);
                     const val = values[gIdx];
-                    const correct = submitted && val?.trim().toLowerCase() === (answers[gIdx] || '').trim().toLowerCase();
-                    const wrong = submitted && val && !correct;
+                    const correct = showVerdict && val?.trim().toLowerCase() === (answers[gIdx] || '').trim().toLowerCase();
+                    const wrong = showVerdict && val && !correct;
                     localBlank++;
                     return (
                       <button
@@ -207,12 +208,14 @@ export default function DialogueDragTask({ block, onComplete, onProgress }) {
 
       <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 sm:px-6">
         <div className="text-xs text-zinc-500">
-          {submitted
+          {showVerdict
             ? `${values.filter((v, i) => v.trim().toLowerCase() === (answers[i] || '').trim().toLowerCase()).length}/${totalBlanks} correct`
-            : `${values.filter(Boolean).length}/${totalBlanks} placed`}
+            : submitted
+              ? `${values.filter(Boolean).length}/${totalBlanks} saved`
+              : `${values.filter(Boolean).length}/${totalBlanks} placed`}
         </div>
         {!submitted && (
-          <button type="button" onClick={submit} disabled={values.some((v) => !v)} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>
+          <button type="button" onClick={submit} disabled={values.some((v) => !v)} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
         )}
       </div>
 

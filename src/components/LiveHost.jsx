@@ -7,6 +7,8 @@ import { buildLiveJoinUrl, buildLiveQrUrl, createLiveSessionId, getLiveSessionId
 import { createLiveChannel } from '../utils/liveChannel';
 import { deleteManualScores, fetchManualScores, fetchSessionResponses, persistManualScore } from '../utils/liveSupabaseData';
 import { ensureSession } from '../utils/accountAuth';
+import { saveSession } from '../storage';
+import { syncSessionGradeToCloud } from '../utils/gradingCloud';
 
 const PHASE = { LOBBY: 'lobby', RUNNING: 'running', FINISHED: 'finished' };
 
@@ -46,6 +48,7 @@ export default function LiveHost({ lesson, onExit }) {
   const validation = useMemo(() => validateLessonStructure(lesson), [lesson]);
   const channelRef = useRef(null);
   const stateRef = useRef({ phase: PHASE.LOBBY, currentIndex: 0, lessonPayload: null });
+  const hasPersistedLiveResultsRef = useRef(false);
 
   const blocks = validation.blocks;
   const lessonPayload = useMemo(() => ({
@@ -206,6 +209,119 @@ export default function LiveHost({ lesson, onExit }) {
     recordDebugEvent('live_host_finish', { pin, lessonId: lesson?.id || null, totalBlocks: blocks.length });
     setPhase(PHASE.FINISHED);
   };
+
+  const buildLiveSessions = useCallback((submittedAt) => {
+    const lessonId = lesson?.id || `live-${sessionId}`;
+    const lessonTitle = lesson?.title || 'Live Lesson';
+    const lessonPreview = lesson?.dsl || '';
+
+    return Object.entries(students).map(([studentId, student]) => {
+      const responses = student?.responses || {};
+      const hasAnyResponse = gradableTasks.some((block) => {
+        if (responses[block.id]) return true;
+        const override = manualPoints?.[studentId]?.[block.id];
+        return typeof override === 'number' && Number.isFinite(override);
+      });
+      if (!hasAnyResponse) return null;
+
+      const breakdown = gradableTasks.map((block, index) => {
+        const result = responses[block.id] || null;
+        const points = Math.max(0, Number(getTaskPoints(block) || 0));
+        const overrideRaw = manualPoints?.[studentId]?.[block.id];
+        const hasOverride = typeof overrideRaw === 'number' && Number.isFinite(overrideRaw);
+        const overridePoints = hasOverride ? Math.max(0, Math.min(points, Number(overrideRaw))) : null;
+        const autoScore = Math.max(0, Math.min(1, Number(normalizeScore(result) || 0)));
+        const finalScore = hasOverride ? (points > 0 ? overridePoints / points : 0) : autoScore;
+
+        let correct = typeof result?.correct === 'boolean' ? result.correct : null;
+        if (hasOverride) {
+          if (points > 0) {
+            if (overridePoints >= points) correct = true;
+            else if (overridePoints <= 0) correct = false;
+            else correct = null;
+          } else {
+            correct = null;
+          }
+        }
+
+        const responseValue = result?.response ?? result?.answer ?? null;
+        const answered = result?.submitted === true || responseValue !== null;
+
+        return {
+          id: block.id,
+          label: getBlockLabel(block, index),
+          taskType: block.taskType || 'unknown',
+          points,
+          correct,
+          score: finalScore,
+          result: {
+            ...(result && typeof result === 'object' ? result : { response: responseValue }),
+            response: responseValue,
+            answer: result?.answer ?? responseValue,
+            submitted: answered,
+            source: 'live',
+            liveSessionId: sessionId,
+            studentId,
+            manualOverridePoints: hasOverride ? overridePoints : null,
+            timestamp: result?.timestamp || submittedAt,
+          },
+        };
+      });
+
+      const total = breakdown.reduce((sum, entry) => sum + Math.max(0, Number(entry.points || 0)), 0);
+      const earned = breakdown.reduce((sum, entry) => {
+        const points = Math.max(0, Number(entry.points || 0));
+        const score = Math.max(0, Math.min(1, Number(entry.score || 0)));
+        return sum + points * score;
+      }, 0);
+
+      return {
+        id: `live-${sessionId}-${studentId}`,
+        lessonId,
+        lessonTitle,
+        studentName: (student?.name || 'Student').trim() || 'Student',
+        score: total > 0 ? Math.round((earned / total) * 100) : 0,
+        earned: Number(earned.toFixed(2)),
+        total,
+        completedCount: breakdown.filter((entry) => entry?.result?.submitted === true).length,
+        correctCount: breakdown.filter((entry) => entry.correct === true).length,
+        incorrectCount: breakdown.filter((entry) => entry.correct === false).length,
+        breakdown,
+        lessonPreview,
+        mode: 'live',
+        origin: 'live',
+        sourceType: 'live',
+        submissionState: breakdown.some((entry) => entry.correct === null) ? 'awaiting_review' : 'graded',
+        interaction: {
+          transport: transportMode,
+          liveSessionId: sessionId,
+          studentId,
+          events: [{ type: 'live_host_finished', at: submittedAt }],
+        },
+        timestamp: submittedAt,
+      };
+    }).filter(Boolean);
+  }, [gradableTasks, lesson?.dsl, lesson?.id, lesson?.title, manualPoints, sessionId, students, transportMode]);
+
+  const persistFinishedLiveResults = useCallback(async () => {
+    if (hasPersistedLiveResultsRef.current) return;
+    hasPersistedLiveResultsRef.current = true;
+
+    const submittedAt = Date.now();
+    const sessionsToPersist = buildLiveSessions(submittedAt);
+    if (sessionsToPersist.length === 0) return;
+
+    sessionsToPersist.forEach((session) => {
+      saveSession(session);
+    });
+
+    await Promise.allSettled(sessionsToPersist.map((session) => syncSessionGradeToCloud(session)));
+  }, [buildLiveSessions]);
+
+  useEffect(() => {
+    if (phase !== PHASE.FINISHED) return;
+    void persistFinishedLiveResults();
+  }, [phase, persistFinishedLiveResults]);
 
   const goPrev = () => setCurrentIndex((value) => Math.max(0, value - 1));
   const goNext = () => {
@@ -396,6 +512,23 @@ export default function LiveHost({ lesson, onExit }) {
       submissions: totals.submissions,
     };
   }, [students, gradableTasks.length, computeStudentStats]);
+
+  const topLeaders = useMemo(() => {
+    return Object.entries(students)
+      .map(([id, student]) => {
+        const stats = computeStudentStats(id);
+        return {
+          id,
+          name: student.name || 'Student',
+          pct: stats.pct,
+          completed: stats.completed,
+          totalPoints: stats.totalPoints,
+          earned: stats.earned,
+        };
+      })
+      .sort((left, right) => right.pct - left.pct || right.completed - left.completed)
+      .slice(0, 3);
+  }, [students, computeStudentStats]);
 
   const studentRows = useMemo(() => {
     return Object.entries(students).map(([studentId, student]) => {
@@ -657,6 +790,19 @@ export default function LiveHost({ lesson, onExit }) {
                 <button type="button" onClick={goNext} className="border border-white bg-white px-4 py-2 text-sm font-bold text-zinc-900">{currentIndex === blocks.length - 1 ? 'Finish' : 'Next'}</button>
               </div>
             </div>
+            <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top 3 Leaderboard</div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {topLeaders.map((leader, index) => (
+                  <div key={leader.id} className="border border-zinc-800 bg-zinc-950/40 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">#{index + 1}</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-100">{leader.name}</div>
+                    <div className="text-xs text-zinc-400">{leader.pct}% • {leader.completed} answered</div>
+                  </div>
+                ))}
+                {topLeaders.length === 0 && <div className="text-xs text-zinc-500">Waiting for submissions...</div>}
+              </div>
+            </div>
             <LessonStage blocks={blocks} currentIndex={currentIndex} results={{}} onCompleteBlock={() => {}} emptyMessage="The live session stayed connected, but this block is unavailable." />
           </div>
         )}
@@ -669,6 +815,18 @@ export default function LiveHost({ lesson, onExit }) {
               <div className="border border-zinc-700 bg-zinc-900 px-3 py-2"><div className="text-zinc-500">Avg Score</div><div className="mt-1 text-sm text-white">{classStats.avgPct}%</div></div>
               <div className="border border-zinc-700 bg-zinc-900 px-3 py-2"><div className="text-zinc-500">Completion</div><div className="mt-1 text-sm text-white">{classStats.avgCompleted}%</div></div>
               <div className="border border-zinc-700 bg-zinc-900 px-3 py-2"><div className="text-zinc-500">Responses</div><div className="mt-1 text-sm text-white">{classStats.submissions}</div></div>
+            </div>
+            <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3 text-left">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Final Top 3</div>
+              <div className="grid gap-2">
+                {topLeaders.map((leader, index) => (
+                  <div key={leader.id} className="flex items-center justify-between border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-300">
+                    <span>#{index + 1} {leader.name}</span>
+                    <span>{leader.earned.toFixed(1)} / {leader.totalPoints} pts ({leader.pct}%)</span>
+                  </div>
+                ))}
+                {topLeaders.length === 0 && <div className="text-xs text-zinc-500">No leaderboard data.</div>}
+              </div>
             </div>
             <div className="space-y-2">
               {Object.entries(students).map(([id, student], i) => {

@@ -23,10 +23,11 @@ function buildTranslationMap(pairs) {
   return map;
 }
 
-export default function HighlightGlossaryTask({ block, onComplete, existingResult }) {
+export default function HighlightGlossaryTask({ block, onComplete, existingResult, showCheckButton = true }) {
   const tokens = useMemo(() => splitTextIntoTokens(block.text || ''), [block.text]);
   const [selectedIndices, setSelectedIndices] = useState(() => new Set(existingResult?.responseIndices || []));
   const [submitted, setSubmitted] = useState(Boolean(existingResult?.submitted));
+  const showVerdict = submitted && showCheckButton;
   const translations = useMemo(() => buildTranslationMap(block.pairs), [block.pairs]);
   const targets = useMemo(() => (block.targets || []).map((item) => normalizeWord(item)).filter(Boolean), [block.targets]);
 
@@ -102,9 +103,9 @@ export default function HighlightGlossaryTask({ block, onComplete, existingResul
               onClick={() => toggleWord(index)}
               className={[
                 'inline rounded-sm px-0.5 py-0 align-baseline transition',
-                submitted && isTarget && isSelected ? 'bg-emerald-100 text-emerald-900' : '',
-                submitted && !isTarget && isSelected ? 'bg-amber-100 text-zinc-900' : '',
-                submitted && isTarget && !isSelected ? 'bg-red-100 text-red-700' : '',
+                showVerdict && isTarget && isSelected ? 'bg-emerald-100 text-emerald-900' : '',
+                showVerdict && !isTarget && isSelected ? 'bg-amber-100 text-zinc-900' : '',
+                showVerdict && isTarget && !isSelected ? 'bg-red-100 text-red-700' : '',
                 !submitted && isSelected ? 'bg-yellow-200 text-zinc-900' : 'hover:bg-zinc-100',
               ].join(' ')}
             >
@@ -139,7 +140,7 @@ export default function HighlightGlossaryTask({ block, onComplete, existingResul
         )}
       </div>
 
-      {submitted && targets.length > 0 && (
+      {showVerdict && targets.length > 0 && (
         <div className="mt-4 border border-zinc-200 bg-zinc-50 p-3">
           <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">Expected words</div>
           <div className="flex flex-wrap gap-1">

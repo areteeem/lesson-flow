@@ -223,3 +223,25 @@ export async function ensureSession() {
 
   return user;
 }
+
+export async function hydrateSessionUser() {
+  const client = getSupabaseClient();
+  if (!client) {
+    return getSessionUser();
+  }
+
+  try {
+    const { data } = await client.auth.getUser();
+    if (data?.user) {
+      const existing = getSessionUser();
+      const resolved = toSessionUser(data.user, existing || {});
+      setSessionUser(resolved);
+      return resolved;
+    }
+  } catch {
+    // Ignore auth hydration failures.
+  }
+
+  setSessionUser(null);
+  return null;
+}

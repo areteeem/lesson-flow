@@ -8,7 +8,7 @@ import TableSlide from './TableSlide';
 import TaskRenderer from './TaskRenderer';
 import { findLinkedBlock } from '../utils/lesson';
 
-function renderStandalone(block, results, onCompleteBlock, onProgressBlock) {
+function renderStandalone(block, results, onCompleteBlock, onProgressBlock, taskOptions) {
   if (!block) return null;
   if (block.type === 'slide') return <Slide block={block} />;
   if (block.type === 'rich') return <RichSlide block={block} />;
@@ -23,13 +23,15 @@ function renderStandalone(block, results, onCompleteBlock, onProgressBlock) {
         onComplete={(result) => onCompleteBlock?.(block.id, result)}
         onProgress={(result) => onProgressBlock?.(block.id, result)}
         existingResult={results?.[block.id]}
+        allowRetry={taskOptions?.allowRetry !== false}
+        showCheckButton={taskOptions?.showCheckButton !== false}
       />
     );
   }
   return null;
 }
 
-export default function LessonStage({ blocks = [], currentIndex = 0, results = {}, onCompleteBlock, onProgressBlock, emptyMessage = 'Nothing to show yet.' }) {
+export default function LessonStage({ blocks = [], currentIndex = 0, results = {}, onCompleteBlock, onProgressBlock, emptyMessage = 'Nothing to show yet.', taskOptions = null }) {
   const current = blocks[currentIndex] || null;
 
   if (!current) {
@@ -40,10 +42,10 @@ export default function LessonStage({ blocks = [], currentIndex = 0, results = {
   const shouldSplitView = linkedBlock && current.type !== 'group' && current.type !== 'split_group';
 
   if (!shouldSplitView) {
-    return renderStandalone(current, results, onCompleteBlock, onProgressBlock);
+    return renderStandalone(current, results, onCompleteBlock, onProgressBlock, taskOptions);
   }
 
   return current.type === 'task'
-    ? <SplitView left={renderStandalone(linkedBlock, results, onCompleteBlock, onProgressBlock)} right={renderStandalone(current, results, onCompleteBlock, onProgressBlock)} />
-    : <SplitView left={renderStandalone(current, results, onCompleteBlock, onProgressBlock)} right={renderStandalone(linkedBlock, results, onCompleteBlock, onProgressBlock)} />;
+    ? <SplitView left={renderStandalone(linkedBlock, results, onCompleteBlock, onProgressBlock, taskOptions)} right={renderStandalone(current, results, onCompleteBlock, onProgressBlock, taskOptions)} />
+    : <SplitView left={renderStandalone(current, results, onCompleteBlock, onProgressBlock, taskOptions)} right={renderStandalone(linkedBlock, results, onCompleteBlock, onProgressBlock, taskOptions)} />;
 }

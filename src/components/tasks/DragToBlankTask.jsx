@@ -5,7 +5,7 @@ import { BLANK_MARKER_RE } from '../../utils/patterns';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
 
-export default function DragToBlankTask({ block, onComplete, onProgress }) {
+export default function DragToBlankTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const sentence = block.text || block.sentence || '';
   const tokens = sentence.split(BLANK_MARKER_RE);
   const answers = block.blanks || [];
@@ -26,6 +26,7 @@ export default function DragToBlankTask({ block, onComplete, onProgress }) {
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [preferTapPlacement, setPreferTapPlacement] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const showVerdict = submitted && showCheckButton;
 
   useEffect(() => {
     const query = window.matchMedia('(pointer: coarse)');
@@ -133,8 +134,8 @@ export default function DragToBlankTask({ block, onComplete, onProgress }) {
           }
           const currentBlank = blankIndices[index];
           const value = values[currentBlank];
-          const correct = submitted && value.trim().toLowerCase() === (answers[currentBlank] || '').trim().toLowerCase();
-          const wrong = submitted && value && !correct;
+          const correct = showVerdict && value.trim().toLowerCase() === (answers[currentBlank] || '').trim().toLowerCase();
+          const wrong = showVerdict && value && !correct;
           return (
             <button
               key={index}
@@ -172,7 +173,7 @@ export default function DragToBlankTask({ block, onComplete, onProgress }) {
           );
         })}
       </div>
-      {submitted && (
+      {showVerdict && (
         <div className="mb-4 space-y-1">
           {values.map((value, idx) => {
             const isCorrect = value.trim().toLowerCase() === (answers[idx] || '').trim().toLowerCase();
@@ -211,7 +212,7 @@ export default function DragToBlankTask({ block, onComplete, onProgress }) {
         ))}
       </div>
       <button type="button" onClick={submit} disabled={values.some((v) => !v)} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
-        Check
+        {showCheckButton ? 'Check' : 'Save answer'}
       </button>
     </div>
   );

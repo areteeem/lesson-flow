@@ -5,11 +5,12 @@ function cleanWord(word) {
   return word.replace(/[^a-zA-Z0-9'-]/g, '').toLowerCase();
 }
 
-export default function ReadingHighlightTask({ block, onComplete }) {
+export default function ReadingHighlightTask({ block, onComplete, showCheckButton = true }) {
   const targets = (block.targets || []).map((item) => item.toLowerCase());
   const words = (block.text || '').split(/(\s+)/);
   const [selected, setSelected] = useState(new Set());
   const [submitted, setSubmitted] = useState(false);
+  const showVerdict = submitted && showCheckButton;
 
   const toggle = (word) => {
     if (submitted) return;
@@ -48,9 +49,9 @@ export default function ReadingHighlightTask({ block, onComplete }) {
               onClick={() => toggle(word)}
               className={[
                 'rounded-lg px-1.5 py-0.5 transition',
-                submitted && isTarget && isSelected ? 'bg-emerald-100 text-emerald-900' : '',
-                submitted && !isTarget && isSelected ? 'bg-red-100 text-red-900' : '',
-                submitted && isTarget && !isSelected ? 'bg-amber-100 text-amber-900' : '',
+                showVerdict && isTarget && isSelected ? 'bg-emerald-100 text-emerald-900' : '',
+                showVerdict && !isTarget && isSelected ? 'bg-red-100 text-red-900' : '',
+                showVerdict && isTarget && !isSelected ? 'bg-amber-100 text-amber-900' : '',
                 !submitted && isSelected ? 'bg-blue-100 text-blue-900' : 'hover:bg-zinc-100',
               ].join(' ')}
             >
@@ -59,7 +60,7 @@ export default function ReadingHighlightTask({ block, onComplete }) {
           );
         })}
       </div>
-      <button type="button" onClick={submit} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Check</button>
+      <button type="button" onClick={submit} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">{showCheckButton ? 'Check' : 'Save answer'}</button>
     </div>
   );
 }

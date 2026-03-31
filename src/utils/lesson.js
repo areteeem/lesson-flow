@@ -87,6 +87,15 @@ export function isGradableTask(block) {
   return block?.type === 'task' && !['random_wheel', 'open', 'cards', 'opinion_survey', 'scale', 'peer_review_checklist', 'pronunciation_shadowing'].includes(block.taskType);
 }
 
+export function isTaskRequired(block) {
+  if (!block || block.type !== 'task') return false;
+  return block.required !== false;
+}
+
+export function getRequiredTaskBlocks(blocks = []) {
+  return getTaskBlocks(blocks).filter((block) => block.enabled !== false && isTaskRequired(block));
+}
+
 export function getTaskPoints(block) {
   if (!block || block.type !== 'task') return 0;
   const value = Number(block.points);

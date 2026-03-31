@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getBlockLabel, normalizeVisibleBlocks, validateLessonStructure } from '../utils/lesson';
+import { getBlockLabel, getRequiredTaskBlocks, isTaskRequired, normalizeVisibleBlocks, validateLessonStructure } from '../utils/lesson';
 import GradingScreen from './GradingScreen';
 import LessonStage from './LessonStage';
 import { HamburgerIcon, FullscreenIcon, ExitFullscreenIcon } from './Icons';
@@ -28,7 +28,7 @@ function useSwipe(onSwipeLeft, onSwipeRight) {
   return handlers;
 }
 
-export default function LessonPlayer({ lesson, onExit }) {
+export default function LessonPlayer({ lesson, onExit, mode = 'default', sessionMeta = null, onSubmitted = null }) {
   const SIDEBAR_ITEM_HEIGHT = 76;
   const SIDEBAR_OVERSCAN = 6;
   const validation = useMemo(() => validateLessonStructure(lesson), [lesson]);
@@ -48,10 +48,29 @@ export default function LessonPlayer({ lesson, onExit }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fontSettings, setFontSettings] = useState(loadFontSettings);
   const [showFontPanel, setShowFontPanel] = useState(false);
+  const [interactionLog, setInteractionLog] = useState(() => ({
+    startedAt: Date.now(),
+    tabLeaves: 0,
+    tabReturns: 0,
+    blurCount: 0,
+    focusCount: 0,
+    lastTabLeftAt: null,
+    answers: [],
+    events: [],
+  }));
   const shellRef = useRef(null);
   const sidebarViewportRef = useRef(null);
   const [sidebarScrollTop, setSidebarScrollTop] = useState(0);
   const [sidebarHeight, setSidebarHeight] = useState(560);
+
+  const modeConfig = useMemo(() => ({
+    id: mode || 'default',
+    origin: sessionMeta?.origin || (mode === 'assignment' ? 'homework' : mode === 'practice' ? 'practice' : mode === 'live' ? 'live' : 'local'),
+    allowRetry: sessionMeta?.allowRetry ?? (mode !== 'assignment' && mode !== 'homework'),
+    allowRestart: sessionMeta?.allowRestart ?? (mode !== 'assignment' && mode !== 'homework'),
+    requireRequiredTasks: sessionMeta?.requireRequiredTasks ?? (mode === 'assignment' || mode === 'homework'),
+    showCheckButton: sessionMeta?.showCheckButton ?? (mode !== 'assignment' && mode !== 'homework'),
+  }), [mode, sessionMeta]);
 
   useEffect(() => {
     if (!sidebarOpen || !sidebarViewportRef.current) return undefined;
@@ -73,6 +92,56 @@ export default function LessonPlayer({ lesson, onExit }) {
       }, validation.issues.length > 0 ? 'warn' : 'info');
     }
   }, [blocks.length, lesson?.id, lesson?.title, validation.issues]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      const eventAt = Date.now();
+      if (document.visibilityState === 'hidden') {
+        setInteractionLog((current) => ({
+          ...current,
+          tabLeaves: current.tabLeaves + 1,
+          lastTabLeftAt: eventAt,
+          events: [...current.events, { type: 'tab_hidden', at: eventAt }],
+        }));
+        return;
+      }
+
+      setInteractionLog((current) => ({
+        ...current,
+        tabReturns: current.tabReturns + 1,
+        events: [...current.events, { type: 'tab_visible', at: eventAt }],
+      }));
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    const onBlur = () => {
+      const eventAt = Date.now();
+      setInteractionLog((current) => ({
+        ...current,
+        blurCount: current.blurCount + 1,
+        events: [...current.events, { type: 'blur', at: eventAt }],
+      }));
+    };
+
+    const onFocus = () => {
+      const eventAt = Date.now();
+      setInteractionLog((current) => ({
+        ...current,
+        focusCount: current.focusCount + 1,
+        events: [...current.events, { type: 'focus', at: eventAt }],
+      }));
+    };
+
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
 
   // Enter fullscreen on mount
   useEffect(() => {
@@ -147,8 +216,18 @@ export default function LessonPlayer({ lesson, onExit }) {
   };
 
   const canAdvance = blocks.length > 0;
+  const current = blocks[currentIndex] || null;
+  const currentRequiredBlocked = Boolean(
+    current
+    && current.type === 'task'
+    && modeConfig.requireRequiredTasks
+    && isTaskRequired(current)
+    && !results[current.id],
+  );
+  const canAdvanceCurrent = canAdvance && !currentRequiredBlocked;
 
   const goNext = () => {
+    if (!canAdvanceCurrent) return;
     if (blocks.length === 0) {
       setShowGrading(true);
       return;
@@ -171,16 +250,39 @@ export default function LessonPlayer({ lesson, onExit }) {
     const onKeyDown = (event) => {
       if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT') return;
       if (event.key === 'ArrowLeft') setCurrentIndex((value) => Math.max(0, value - 1));
-      if (event.key === 'ArrowRight' && canAdvance) {
+      if (event.key === 'ArrowRight' && canAdvanceCurrent) {
         setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [blocks.length, canAdvance]);
+  }, [blocks.length, canAdvanceCurrent]);
 
   const saveResult = (blockId, result) => {
     recordDebugEvent('task_complete', { lessonId: lesson?.id || null, blockId, correct: result?.correct ?? null, score: result?.score ?? null });
+    const answeredAt = Date.now();
+    setInteractionLog((currentLog) => ({
+      ...currentLog,
+      answers: [
+        ...currentLog.answers,
+        {
+          blockId,
+          answeredAt,
+          correct: result?.correct ?? null,
+          score: typeof result?.score === 'number' ? result.score : null,
+        },
+      ],
+      events: [
+        ...currentLog.events,
+        {
+          type: 'answer_saved',
+          at: answeredAt,
+          blockId,
+          correct: result?.correct ?? null,
+          score: typeof result?.score === 'number' ? result.score : null,
+        },
+      ],
+    }));
     setResults((currentResults) => ({ ...currentResults, [blockId]: result }));
   };
 
@@ -222,7 +324,8 @@ export default function LessonPlayer({ lesson, onExit }) {
 
   const completedCount = blocks.filter(isComplete).length;
   const progressWidth = blocks.length > 0 ? `${(completedCount / blocks.length) * 100}%` : '0%';
-  const current = blocks[currentIndex] || null;
+  const requiredTasks = getRequiredTaskBlocks(blocks);
+  const requiredCompleted = requiredTasks.filter((task) => Boolean(results[task.id])).length;
 
   if (blocks.length === 0) {
     return (
@@ -243,7 +346,33 @@ export default function LessonPlayer({ lesson, onExit }) {
   }
 
   if (showGrading) {
-    return <GradingScreen lesson={lesson} blocks={blocks} results={results} studentName={studentName} onStudentNameChange={setStudentName} onRestart={() => { setResults({}); setCurrentIndex(0); setShowGrading(false); }} onExit={handleExit} />;
+    return (
+      <GradingScreen
+        lesson={lesson}
+        blocks={blocks}
+        results={results}
+        studentName={studentName}
+        onStudentNameChange={setStudentName}
+        onRestart={() => { setResults({}); setCurrentIndex(0); setShowGrading(false); }}
+        onExit={handleExit}
+        onSubmitted={onSubmitted}
+        mode={modeConfig.id}
+        allowRestart={modeConfig.allowRestart}
+        sessionMeta={{
+          ...sessionMeta,
+          origin: modeConfig.origin,
+          mode: modeConfig.id,
+          tabLeaves: interactionLog.tabLeaves,
+          tabReturns: interactionLog.tabReturns,
+          blurCount: interactionLog.blurCount,
+          focusCount: interactionLog.focusCount,
+          lastTabLeftAt: interactionLog.lastTabLeftAt,
+          answerTimeline: interactionLog.answers,
+          events: interactionLog.events,
+          startedAt: interactionLog.startedAt,
+        }}
+      />
+    );
   }
 
   return (
@@ -294,6 +423,11 @@ export default function LessonPlayer({ lesson, onExit }) {
               <div className="mt-1.5 h-1.5 overflow-hidden bg-zinc-100">
                 <div className="h-full bg-zinc-900 transition-all duration-500" style={{ width: progressWidth }} />
               </div>
+              {modeConfig.requireRequiredTasks && requiredTasks.length > 0 && (
+                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-zinc-400">
+                  Required complete: {requiredCompleted}/{requiredTasks.length}
+                </div>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <div className="relative">
@@ -319,7 +453,7 @@ export default function LessonPlayer({ lesson, onExit }) {
 
         <main className="flex-1 px-3 py-4 sm:px-4 sm:py-5 md:px-5 md:py-7 lg:px-6 lg:py-8 xl:py-10" {...swipeHandlers}>
           <div key={currentIndex} className="player-frame mx-auto animate-soft-rise">
-            <LessonStage blocks={blocks} currentIndex={currentIndex} results={results} onCompleteBlock={saveResult} emptyMessage="This lesson ended safely because the current block is missing." />
+            <LessonStage blocks={blocks} currentIndex={currentIndex} results={results} onCompleteBlock={saveResult} taskOptions={{ allowRetry: modeConfig.allowRetry, showCheckButton: modeConfig.showCheckButton }} emptyMessage="This lesson ended safely because the current block is missing." />
           </div>
         </main>
 
@@ -334,8 +468,9 @@ export default function LessonPlayer({ lesson, onExit }) {
                 ].join(' ')} />
               ))}
             </div>
-            <button type="button" onClick={goNext} className="player-nav-button border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800">{currentIndex === blocks.length - 1 ? 'Finish ✓' : 'Next →'}</button>
+            <button type="button" onClick={goNext} disabled={!canAdvanceCurrent} className="player-nav-button border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">{currentIndex === blocks.length - 1 ? 'Finish ✓' : 'Next →'}</button>
           </div>
+          {currentRequiredBlocked && <div className="player-frame mx-auto mt-2 text-right text-[11px] text-amber-700">Complete this required task before continuing.</div>}
         </footer>
       </div>
     </div>

@@ -3,11 +3,36 @@ import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
-export default function OrderTask({ block, onComplete, existingResult }) {
+function toList(value, taskType = 'order') {
+  if (Array.isArray(value)) return value.filter((item) => item !== null && item !== undefined).map((item) => String(item));
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    const splitByLine = trimmed.includes('\n');
+    const splitByPipe = trimmed.includes('|');
+    if (splitByLine || splitByPipe) {
+      return trimmed
+        .split(splitByLine ? /\r?\n/ : /\|/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+    if (taskType === 'sentence_builder') {
+      return trimmed.split(/\s+/).filter(Boolean);
+    }
+    return [trimmed];
+  }
+  return [];
+}
+
+export default function OrderTask({ block, onComplete, existingResult, showCheckButton = true }) {
   const taskType = block.taskType || 'order';
   const shuffleSeed = useShuffleSeed();
-  const initial = useMemo(() => block.shuffle === false ? [...(block.items || [])] : stableShuffle(block.items || [], `${block.id || block.question}-${shuffleSeed}-order`), [block.id, block.items, block.question, block.shuffle, shuffleSeed]);
-  const [items, setItems] = useState(() => existingResult?.response || initial);
+  const sourceItems = useMemo(() => toList(block.items, taskType), [block.items, taskType]);
+  const initial = useMemo(() => (block.shuffle === false ? [...sourceItems] : stableShuffle(sourceItems, `${block.id || block.question}-${shuffleSeed}-order`)), [block.id, block.question, block.shuffle, sourceItems, shuffleSeed]);
+  const [items, setItems] = useState(() => {
+    const existing = toList(existingResult?.response, taskType);
+    return existing.length > 0 ? existing : initial;
+  });
   const [submitted, setSubmitted] = useState(() => Boolean(existingResult?.submitted));
   const [dragIndex, setDragIndex] = useState(null);
   const [insertBeforeIndex, setInsertBeforeIndex] = useState(null);
@@ -122,7 +147,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
   };
 
   const submit = () => {
-    const expected = block.correct || block.items || [];
+    const expected = toList(block.correct, taskType).length > 0 ? toList(block.correct, taskType) : toList(block.items, taskType);
     const correctCount = items.filter((item, i) => item === expected[i]).length;
     const allCorrect = correctCount === expected.length && items.length === expected.length;
     const score = correctCount / Math.max(expected.length, 1);
@@ -130,7 +155,11 @@ export default function OrderTask({ block, onComplete, existingResult }) {
     onComplete?.({ submitted: true, correct: allCorrect, score, response: items, correctAnswer: expected });
   };
 
-  const expected = block.correct || block.items || [];
+  const expected = useMemo(() => {
+    const fromCorrect = toList(block.correct, taskType);
+    if (fromCorrect.length > 0) return fromCorrect;
+    return toList(block.items, taskType);
+  }, [block.correct, block.items, taskType]);
 
   const dragHandlers = (index) => ({
     draggable: !submitted,
@@ -143,8 +172,8 @@ export default function OrderTask({ block, onComplete, existingResult }) {
     onTouchEnd: handleTouchEnd,
   });
 
-  const isCorrect = (index) => submitted && items[index] === expected[index];
-  const isWrong = (index) => submitted && items[index] !== expected[index];
+  const isCorrect = (index) => submitted && showCheckButton && items[index] === expected[index];
+  const isWrong = (index) => submitted && showCheckButton && items[index] !== expected[index];
 
   /* ─── Sentence Builder: horizontal chips ─── */
   if (taskType === 'sentence_builder') {
@@ -175,13 +204,13 @@ export default function OrderTask({ block, onComplete, existingResult }) {
             );
           })}
         </div>
-        {submitted && (
+        {submitted && showCheckButton && (
           <div className="mt-3 text-sm text-zinc-600">
             Correct order: <span className="font-medium">{expected.join(' ')}</span>
           </div>
         )}
         <div className="mt-4 flex justify-end">
-          <button type="button" onClick={submit} disabled={submitted} className="border border-zinc-900 bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>
+          <button type="button" onClick={submit} disabled={submitted} className="border border-zinc-900 bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
         </div>
       </div>
     );
@@ -231,7 +260,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
           })}
         </div>
         <div className="mt-4 flex justify-end">
-          <button type="button" onClick={submit} disabled={submitted} className="border border-zinc-900 bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>
+          <button type="button" onClick={submit} disabled={submitted} className="border border-zinc-900 bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
         </div>
       </div>
     );
@@ -278,7 +307,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
           })}
         </div>
         <div className="mt-4 flex justify-end">
-          <button type="button" onClick={submit} disabled={submitted} className="border border-zinc-900 bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>
+          <button type="button" onClick={submit} disabled={submitted} className="border border-zinc-900 bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
         </div>
       </div>
     );
@@ -326,7 +355,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
                     <button type="button" onClick={() => move(index, 1)} disabled={index === items.length - 1} className="border border-zinc-200 px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-50 disabled:opacity-30">&#9660;</button>
                   </div>
                 )}
-                {submitted && (
+                {submitted && showCheckButton && (
                   <div className="shrink-0">
                     {isCorrect(index) && <span className="text-sm text-emerald-600">&#10003;</span>}
                     {isWrong(index) && <span className="text-xs text-red-600">Expected: <strong>{expected[index]}</strong></span>}
@@ -340,7 +369,7 @@ export default function OrderTask({ block, onComplete, existingResult }) {
           );
         })}
       </div>
-      <button type="button" onClick={submit} disabled={submitted} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>
+      <button type="button" onClick={submit} disabled={submitted} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
       {submitted && block.explanation && (
         <div className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
       )}

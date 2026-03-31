@@ -56,6 +56,10 @@ function normalizeCloudSession(base, entries) {
     completedCount: Number(base.completed_count || 0),
     correctCount: Number(base.correct_count || 0),
     lessonPreview: base?.result_payload?.lessonPreview || '',
+    mode: base?.result_payload?.mode || 'default',
+    origin: base?.result_payload?.origin || 'local',
+    interaction: base?.result_payload?.interaction || null,
+    submissionState: base?.result_payload?.submissionState || null,
     timestamp: base.occurred_at ? new Date(base.occurred_at).getTime() : Date.now(),
     breakdown: entries.map((entry) => ({
       id: entry.block_id || `${entry.grade_session_id}-${entry.entry_index}`,
@@ -123,6 +127,10 @@ export async function syncSessionGradeToCloud(session) {
     occurred_at: occurredAtIso,
     result_payload: {
       lessonPreview: session.lessonPreview || '',
+      mode: session.mode || 'default',
+      origin: session.origin || 'local',
+      interaction: session.interaction || null,
+      submissionState: session.submissionState || null,
     },
     updated_at: new Date(now).toISOString(),
   };

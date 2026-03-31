@@ -76,7 +76,7 @@ function JigsawClipPath({ id, row, col, rows, cols, size }) {
   );
 }
 
-export default function PuzzleJigsawTask({ block, onComplete }) {
+export default function PuzzleJigsawTask({ block, onComplete, showCheckButton = true }) {
   const rows = useMemo(() => normalizeRows(block), [block]);
   const numRows = rows.length;
   const numCols = rows[0]?.length || 2;
@@ -108,6 +108,7 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [checked, setChecked] = useState(false);
   const [preferTap, setPreferTap] = useState(false);
+  const showVerdict = checked && showCheckButton;
 
   useEffect(() => {
     const query = window.matchMedia('(pointer: coarse)');
@@ -235,7 +236,7 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
   };
 
   const getCellStatus = (row, col) => {
-    if (!checked) return 'neutral';
+    if (!showVerdict) return 'neutral';
     const pieceId = board[row][col];
     if (!pieceId) return 'empty';
     const piece = pieceMap[pieceId];
@@ -362,7 +363,7 @@ export default function PuzzleJigsawTask({ block, onComplete }) {
           disabled={available.length > 0}
           className="border border-zinc-900 bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40"
         >
-          Check
+          {showCheckButton ? 'Check' : 'Save answer'}
         </button>
       </div>
     </div>

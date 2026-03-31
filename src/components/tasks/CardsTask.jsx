@@ -25,7 +25,7 @@ function TranslateButton({ text }) {
   );
 }
 
-export default function CardsTask({ block, onComplete }) {
+export default function CardsTask({ block, onComplete, showCheckButton = true }) {
   const shuffleSeed = useShuffleSeed();
   const cards = useMemo(() => {
     const source = block.cards?.length ? block.cards : block.pairs?.length ? block.pairs.map((pair) => ({ front: pair.left, back: pair.right })) : block.items?.length ? block.items.map((item) => ({ front: item, back: '' })) : [];
@@ -45,6 +45,8 @@ export default function CardsTask({ block, onComplete }) {
   const hasBack = cards.some((c) => c.back);
   const seenCount = Object.keys(seen).length;
   const allSeen = seenCount === cards.length;
+  const quizCorrectCount = Object.values(quizResults).filter((value) => value === 'correct').length;
+  const quizAnsweredCount = Object.keys(quizResults).length;
 
   const flip = () => {
     setFlipped((v) => !v);
@@ -57,6 +59,11 @@ export default function CardsTask({ block, onComplete }) {
 
   const checkQuiz = () => {
     if (!quizInput.trim()) return;
+    if (!showCheckButton) {
+      setQuizResults((currentResults) => ({ ...currentResults, [index]: 'saved' }));
+      setSeen((currentSeen) => ({ ...currentSeen, [index]: true }));
+      return;
+    }
     const correct = current.back && quizInput.trim().toLowerCase() === current.back.trim().toLowerCase();
     setQuizResults((v) => ({ ...v, [index]: correct ? 'correct' : 'wrong' }));
     setSeen((v) => ({ ...v, [index]: true }));
@@ -66,8 +73,10 @@ export default function CardsTask({ block, onComplete }) {
 
   // Report progress
   const reportProgress = () => {
-    const quizCorrect = Object.values(quizResults).filter((v) => v === 'correct').length;
-    const score = mode === 'quiz' ? quizCorrect / Math.max(cards.length, 1) : seenCount / Math.max(cards.length, 1);
+    const quizScore = showCheckButton
+      ? (quizCorrectCount / Math.max(cards.length, 1))
+      : (quizAnsweredCount / Math.max(cards.length, 1));
+    const score = mode === 'quiz' ? quizScore : seenCount / Math.max(cards.length, 1);
     onComplete?.({ submitted: true, correct: score >= PASS_SCORE, score, response: { mode, seen: seenCount, quizResults }, feedback: 'Cards reviewed.' });
   };
 
@@ -145,22 +154,26 @@ export default function CardsTask({ block, onComplete }) {
       {mode === 'quiz' && current && (
         <>
           <div className="mb-4 flex items-center gap-2">
-            <div className="text-xs text-zinc-500">{Object.values(quizResults).filter((v) => v === 'correct').length} / {cards.length} correct</div>
+            <div className="text-xs text-zinc-500">{showCheckButton ? `${quizCorrectCount} / ${cards.length} correct` : `${quizAnsweredCount} / ${cards.length} answered`}</div>
             <div className="flex-1 h-1.5 rounded-full bg-zinc-100 overflow-hidden">
-              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${(Object.values(quizResults).filter((v) => v === 'correct').length / cards.length) * 100}%` }} />
+              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${(showCheckButton ? quizCorrectCount : quizAnsweredCount) / cards.length * 100}%` }} />
             </div>
           </div>
           <div className="border border-zinc-200 bg-zinc-50 p-6 text-center">
             <div className="text-xs text-zinc-400 mb-2">{index + 1}/{cards.length}</div>
             <div className="text-xl font-semibold text-zinc-900 mb-4"><Md text={current.front} /></div>
             {quizResults[index] ? (
-              <div className={quizResults[index] === 'correct' ? 'border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800' : 'border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800'}>
-                {quizResults[index] === 'correct' ? 'Correct!' : <>Wrong. {quizRevealed[index] ? <span>Answer: <strong>{current.back}</strong></span> : <button type="button" onClick={revealQuiz} className="underline">Show answer</button>}</>}
-              </div>
+              showCheckButton ? (
+                <div className={quizResults[index] === 'correct' ? 'border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800' : 'border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800'}>
+                  {quizResults[index] === 'correct' ? 'Correct!' : <>Wrong. {quizRevealed[index] ? <span>Answer: <strong>{current.back}</strong></span> : <button type="button" onClick={revealQuiz} className="underline">Show answer</button>}</>}
+                </div>
+              ) : (
+                <div className="border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Answer saved.</div>
+              )
             ) : (
               <div className="flex gap-2">
                 <input value={quizInput} onChange={(e) => setQuizInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && checkQuiz()} placeholder="Type the definition…" className="flex-1 border border-zinc-200 px-4 py-2.5 text-sm outline-none transition focus:border-zinc-900" />
-                <button type="button" onClick={checkQuiz} disabled={!quizInput.trim()} className="border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-40">Check</button>
+                <button type="button" onClick={checkQuiz} disabled={!quizInput.trim()} className="border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
               </div>
             )}
           </div>
@@ -174,7 +187,7 @@ export default function CardsTask({ block, onComplete }) {
       {/* Footer: Complete */}
       {(allSeen || Object.keys(quizResults).length === cards.length) && (
         <div className="mt-4 flex items-center justify-between border border-zinc-200 bg-zinc-50 px-4 py-3">
-          <div className="text-sm text-zinc-600">{mode === 'quiz' ? `${Object.values(quizResults).filter((v) => v === 'correct').length}/${cards.length} correct` : 'All cards reviewed'}</div>
+          <div className="text-sm text-zinc-600">{mode === 'quiz' ? (showCheckButton ? `${quizCorrectCount}/${cards.length} correct` : `${quizAnsweredCount}/${cards.length} answered`) : 'All cards reviewed'}</div>
           <button type="button" onClick={reportProgress} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Done</button>
         </div>
       )}

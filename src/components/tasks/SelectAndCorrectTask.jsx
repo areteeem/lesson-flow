@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Md } from '../FormattedText';
 
-export default function SelectAndCorrectTask({ block, onComplete }) {
+export default function SelectAndCorrectTask({ block, onComplete, showCheckButton = true }) {
   const text = block.text || '';
   const words = text.split(/(\s+)/);
   const correctAnswer = (block.answer || '').trim();
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [correction, setCorrection] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const showVerdict = submitted && showCheckButton;
 
   const selectWord = (index) => {
     if (submitted) return;
@@ -46,7 +47,7 @@ export default function SelectAndCorrectTask({ block, onComplete }) {
               onClick={() => selectWord(index)}
               className={[
                 'rounded-lg px-2 py-1 transition cursor-pointer',
-                submitted && isSelected ? (correction.trim().toLowerCase() === correctAnswer.toLowerCase() ? 'bg-emerald-100 text-emerald-900 ring-2 ring-emerald-400 line-through' : 'bg-red-100 text-red-900 ring-2 ring-red-400 line-through') : '',
+                showVerdict && isSelected ? (correction.trim().toLowerCase() === correctAnswer.toLowerCase() ? 'bg-emerald-100 text-emerald-900 ring-2 ring-emerald-400 line-through' : 'bg-red-100 text-red-900 ring-2 ring-red-400 line-through') : '',
                 !submitted && isSelected ? 'bg-amber-100 text-amber-900 ring-2 ring-amber-400' : '',
                 !submitted && !isSelected ? 'hover:bg-zinc-100' : '',
               ].join(' ')}
@@ -74,10 +75,10 @@ export default function SelectAndCorrectTask({ block, onComplete }) {
       )}
       {!submitted && (
         <button type="button" onClick={submit} disabled={selectedIndex === null || !correction.trim()} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
-          Check
+          {showCheckButton ? 'Check' : 'Save answer'}
         </button>
       )}
-      {submitted && (
+      {showVerdict && (
         <div className={[
           'mt-4 border px-4 py-3 text-sm',
           correction.trim().toLowerCase() === correctAnswer.toLowerCase()
@@ -87,6 +88,7 @@ export default function SelectAndCorrectTask({ block, onComplete }) {
           Correct answer: <strong>{correctAnswer}</strong>
         </div>
       )}
+      {submitted && !showCheckButton && <div className="mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Answer saved ✓</div>}
       {submitted && block.explanation && (
         <div className="mt-3 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
       )}

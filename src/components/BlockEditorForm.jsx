@@ -1059,6 +1059,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
               <div className="absolute right-0 top-full z-20 mt-1 min-w-[240px] border border-zinc-200 bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
                 <div className="space-y-1">
                   <Toggle checked={block.shuffle !== false} onChange={(value) => apply(onChange, block, 'shuffle', value)} label="Shuffle" />
+                  <Toggle checked={block.required !== false} onChange={(value) => apply(onChange, block, 'required', value)} label="Required task" />
                   {block.taskType === 'random_wheel' && <Toggle checked={Boolean(block.repeat)} onChange={(value) => apply(onChange, block, 'repeat', value)} label="Repeat" />}
                   {['multiple_choice', 'multi_select', 'opinion_survey', 'video_questions'].includes(block.taskType) && <Toggle checked={Boolean(block.multiple)} onChange={(value) => apply(onChange, block, 'multiple', value)} label="Allow multiple" />}
                   <Toggle

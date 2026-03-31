@@ -13,7 +13,7 @@ function splitBlankTokens(text = '') {
   return text.split(BLANK_MARKER_RE).filter((token) => token !== '');
 }
 
-export default function TextEntryTask({ block, onComplete, onProgress, existingResult }) {
+export default function TextEntryTask({ block, onComplete, onProgress, existingResult, showCheckButton = true }) {
   const tokens = useMemo(() => splitBlankTokens(block.text || ''), [block.text]);
   const inlineBlankCount = tokens.filter((token) => /(\{\}|_{3,}|\[blank\]|\[\d+\])/i.test(token)).length;
   const inlineMode = ['fill_typing', 'dialogue_completion', 'type_in_blank'].includes(block.taskType) && inlineBlankCount > 0;
@@ -34,6 +34,7 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
     return isMultiLineCorrection ? errorLines.map((l) => l) : Array(blankCount).fill('');
   });
   const [submitted, setSubmitted] = useState(() => Boolean(existingResult?.submitted));
+  const showVerdict = submitted && showCheckButton;
   const answerSets = useMemo(() => {
     if (isMultiLineCorrection) {
       // Parse multi-answer: "corrected1 | corrected2 | ..."
@@ -108,8 +109,8 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
             }
             const blankIndex = tokens.slice(0, index + 1).filter((entry) => /(\{\}|_{3,}|\[blank\]|\[\d+\])/i.test(entry)).length - 1;
             const value = values[blankIndex] || '';
-            const correct = submitted && answerSets[blankIndex]?.includes(value.trim().toLowerCase());
-            const wrong = submitted && value && !correct;
+            const correct = showVerdict && answerSets[blankIndex]?.includes(value.trim().toLowerCase());
+            const wrong = showVerdict && value && !correct;
             return (
               <input
                 key={index}
@@ -134,8 +135,8 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
       ) : isMultiLineCorrection ? (
         <div className="space-y-3">
           {errorLines.map((line, index) => {
-            const correct = submitted && answerSets[index]?.includes(values[index]?.trim().toLowerCase());
-            const wrong = submitted && values[index] && !correct;
+            const correct = showVerdict && answerSets[index]?.includes(values[index]?.trim().toLowerCase());
+            const wrong = showVerdict && values[index] && !correct;
             const expected = answerSets[index]?.[0];
             return (
               <div key={index}>
@@ -157,7 +158,7 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
                     !submitted ? 'border-zinc-200 focus:border-blue-400' : 'border-zinc-200',
                   ].join(' ')}
                 />
-                {wrong && expected && (
+                {showCheckButton && wrong && expected && (
                   <div className="mt-1 text-xs text-red-600">Expected: {expected}</div>
                 )}
               </div>
@@ -169,8 +170,8 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
           {block.text && <div className="mb-4 whitespace-pre-wrap text-sm leading-7 text-zinc-700">{block.text}</div>}
           <div className="space-y-3">
             {values.map((value, index) => {
-              const correct = submitted && answerSets[index]?.includes(value.trim().toLowerCase());
-              const wrong = submitted && value && !correct;
+              const correct = showVerdict && answerSets[index]?.includes(value.trim().toLowerCase());
+              const wrong = showVerdict && value && !correct;
               return (
                 <textarea
                   key={index}
@@ -202,7 +203,7 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
         <div className="text-xs text-zinc-500">{block.examples?.length ? `Example: ${block.examples[0]}` : block.hint || 'Type your answer and check it.'}</div>
         {!submitted && (
           <button type="button" onClick={submit} disabled={values.every((value) => !value.trim())} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
-            {block.taskType === 'open' ? 'Save response' : 'Check'}
+            {block.taskType === 'open' ? 'Save response' : (showCheckButton ? 'Check' : 'Save answer')}
           </button>
         )}
       </div>

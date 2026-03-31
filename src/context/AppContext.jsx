@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { loadLessons, loadSessions, saveLesson as storageSave, deleteLesson as storageDelete, deleteSession as storageDeleteSession, loadFolders, saveFolders as storageSaveFolders } from '../storage';
-import { ensureSession, subscribeSessionUser } from '../utils/accountAuth';
+import { hydrateSessionUser, subscribeSessionUser } from '../utils/accountAuth';
 import { syncAccountDataBidirectional } from '../utils/accountCloudSync';
 import { getActiveAccountScopeId, seedScopeFromLocal } from '../utils/accountStorage';
 
@@ -41,7 +41,7 @@ export function AppProvider({ children }) {
     let active = true;
 
     const bootstrap = async () => {
-      await ensureSession();
+      await hydrateSessionUser();
       seedScopeFromLocal(getActiveAccountScopeId());
       await syncAccountDataBidirectional({ source: 'startup' });
       if (active) {

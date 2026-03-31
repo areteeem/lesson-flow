@@ -31,7 +31,7 @@ function stableShuffleLocal(arr, seed) {
   return copy;
 }
 
-export default function DialogueReconstructTask({ block, onComplete, onProgress }) {
+export default function DialogueReconstructTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const correctOrder = useMemo(() => parseLines(block.text), [block.text]);
   const speakerMap = useMemo(() => {
     const map = new Map();
@@ -68,6 +68,7 @@ export default function DialogueReconstructTask({ block, onComplete, onProgress 
   const [preferTap, setPreferTap] = useState(false);
   const listRef = useRef(null);
   const touchDrag = useRef(null);
+  const showVerdict = submitted && showCheckButton;
 
   useEffect(() => {
     const query = window.matchMedia('(pointer: coarse)');
@@ -179,8 +180,8 @@ export default function DialogueReconstructTask({ block, onComplete, onProgress 
           const isLeft = sIdx % 2 === 0;
           const isDragging = dragIdx === idx;
           const showLine = insertBefore === idx && dragIdx !== null;
-          const isCorrect = submitted && correctOrder[idx]?.speaker === line.speaker && correctOrder[idx]?.content === line.content;
-          const isWrong = submitted && !isCorrect;
+          const isCorrect = showVerdict && correctOrder[idx]?.speaker === line.speaker && correctOrder[idx]?.content === line.content;
+          const isWrong = showVerdict && !isCorrect;
 
           return (
             <div key={`${line.speaker}-${line.content}-${idx}`} className="relative" data-dlg-idx={idx}>
@@ -232,9 +233,9 @@ export default function DialogueReconstructTask({ block, onComplete, onProgress 
       </div>
 
       <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 sm:px-6">
-        <div className="text-xs text-zinc-500">{submitted ? `${items.filter((item, i) => correctOrder[i]?.content === item.content).length}/${correctOrder.length} correct` : `${items.length} messages`}</div>
+        <div className="text-xs text-zinc-500">{showVerdict ? `${items.filter((item, i) => correctOrder[i]?.content === item.content).length}/${correctOrder.length} correct` : `${items.length} messages`}</div>
         {!submitted && (
-          <button type="button" onClick={submit} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Check Order</button>
+          <button type="button" onClick={submit} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">{showCheckButton ? 'Check order' : 'Save answer'}</button>
         )}
       </div>
 

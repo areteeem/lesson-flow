@@ -395,10 +395,28 @@ export function exportSession(session) {
   downloadJson(`${(session.lessonTitle || 'lesson')}-${session.studentName || 'session'}.json`.replace(/\s+/g, '_'), session);
 }
 
-export function printSessionReport(session) {
+function formatStudentResponse(result) {
+  const response = result?.response;
+  if (response === null || typeof response === 'undefined') return 'No answer submitted';
+  if (typeof response === 'string') return escapeHtml(response);
+  if (typeof response === 'number' || typeof response === 'boolean') return escapeHtml(String(response));
+  if (Array.isArray(response)) return escapeHtml(response.join(' | '));
+  try {
+    return escapeHtml(JSON.stringify(response));
+  } catch {
+    return 'Structured response';
+  }
+}
+
+export function printSessionReport(session, options = {}) {
   const popup = window.open('', '_blank', 'width=900,height=700');
   if (!popup) return;
-  const sessionHtml = `<!doctype html><html><head><title>${escapeHtml(session.lessonTitle)}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{margin:0 0 8px}.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:20px}.summary-card{border:1px solid #ddd;padding:12px;background:#fafafa}.summary-card .label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#666}.summary-card .value{margin-top:6px;font-size:24px;font-weight:600}table{width:100%;border-collapse:collapse;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left;vertical-align:top}th{background:#f7f7f7}.muted{color:#666;font-size:14px}</style></head><body><h1>${escapeHtml(session.lessonTitle)}</h1><div class="muted">Student: ${escapeHtml(session.studentName || 'Unknown')} | Score: ${session.score}% | ${new Date(session.timestamp).toLocaleString()}</div><section class="summary"><div class="summary-card"><div class="label">Correct</div><div class="value">${session.correctCount ?? '-'}</div></div><div class="summary-card"><div class="label">Reviewed</div><div class="value">${session.completedCount ?? '-'}</div></div><div class="summary-card"><div class="label">Graded</div><div class="value">${session.total ?? '-'}</div></div><div class="summary-card"><div class="label">Earned</div><div class="value">${session.earned ?? '-'}</div></div></section><table><thead><tr><th>Task</th><th>Status</th><th>Score</th><th>Feedback</th></tr></thead><tbody>${(session.breakdown || []).map((entry) => `<tr><td>${escapeHtml(entry.label)}</td><td>${entry.correct === true ? 'Correct' : entry.correct === false ? 'Incorrect' : 'Saved'}</td><td>${Math.round((entry.score || 0) * 100)}%</td><td>${escapeHtml(entry.result?.feedback || '')}</td></tr>`).join('')}</tbody></table></body></html>`;
+  const visibilityPolicy = options.visibilityPolicy || 'full_answers';
+  const showCorrectness = visibilityPolicy !== 'student_answers_only';
+  const showFeedback = visibilityPolicy === 'full_answers';
+  const scoreLabel = showCorrectness ? 'Score' : 'Answer';
+  const detailLabel = showFeedback ? 'Feedback' : (showCorrectness ? 'Status' : 'Submitted');
+  const sessionHtml = `<!doctype html><html><head><title>${escapeHtml(session.lessonTitle)}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{margin:0 0 8px}.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:20px}.summary-card{border:1px solid #ddd;padding:12px;background:#fafafa}.summary-card .label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#666}.summary-card .value{margin-top:6px;font-size:24px;font-weight:600}table{width:100%;border-collapse:collapse;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left;vertical-align:top}th{background:#f7f7f7}.muted{color:#666;font-size:14px}</style></head><body><h1>${escapeHtml(session.lessonTitle)}</h1><div class="muted">Student: ${escapeHtml(session.studentName || 'Unknown')} | Score: ${session.score}% | ${new Date(session.timestamp).toLocaleString()}</div><section class="summary"><div class="summary-card"><div class="label">Correct</div><div class="value">${session.correctCount ?? '-'}</div></div><div class="summary-card"><div class="label">Reviewed</div><div class="value">${session.completedCount ?? '-'}</div></div><div class="summary-card"><div class="label">Graded</div><div class="value">${session.total ?? '-'}</div></div><div class="summary-card"><div class="label">Earned</div><div class="value">${session.earned ?? '-'}</div></div></section><table><thead><tr><th>Task</th><th>${scoreLabel}</th><th>${detailLabel}</th></tr></thead><tbody>${(session.breakdown || []).map((entry) => `<tr><td>${escapeHtml(entry.label)}</td><td>${showCorrectness ? `${Math.round((entry.score || 0) * 100)}%` : formatStudentResponse(entry.result)}</td><td>${showFeedback ? escapeHtml(entry.result?.feedback || '') : (entry.correct === true ? 'Correct' : entry.correct === false ? 'Incorrect' : 'Submitted')}</td></tr>`).join('')}</tbody></table></body></html>`;
   popup.document.write(DOMPurify.sanitize(sessionHtml, { WHOLE_DOCUMENT: true, ADD_TAGS: ['style'] }));
   popup.document.close();
   popup.focus();

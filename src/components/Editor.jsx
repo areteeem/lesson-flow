@@ -6,6 +6,7 @@ import { syncLessonToCloud } from '../utils/cloudSync';
 import { addCustomTemplate } from './GuidePanel';
 import { createLessonTemplate, deleteBlockFromTree } from '../utils/builder';
 import { flattenBlocks } from '../utils/lesson';
+import { useAppContext } from '../context/AppContext';
 import HotkeysModal from './HotkeysModal';
 import MarkdownComposer from './MarkdownComposer';
 import TemplatePicker from './TemplatePicker';
@@ -15,6 +16,7 @@ import { BackIcon, DotsVerticalIcon, PlayIcon as PlayIconSharp, SaveIcon as Save
 const DslMonacoEditor = lazy(() => import('./DslMonacoEditor'));
 const BuilderPanel = lazy(() => import('./BuilderPanel'));
 const BlockPreview = lazy(() => import('./BlockPreview'));
+const GradingConsole = lazy(() => import('./GradingConsole'));
 
 function createStateFromLesson(sourceLesson, existingBlocks) {
   const baseLesson = sourceLesson || createLessonTemplate('blank');
@@ -227,6 +229,24 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
               <input type="checkbox" checked={settings.allowSessionSave !== false} onChange={(event) => patchSettings({ allowSessionSave: event.target.checked })} />
               Allow session saving
             </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={Boolean(settings.showCheckButton)} onChange={(event) => patchSettings({ showCheckButton: event.target.checked })} />
+              Show check button in homework mode
+            </label>
+          </div>
+
+          <div className="px-6 pt-4">
+            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Result Visibility Policy</div>
+            <select
+              value={settings.visibilityPolicy || 'student_answers_only'}
+              onChange={(event) => patchSettings({ visibilityPolicy: event.target.value })}
+              className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+            >
+              <option value="student_answers_only">Student answers only</option>
+              <option value="correctness_only">Correctness only</option>
+              <option value="full_answers">Full answers</option>
+            </select>
+            <div className="mt-1 text-[10px] text-zinc-400">Controls what student-facing reports can reveal after submission.</div>
           </div>
 
           {/* Font settings */}
@@ -270,6 +290,7 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
 }
 
 export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpenGuide }) {
+  const { sessions } = useAppContext();
   const inputRef = useRef(null);
   const dslInputRef = useRef(null);
   const autoSaveRef = useRef(null);
@@ -580,6 +601,16 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   };
 
   const payload = buildPayload();
+  const editorSessions = useMemo(() => {
+    const lessonId = lesson?.id || null;
+    const lessonTitle = parsed.title || '';
+    return (sessions || []).filter((session) => {
+      if (!session) return false;
+      if (lessonId && session.lessonId && String(session.lessonId) === String(lessonId)) return true;
+      if (lessonTitle && session.lessonTitle && String(session.lessonTitle) === String(lessonTitle)) return true;
+      return false;
+    });
+  }, [sessions, lesson?.id, parsed.title]);
 
   const paletteCommands = useMemo(() => {
     const blockCommands = allBlocks.map((block, i) => ({
@@ -595,6 +626,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
       { id: 'mode-dsl', label: 'Switch to DSL Editor', group: 'Mode', action: () => setMode('dsl') },
       { id: 'mode-builder', label: 'Switch to Builder', group: 'Mode', action: () => setMode('builder') },
       { id: 'mode-preview', label: 'Switch to Preview', group: 'Mode', action: () => setMode('preview') },
+      { id: 'mode-grading', label: 'Switch to Grading', group: 'Mode', action: () => setMode('grading') },
       { id: 'focus-toggle', label: focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode', group: 'View', action: () => setFocusMode((v) => !v) },
       { id: 'debug-toggle', label: showDebugPanel ? 'Hide Debug Panel' : 'Show Debug Panel', group: 'View', action: () => setShowDebugPanel((v) => !v) },
       { id: 'export-json', label: 'Export JSON', group: 'File', action: () => exportLesson(payload) },
@@ -666,8 +698,8 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
           <div className="flex shrink-0 items-center gap-1 md:gap-1.5">
             {/* Mode switcher */}
             <div className="hidden border border-zinc-200 sm:flex">
-              {['dsl', 'builder', 'preview'].map((entry) => (
-                <button key={entry} type="button" onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : 'Preview'}</button>
+              {['dsl', 'builder', 'preview', 'grading'].map((entry) => (
+                <button key={entry} type="button" onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : entry === 'preview' ? 'Preview' : 'Grading'}</button>
               ))}
             </div>
 
@@ -806,6 +838,14 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
             </div>
           </div>
         )}
+
+        {mode === 'grading' && (
+          <div className="h-full overflow-auto bg-white">
+            <Suspense fallback={<div className="flex h-full items-center justify-center bg-white text-sm text-zinc-500">Loading grading…</div>}>
+              <GradingConsole sessions={editorSessions} onBack={() => setMode('builder')} />
+            </Suspense>
+          </div>
+        )}
       </div>
 
       {/* Mobile bottom tab bar */}
@@ -816,12 +856,13 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
               <BackIcon />
               <span className="text-[10px]">Back</span>
             </button>
-            {['dsl', 'builder', 'preview'].map((entry) => (
+            {['dsl', 'builder', 'preview', 'grading'].map((entry) => (
               <button key={entry} type="button" onClick={() => setMode(entry)} className={`flex flex-1 flex-col items-center gap-0.5 py-2 ${mode === entry ? 'text-zinc-900' : 'text-zinc-400'}`}>
                 {entry === 'dsl' && <DslIcon />}
                 {entry === 'builder' && <BuilderIcon />}
                 {entry === 'preview' && <PreviewIcon />}
-                <span className="text-[10px] font-medium">{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Build' : 'View'}</span>
+                {entry === 'grading' && <span className="text-xs font-bold">%</span>}
+                <span className="text-[10px] font-medium">{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Build' : entry === 'preview' ? 'View' : 'Grade'}</span>
               </button>
             ))}
           </div>

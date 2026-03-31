@@ -23,7 +23,7 @@ function similarity(left, right) {
   return 1 - matrix[a.length][b.length] / Math.max(a.length, b.length, 1);
 }
 
-function OptionRenderer({ block, onComplete }) {
+function OptionRenderer({ block, onComplete, showCheckButton = true }) {
   const [selected, setSelected] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const correct = useMemo(() => (Array.isArray(block.correct || block.answer) ? (block.correct || block.answer) : `${block.correct || block.answer || ''}`.split(/[|,]/)).map((item) => item.toString().trim().toLowerCase()).filter(Boolean), [block.correct, block.answer]);
@@ -50,13 +50,13 @@ function OptionRenderer({ block, onComplete }) {
       </div>
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">{multi ? 'Multi-answer' : 'Single answer'}</div>
-        <button type="button" onClick={submit} disabled={selected.length === 0} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>
+        <button type="button" onClick={submit} disabled={selected.length === 0} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
       </div>
     </div>
   );
 }
 
-function TextRenderer({ block, onComplete }) {
+function TextRenderer({ block, onComplete, showCheckButton = true }) {
   const [values, setValues] = useState(Array(Math.max(block.blanks?.length || 0, 1)).fill(''));
   const [submitted, setSubmitted] = useState(false);
   const answers = useMemo(() => {
@@ -80,9 +80,9 @@ function TextRenderer({ block, onComplete }) {
       </div>
       <div className="mt-5 flex items-center justify-between gap-3">
         <div className="text-xs text-zinc-500">{block.hint || 'Type your answer.'}</div>
-        <button type="button" onClick={submit} disabled={values.every((value) => !value.trim())} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{block.taskType === 'open' ? 'Save' : 'Check'}</button>
+        <button type="button" onClick={submit} disabled={values.every((value) => !value.trim())} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{block.taskType === 'open' ? 'Save' : (showCheckButton ? 'Check' : 'Save answer')}</button>
       </div>
-      {submitted && (() => {
+      {submitted && showCheckButton && (() => {
         const pct = Math.round(values.reduce((total, value, index) => total + similarity(value, answers[index] || ''), 0) / Math.max(values.length, 1) * 100);
         return <div className={['mt-4 border px-4 py-3 text-sm', pct >= 85 ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : pct >= 50 ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-red-300 bg-red-50 text-red-800'].join(' ')}>{pct >= 85 ? 'Great match!' : pct >= 50 ? 'Close — check your answer.' : 'Review the expected answer.'} Score: {pct}%{pct < 85 && answers[0] && <span className="ml-2">Expected: <strong>{answers.join(', ')}</strong></span>}</div>;
       })()}
@@ -159,10 +159,10 @@ function GenericCollectionRenderer({ block, onComplete }) {
   );
 }
 
-export default function GenericTask({ block, onComplete }) {
+export default function GenericTask({ block, onComplete, showCheckButton = true }) {
   const definition = getTaskDefinition(block.taskType);
-  if (['choice'].includes(definition.kind)) return <OptionRenderer block={block} onComplete={onComplete} />;
-  if (['text', 'branch'].includes(definition.kind)) return <TextRenderer block={block} onComplete={onComplete} />;
+  if (['choice'].includes(definition.kind)) return <OptionRenderer block={block} onComplete={onComplete} showCheckButton={showCheckButton} />;
+  if (['text', 'branch'].includes(definition.kind)) return <TextRenderer block={block} onComplete={onComplete} showCheckButton={showCheckButton} />;
   if (['media'].includes(definition.kind)) return <MediaRenderer block={block} onComplete={onComplete} />;
   if (['grid'].includes(definition.kind)) return <GridRenderer block={block} onComplete={onComplete} />;
   return <GenericCollectionRenderer block={block} onComplete={onComplete} />;

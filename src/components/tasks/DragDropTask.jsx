@@ -3,7 +3,7 @@ import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
-export default function DragDropTask({ block, onComplete, onProgress }) {
+export default function DragDropTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const pairs = block.pairs || [];
   const shuffleSeed = useShuffleSeed();
 
@@ -19,6 +19,7 @@ export default function DragDropTask({ block, onComplete, onProgress }) {
   const [draggedItem, setDraggedItem] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const showVerdict = submitted && showCheckButton;
   const [preferTap, setPreferTap] = useState(false);
 
   useEffect(() => {
@@ -140,8 +141,8 @@ export default function DragDropTask({ block, onComplete, onProgress }) {
         {pairs.map((pair) => {
           const placedId = placements[pair.left];
           const placedItem = placedId !== undefined ? draggableItems.find((d) => d.id === placedId) : null;
-          const isCorrect = submitted && placedItem && placedItem.text === pair.right;
-          const isWrong = submitted && placedItem && placedItem.text !== pair.right;
+          const isCorrect = showVerdict && placedItem && placedItem.text === pair.right;
+          const isWrong = showVerdict && placedItem && placedItem.text !== pair.right;
           const isEmpty = !placedItem;
           const isDropTarget = draggedItem && isEmpty;
           return (
@@ -179,13 +180,13 @@ export default function DragDropTask({ block, onComplete, onProgress }) {
                   <span className="text-xs text-zinc-400">{isDropTarget ? 'Drop here' : '—'}</span>
                 )}
               </div>
-              {isWrong && <div className="text-xs text-red-600">Expected: <strong>{pair.right}</strong></div>}
+              {showVerdict && isWrong && <div className="text-xs text-red-600">Expected: <strong>{pair.right}</strong></div>}
             </div>
           );
         })}
       </div>
 
-      <button type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>
+      <button type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
       {submitted && block.explanation && (
         <div className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
       )}

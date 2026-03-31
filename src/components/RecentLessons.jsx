@@ -3,6 +3,8 @@ import { exportLesson, exportSession, importLesson, printSessionReport } from '.
 import { generateDSL } from '../parser';
 import { DotsVerticalIcon, ChevronRightIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, PlusIcon } from './Icons';
 import PromptModal from './PromptModal';
+import { createLessonShareLink } from '../utils/lessonSharing';
+import { createAssignmentLink } from '../utils/lessonAssignments';
 
 const SORT_OPTIONS = {
   last_opened: 'Last opened',
@@ -97,7 +99,7 @@ function SessionPreviewModal({ session, onClose, onDelete }) {
   );
 }
 
-function LessonCardMenu({ lesson, onClose, onDuplicate, onExport, onRename, onMoveToFolder, onDelete }) {
+function LessonCardMenu({ lesson, onClose, onDuplicate, onExport, onRename, onMoveToFolder, onShare, onPractice, onDelete }) {
   const ref = useRef(null);
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
@@ -106,6 +108,8 @@ function LessonCardMenu({ lesson, onClose, onDuplicate, onExport, onRename, onMo
   }, [onClose]);
   const items = [
     { label: 'Duplicate', action: () => { onDuplicate(lesson); onClose(); } },
+    { label: 'Start practice mode', action: () => { onPractice(lesson); onClose(); } },
+    { label: 'Create share link', action: () => { onShare(lesson); onClose(); } },
     { label: 'Export JSON', action: () => { onExport(lesson); onClose(); } },
     { label: 'Rename', action: () => { onRename(lesson); onClose(); } },
     { label: 'Move to folder', action: () => { onMoveToFolder(lesson); onClose(); } },
@@ -169,6 +173,82 @@ function MoveFolderModal({ lesson, folders, onSave, onClose }) {
   );
 }
 
+function ShareLessonModal({ lesson, shareState, onClose, onCreateLink, onCreateAssignmentLink, onCopyLink }) {
+  if (!lesson) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-lg border border-zinc-200 bg-white p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Share lesson</div>
+            <div className="mt-1 text-base font-semibold text-zinc-950">{lesson.title || 'Untitled lesson'}</div>
+          </div>
+          <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700">Close</button>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <div className="text-xs text-zinc-600">Create a read-only public preview link. Anyone with the link can open preview and make their own copy.</div>
+
+          <button
+            type="button"
+            onClick={() => onCreateLink(lesson)}
+            disabled={shareState.loading}
+            className="border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+          >
+            {shareState.loading ? 'Creating link…' : 'Create / refresh share link'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onCreateAssignmentLink(lesson)}
+            disabled={shareState.assignmentLoading}
+            className="border border-zinc-900 bg-white px-3 py-2 text-xs font-medium text-zinc-700 disabled:opacity-60"
+          >
+            {shareState.assignmentLoading ? 'Creating assignment…' : 'Create assignment link (one attempt)'}
+          </button>
+
+          {shareState.error && (
+            <div className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {shareState.error}
+            </div>
+          )}
+
+          {shareState.link && (
+            <div className="space-y-2">
+              <label className="block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Share link</label>
+              <input
+                readOnly
+                value={shareState.link}
+                className="w-full border border-zinc-200 px-3 py-2 text-xs text-zinc-700 outline-none"
+              />
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => onCopyLink(shareState.link)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900">Copy link</button>
+                {shareState.copied && <span className="text-[11px] text-emerald-700">Copied</span>}
+              </div>
+            </div>
+          )}
+
+          {shareState.assignmentLink && (
+            <div className="space-y-2">
+              <label className="block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Assignment link</label>
+              <input
+                readOnly
+                value={shareState.assignmentLink}
+                className="w-full border border-zinc-200 px-3 py-2 text-xs text-zinc-700 outline-none"
+              />
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => onCopyLink(shareState.assignmentLink)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900">Copy link</button>
+                {shareState.assignmentCopied && <span className="text-[11px] text-emerald-700">Copied</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FolderNode({ folder, depth, selectedFolder, onSelectFolder, onAdd, onRename, onRemove, lessonCounts }) {
   const [expanded, setExpanded] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -201,7 +281,7 @@ function FolderNode({ folder, depth, selectedFolder, onSelectFolder, onAdd, onRe
   );
 }
 
-export default function RecentLessons({ lessons, sessions, onCreate, onSelect, onDelete, onDeleteSession, onImport, onSave, folders = [], onSaveFolders }) {
+export default function RecentLessons({ lessons, sessions, onCreate, onSelect, onPractice, onDelete, onDeleteSession, onImport, onSave, folders = [], onSaveFolders }) {
   const inputRef = useRef(null);
   const mainRef = useRef(null);
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -210,6 +290,8 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
   const [menuLessonId, setMenuLessonId] = useState(null);
   const [renamingLesson, setRenamingLesson] = useState(null);
   const [movingLesson, setMovingLesson] = useState(null);
+  const [shareLesson, setShareLesson] = useState(null);
+  const [shareState, setShareState] = useState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });
   const [folderPromptParent, setFolderPromptParent] = useState(null);
   const [sortBy, setSortBy] = useState(() => {
     try {
@@ -242,6 +324,50 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
   const handleMoveToFolder = (lesson, folderId) => {
     onSave({ ...lesson, folder: folderId });
     setMovingLesson(null);
+  };
+
+  const handleCreateShareLink = async (lesson) => {
+    setShareState((prev) => ({ ...prev, loading: true, error: '', copied: false }));
+    const result = await createLessonShareLink(lesson);
+    if (!result.ok) {
+      const reason = result.reason === 'auth_required'
+        ? 'Sign in with a teacher account in Settings to create share links.'
+        : result.reason || 'Failed to create share link.';
+      setShareState((prev) => ({ ...prev, loading: false, error: reason }));
+      return;
+    }
+    setShareState((prev) => ({ ...prev, loading: false, error: '', link: result.shareUrl || '', copied: false }));
+  };
+
+  const handleCreateAssignmentLink = async (lesson) => {
+    setShareState((prev) => ({ ...prev, assignmentLoading: true, error: '', assignmentCopied: false }));
+    const result = await createAssignmentLink(lesson, {
+      oneAttempt: true,
+      allowRetry: false,
+      visibilityPolicy: lesson?.settings?.visibilityPolicy || 'student_answers_only',
+    });
+    if (!result.ok) {
+      const reason = result.reason === 'auth_required'
+        ? 'Sign in with a teacher account in Settings to create assignment links.'
+        : result.reason || 'Failed to create assignment link.';
+      setShareState((prev) => ({ ...prev, assignmentLoading: false, error: reason }));
+      return;
+    }
+    setShareState((prev) => ({ ...prev, assignmentLoading: false, error: '', assignmentLink: result.assignmentUrl || '', assignmentCopied: false }));
+  };
+
+  const handleCopyShareLink = async (value) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      const isAssignment = value === shareState.assignmentLink;
+      setShareState((prev) => ({ ...prev, copied: !isAssignment, assignmentCopied: isAssignment }));
+      setTimeout(() => {
+        setShareState((prev) => ({ ...prev, copied: false, assignmentCopied: false }));
+      }, 1400);
+    } catch {
+      setShareState((prev) => ({ ...prev, error: 'Clipboard access denied. Copy link manually from the field.' }));
+    }
   };
 
   const handleAddFolder = (parentId) => {
@@ -448,6 +574,11 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
                   onExport={exportLesson}
                   onRename={(l) => setRenamingLesson(l)}
                   onMoveToFolder={(l) => setMovingLesson(l)}
+                  onPractice={(l) => onPractice?.(l)}
+                  onShare={(l) => {
+                    setShareLesson(l);
+                    setShareState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });
+                  }}
                   onDelete={onDelete}
                 />
               )}
@@ -511,6 +642,17 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
       <SessionPreviewModal session={activeSession} onClose={() => setActiveSessionId(null)} onDelete={onDeleteSession} />
       <RenameModal lesson={renamingLesson} onSave={handleRename} onClose={() => setRenamingLesson(null)} />
       <MoveFolderModal lesson={movingLesson} folders={folders} onSave={handleMoveToFolder} onClose={() => setMovingLesson(null)} />
+      <ShareLessonModal
+        lesson={shareLesson}
+        shareState={shareState}
+        onClose={() => {
+          setShareLesson(null);
+          setShareState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });
+        }}
+        onCreateLink={handleCreateShareLink}
+        onCreateAssignmentLink={handleCreateAssignmentLink}
+        onCopyLink={handleCopyShareLink}
+      />
       <PromptModal
         open={folderPromptParent !== null}
         title="New Folder"

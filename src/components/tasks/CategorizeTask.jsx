@@ -4,7 +4,7 @@ import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
 
-export default function CategorizeTask({ block, onComplete, onProgress }) {
+export default function CategorizeTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const shuffleSeed = useShuffleSeed();
   const categories = useMemo(() => block.shuffle === false ? (block.categories || []) : stableShuffle(block.categories || [], `${block.id || block.question}-${shuffleSeed}-categories`), [block.categories, block.id, block.question, block.shuffle, shuffleSeed]);
 
@@ -21,6 +21,7 @@ export default function CategorizeTask({ block, onComplete, onProgress }) {
   const [draggedItem, setDraggedItem] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const showVerdict = submitted && showCheckButton;
   const [preferTap, setPreferTap] = useState(false);
 
   useEffect(() => {
@@ -191,8 +192,8 @@ export default function CategorizeTask({ block, onComplete, onProgress }) {
               <div className="flex flex-wrap gap-1.5">
                 {bucket.map((item) => {
                   const expectedCategory = answerMap[item.text]?.trim().toLowerCase();
-                  const isCorrect = submitted && expectedCategory === category.trim().toLowerCase();
-                  const isWrong = submitted && expectedCategory && expectedCategory !== category.trim().toLowerCase();
+                  const isCorrect = showVerdict && expectedCategory === category.trim().toLowerCase();
+                  const isWrong = showVerdict && expectedCategory && expectedCategory !== category.trim().toLowerCase();
                   return (
                     <button
                       key={item.id}
@@ -221,7 +222,7 @@ export default function CategorizeTask({ block, onComplete, onProgress }) {
       </div>
 
       {submitted && block.explanation && <div className="mt-4 text-sm text-zinc-600"><Md text={block.explanation} /></div>}
-      {!submitted && <button type="button" onClick={submit} disabled={bank.length > 0} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>}
+      {!submitted && <button type="button" onClick={submit} disabled={bank.length > 0} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>}
     </div>
   );
 }

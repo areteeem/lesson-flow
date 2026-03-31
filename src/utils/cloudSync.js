@@ -1,6 +1,7 @@
 import { getSupabaseClient, getSupabaseConfig, isSupabaseConfigured } from './supabaseClient';
 import { loadAppSettings } from './appSettings';
 import { ensureSession, getSessionUser } from './accountAuth';
+import { compressJsonPayload } from './compression';
 
 const CLOUD_STATUS_KEY = 'lesson-flow-cloud-status';
 const DEV_PROXY_BASE = '/__supabase';
@@ -347,16 +348,42 @@ export async function syncLessonToCloud(lesson, meta = {}) {
     user_id: sessionUser.id,
     title: lesson.title || 'Untitled Lesson',
     payload: lesson,
+    payload_compressed: null,
+    payload_encoding: null,
     client_updated_at: new Date(now).toISOString(),
     updated_at: new Date(now).toISOString(),
   };
+
+  try {
+    const compressed = compressJsonPayload(lesson);
+    payload.payload_compressed = compressed.data;
+    payload.payload_encoding = compressed.encoding;
+  } catch {
+    payload.payload_compressed = null;
+    payload.payload_encoding = null;
+  }
 
   try {
     let error = null;
     const scopedAttempt = await client.from('lesson_drafts').upsert(payload, { onConflict: 'lesson_id' });
     error = scopedAttempt.error;
 
-    if (error && ((error.message || '').includes('user_id') || error.code === 'PGRST204' || error.code === '42703')) {
+    const lowerMessage = (error?.message || '').toLowerCase();
+    const missingCompressionColumns = lowerMessage.includes('payload_compressed') || lowerMessage.includes('payload_encoding');
+
+    if (error && (missingCompressionColumns || error.code === 'PGRST204' || error.code === '42703')) {
+      const scopedWithoutCompression = await client.from('lesson_drafts').upsert({
+        lesson_id: payload.lesson_id,
+        user_id: payload.user_id,
+        title: payload.title,
+        payload: payload.payload,
+        client_updated_at: payload.client_updated_at,
+        updated_at: payload.updated_at,
+      }, { onConflict: 'lesson_id' });
+      error = scopedWithoutCompression.error;
+    }
+
+    if (error && ((error.message || '').toLowerCase().includes('user_id') || error.code === 'PGRST204' || error.code === '42703')) {
       const legacyAttempt = await client.from('lesson_drafts').upsert({
         lesson_id: payload.lesson_id,
         title: payload.title,

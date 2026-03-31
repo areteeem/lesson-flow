@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Md } from '../FormattedText';
 
-export default function ScaleTask({ block, onComplete, existingResult }) {
+export default function ScaleTask({ block, onComplete, existingResult, showCheckButton = true }) {
   const min = Number(block.min ?? 1);
   const max = Number(block.max ?? 5);
   const hasAnswerKey = (block.answer ?? block.correct) !== undefined && String(block.answer ?? block.correct).trim() !== '';
@@ -10,6 +10,7 @@ export default function ScaleTask({ block, onComplete, existingResult }) {
   const labels = block.labels || {};
   const [value, setValue] = useState(existingResult?.response ?? null);
   const [submitted, setSubmitted] = useState(!!existingResult?.submitted);
+  const showVerdict = submitted && showCheckButton;
 
   const submit = () => {
     if (value === null) return;
@@ -36,8 +37,8 @@ export default function ScaleTask({ block, onComplete, existingResult }) {
         <div className="flex items-end justify-between gap-1">
           {steps.map((step) => {
             const selected = value === step;
-            const isAnswer = submitted && step === answer;
-            const isWrong = submitted && selected && step !== answer;
+            const isAnswer = showVerdict && step === answer;
+            const isWrong = showVerdict && selected && step !== answer;
             const height = 24 + ((step - min) / (max - min || 1)) * 56;
             return (
               <button
@@ -81,9 +82,9 @@ export default function ScaleTask({ block, onComplete, existingResult }) {
         <div className="mb-4 text-center text-sm text-zinc-600">Selected: <strong>{value}</strong></div>
       )}
 
-      {!submitted && <button type="button" onClick={submit} disabled={value === null} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">Check</button>}
-      {submitted && hasAnswerKey && <div className={value === answer ? 'mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800' : 'mt-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800'}>Expected value: {answer}</div>}
-      {submitted && !hasAnswerKey && <div className="mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Response saved ✓</div>}
+      {!submitted && <button type="button" onClick={submit} disabled={value === null} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton && hasAnswerKey ? 'Check' : 'Save answer'}</button>}
+      {showVerdict && hasAnswerKey && <div className={value === answer ? 'mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800' : 'mt-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800'}>Expected value: {answer}</div>}
+      {submitted && (!hasAnswerKey || !showCheckButton) && <div className="mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Response saved ✓</div>}
       {submitted && block.explanation && <div className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>}
     </div>
   );

@@ -4,7 +4,7 @@ import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
 
-export default function DragMatchTask({ block, onComplete, onProgress }) {
+export default function DragMatchTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const pairs = block.pairs || [];
   const shuffleSeed = useShuffleSeed();
 
@@ -25,6 +25,7 @@ export default function DragMatchTask({ block, onComplete, onProgress }) {
   const [draggedId, setDraggedId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const showVerdict = submitted && showCheckButton;
   const [preferTap, setPreferTap] = useState(false);
 
   useEffect(() => {
@@ -161,8 +162,8 @@ export default function DragMatchTask({ block, onComplete, onProgress }) {
             {rightTargets.map((target) => {
               const placedLeftId = placements[target.id];
               const placedItem = placedLeftId !== undefined ? leftItems.find((l) => l.id === placedLeftId) : null;
-              const isCorrect = submitted && placedItem && placedItem.text === target.expectedLeft;
-              const isWrong = submitted && placedItem && placedItem.text !== target.expectedLeft;
+              const isCorrect = showVerdict && placedItem && placedItem.text === target.expectedLeft;
+              const isWrong = showVerdict && placedItem && placedItem.text !== target.expectedLeft;
               const isEmpty = !placedItem;
               const isDropTarget = (draggedId !== null || selectedId !== null) && isEmpty;
               return (
@@ -200,7 +201,7 @@ export default function DragMatchTask({ block, onComplete, onProgress }) {
                       <span className="text-xs text-zinc-400">{isDropTarget ? 'Tap to place' : 'Empty'}</span>
                     )}
                   </div>
-                  {isWrong && (
+                  {showVerdict && isWrong && (
                     <div className="text-xs text-red-600">Expected: <strong>{target.expectedLeft}</strong></div>
                   )}
                 </div>
@@ -212,7 +213,7 @@ export default function DragMatchTask({ block, onComplete, onProgress }) {
 
       {!submitted && (
         <button type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
-          Check
+          {showCheckButton ? 'Check' : 'Save answer'}
         </button>
       )}
       {submitted && block.explanation && (
