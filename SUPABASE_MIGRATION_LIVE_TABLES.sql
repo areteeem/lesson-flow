@@ -3,38 +3,58 @@
 
 -- 0. Cloud Lesson Drafts table (Editor autosave/cloud sync)
 create table if not exists public.lesson_drafts (
-  lesson_id text primary key,
+  lesson_id text not null,
+  user_id uuid references auth.users(id) on delete cascade,
   title text not null default 'Untitled Lesson',
   payload jsonb not null,
+  payload_compressed text,
+  payload_encoding text,
   client_updated_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
+
+create unique index if not exists lesson_drafts_user_lesson_uniq
+  on public.lesson_drafts (user_id, lesson_id)
+  where user_id is not null;
+
+create index if not exists lesson_drafts_user_updated_idx
+  on public.lesson_drafts (user_id, updated_at desc);
 
 alter table public.lesson_drafts enable row level security;
 
 drop policy if exists "lesson_drafts_select_anon" on public.lesson_drafts;
 drop policy if exists "lesson_drafts_insert_anon" on public.lesson_drafts;
 drop policy if exists "lesson_drafts_update_anon" on public.lesson_drafts;
+drop policy if exists "lesson_drafts_select_auth" on public.lesson_drafts;
+drop policy if exists "lesson_drafts_insert_auth" on public.lesson_drafts;
+drop policy if exists "lesson_drafts_update_auth" on public.lesson_drafts;
+drop policy if exists "lesson_drafts_delete_auth" on public.lesson_drafts;
 
-create policy "lesson_drafts_select_anon"
+create policy "lesson_drafts_select_auth"
 on public.lesson_drafts
 for select
-to anon
-using (true);
+to authenticated
+using (user_id = auth.uid());
 
-create policy "lesson_drafts_insert_anon"
+create policy "lesson_drafts_insert_auth"
 on public.lesson_drafts
 for insert
-to anon
-with check (true);
+to authenticated
+with check (user_id = auth.uid());
 
-create policy "lesson_drafts_update_anon"
+create policy "lesson_drafts_update_auth"
 on public.lesson_drafts
 for update
-to anon
-using (true)
-with check (true);
+to authenticated
+using (user_id = auth.uid() or user_id is null)
+with check (user_id = auth.uid());
+
+create policy "lesson_drafts_delete_auth"
+on public.lesson_drafts
+for delete
+to authenticated
+using (user_id = auth.uid());
 
 -- 0.1 Account snapshots table (cross-device account sync)
 create table if not exists public.account_snapshots (

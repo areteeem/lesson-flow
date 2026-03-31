@@ -33,6 +33,13 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function normalizeVisibilityPolicy(policy, fallback = 'student_answers_only') {
+  const value = String(policy || '').trim();
+  if (!value) return fallback;
+  if (value === 'full_answers') return 'full_feedback';
+  return value;
+}
+
 function summarizeResponseText(result) {
   const response = result?.response;
   if (response === null || response === undefined) return 'No answer submitted';
@@ -136,13 +143,29 @@ export async function createAssignmentLink(lesson, options = {}) {
   const assignmentId = crypto.randomUUID();
   const oneAttempt = options.oneAttempt !== false;
   const allowRetry = options.allowRetry === true ? true : false;
-  const visibilityPolicy = String(options.visibilityPolicy || lesson?.settings?.visibilityPolicy || 'student_answers_only');
+  const visibilityPolicy = normalizeVisibilityPolicy(options.visibilityPolicy || lesson?.settings?.visibilityPolicy || 'student_answers_only');
+  const showCheckButton = options.showCheckButton === undefined
+    ? Boolean(lesson?.settings?.showCheckButton)
+    : options.showCheckButton === true;
+  const enableGrading = options.enableGrading === undefined
+    ? lesson?.settings?.enableGrading !== false
+    : options.enableGrading !== false;
+  const showTotalGrade = options.showTotalGrade === undefined
+    ? lesson?.settings?.showTotalGrade !== false
+    : options.showTotalGrade !== false;
+  const showPerQuestionGrade = options.showPerQuestionGrade === undefined
+    ? lesson?.settings?.showPerQuestionGrade !== false
+    : options.showPerQuestionGrade !== false;
   const lessonPayload = {
     ...(lesson || {}),
     settings: {
       ...(lesson?.settings || {}),
       visibilityPolicy,
-      showCheckButton: Boolean(lesson?.settings?.showCheckButton),
+      showCheckButton,
+      enableGrading,
+      showTotalGrade,
+      showPerQuestionGrade,
+      allowRetryHomework: allowRetry,
     },
   };
 
@@ -231,8 +254,12 @@ export async function fetchAssignmentById(assignmentId) {
       title: data.lesson_payload.title || data.lesson_title || 'Untitled lesson',
       settings: {
         ...(data.lesson_payload.settings || {}),
-        visibilityPolicy: data.visibility_policy || data.lesson_payload?.settings?.visibilityPolicy || 'student_answers_only',
+        visibilityPolicy: normalizeVisibilityPolicy(data.visibility_policy || data.lesson_payload?.settings?.visibilityPolicy || 'student_answers_only'),
         showCheckButton: Boolean(data.lesson_payload?.settings?.showCheckButton),
+        enableGrading: data.lesson_payload?.settings?.enableGrading !== false,
+        showTotalGrade: data.lesson_payload?.settings?.showTotalGrade !== false,
+        showPerQuestionGrade: data.lesson_payload?.settings?.showPerQuestionGrade !== false,
+        allowRetryHomework: Boolean(data.allow_retry),
         showExplanations: false,
       },
     };
@@ -244,8 +271,11 @@ export async function fetchAssignmentById(assignmentId) {
         lesson,
         oneAttemptOnly: data.one_attempt_only !== false,
         allowRetry: Boolean(data.allow_retry),
-        visibilityPolicy: data.visibility_policy || lesson.settings.visibilityPolicy,
+        visibilityPolicy: normalizeVisibilityPolicy(data.visibility_policy || lesson.settings.visibilityPolicy),
         showCheckButton: Boolean(lesson.settings.showCheckButton),
+        enableGrading: lesson.settings.enableGrading !== false,
+        showTotalGrade: lesson.settings.showTotalGrade !== false,
+        showPerQuestionGrade: lesson.settings.showPerQuestionGrade !== false,
       },
       updatedAt: now,
     };

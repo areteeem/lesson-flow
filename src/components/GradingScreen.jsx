@@ -61,12 +61,35 @@ function summarizeStudentAnswer(result) {
   return 'Unsupported response';
 }
 
+function summarizeReferenceAnswer(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.join(' | ');
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return 'Reference answer available';
+    }
+  }
+  return '';
+}
+
+function normalizeVisibilityPolicy(policy, isAssignmentMode) {
+  const value = String(policy || '').trim();
+  if (value === 'full_answers') return 'full_feedback';
+  if (value) return value;
+  return isAssignmentMode ? 'student_answers_only' : 'full_feedback';
+}
+
 function toCanonicalBreakdown(breakdown = []) {
   return breakdown.map((entry) => {
     const maxScore = Math.max(1, Number(entry?.points || entry?.maxScore || 1));
     const score = Number(entry?.score || 0);
     const safeResult = entry?.result && typeof entry.result === 'object' ? entry.result : {};
     const studentAnswerText = safeResult.studentAnswerText || summarizeStudentAnswer(safeResult);
+    const correctAnswerText = safeResult.correctAnswerText || summarizeReferenceAnswer(safeResult.correctAnswer ?? safeResult.expectedAnswer ?? entry?.correctAnswer ?? null);
     return {
       ...entry,
       block_id: entry?.id || null,
@@ -79,6 +102,7 @@ function toCanonicalBreakdown(breakdown = []) {
       result: {
         ...safeResult,
         studentAnswerText,
+        correctAnswerText,
       },
       score,
     };
@@ -93,16 +117,33 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
   const [resultShareLink, setResultShareLink] = useState('');
   const [resultShareState, setResultShareState] = useState('idle');
   const isAssignmentMode = mode === 'assignment' || mode === 'homework';
-  const visibilityPolicy = lesson?.settings?.visibilityPolicy || (isAssignmentMode ? 'student_answers_only' : 'full_answers');
+  const lessonSettings = lesson?.settings || {};
+  const visibilityPolicy = normalizeVisibilityPolicy(lessonSettings.visibilityPolicy, isAssignmentMode);
+  const enableGrading = lessonSettings.enableGrading !== false;
+  const showTotalGrade = enableGrading && lessonSettings.showTotalGrade !== false;
+  const showPerQuestionGrade = enableGrading && lessonSettings.showPerQuestionGrade !== false;
+  const showCorrectness = visibilityPolicy !== 'student_answers_only';
+  const showStudentAnswers = visibilityPolicy === 'student_answers_only' || visibilityPolicy === 'full_feedback';
+  const showCorrectAnswers = visibilityPolicy === 'show_correct_answers' || visibilityPolicy === 'full_feedback';
+  const showFeedback = visibilityPolicy === 'full_feedback';
   const safeBlocks = Array.isArray(blocks) ? blocks.filter(Boolean) : [];
   const summary = useMemo(() => summarizeResults(safeBlocks, results), [safeBlocks, results]);
   const canonicalBreakdown = useMemo(() => toCanonicalBreakdown(summary.breakdown), [summary.breakdown]);
   const takeaways = useMemo(() => computeTakeaways(summary.breakdown), [summary.breakdown]);
-  const scoreBand = useMemo(() => getScoreBand(summary.score), [summary.score]);
+  const scoreBand = useMemo(() => {
+    if (!showTotalGrade) {
+      return {
+        label: 'Submission received',
+        tone: 'text-zinc-700',
+        bg: 'bg-zinc-50 border-zinc-200',
+        message: 'This assignment hides total scores. Your teacher can still review your submission.',
+      };
+    }
+    return getScoreBand(summary.score);
+  }, [showTotalGrade, summary.score]);
   const shouldCollapseByDefault = summary.breakdown.length > 10;
   const radius = 58;
   const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference - (summary.score / 100) * circumference;
 
   const sessionPayload = {
     lessonId: lesson?.id || 'unknown-lesson',
@@ -134,6 +175,9 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
     submissionState: summary.breakdown.some((entry) => entry.correct === null) ? 'awaiting_review' : 'graded',
     timestamp: Number(sessionMeta?.timestamp || 0),
   };
+  const completionPercent = Math.round((sessionPayload.completedCount / Math.max(summary.breakdown.length, 1)) * 100);
+  const primaryPercent = showTotalGrade ? summary.score : completionPercent;
+  const dashOffset = circumference - (primaryPercent / 100) * circumference;
 
   const handleSaveSession = async () => {
     const submittedAt = Date.now();
@@ -219,8 +263,8 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
                 <circle cx="68" cy="68" r={radius} fill="none" stroke="#111111" strokeWidth="10" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={dashOffset} style={{ transition: 'stroke-dashoffset 400ms ease' }} />
               </svg>
               <div className="absolute text-center">
-                <div className="text-3xl font-semibold text-zinc-950">{summary.score}%</div>
-                <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">Score</div>
+                <div className="text-3xl font-semibold text-zinc-950">{primaryPercent}%</div>
+                <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">{showTotalGrade ? 'Score' : 'Completion'}</div>
               </div>
             </div>
           </div>
@@ -235,7 +279,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
             </div>
             <div className="border border-zinc-200 bg-zinc-50 px-3 py-3">
               <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Graded</div>
-              <div className="mt-1 text-xl font-semibold text-zinc-950">{summary.total}</div>
+              <div className="mt-1 text-xl font-semibold text-zinc-950">{showTotalGrade ? summary.total : 'Off'}</div>
             </div>
           </div>
           <div className="mt-6 border border-zinc-200 bg-zinc-50 p-4">
@@ -251,7 +295,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
                 <div className="mt-4 grid gap-3">
                   <button type="button" disabled={saved} onClick={handleSaveSession} className={`border px-4 py-3 text-sm font-medium transition ${saved ? 'border-emerald-300 bg-emerald-50 text-emerald-700 cursor-default' : 'border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800'}`}>{saved ? (isAssignmentMode ? 'Submitted ✓' : 'Saved ✓') : (isAssignmentMode ? 'Submit assignment' : 'Save session')}</button>
                   <button type="button" onClick={() => exportSession(sessionPayload)} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Export JSON</button>
-                  <button type="button" onClick={() => printSessionReport(sessionPayload, { visibilityPolicy })} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Print / PDF</button>
+                  <button type="button" onClick={() => printSessionReport(sessionPayload, { visibilityPolicy, showTotalGrade, showPerQuestionGrade })} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50">Print / PDF</button>
                   <button type="button" onClick={handleCreateResultShare} disabled={!saved || resultShareState === 'creating'} className="border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50">{resultShareState === 'creating' ? 'Creating share link...' : 'Create result share link'}</button>
                 </div>
                 {saved && <div className="mt-3 text-sm text-emerald-700">Session saved locally.</div>}
@@ -290,7 +334,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
             <div className={`mt-2 text-sm ${scoreBand.tone}`}>{scoreBand.message}</div>
           </div>
 
-          {takeaways.strengths.length > 0 && (
+          {showTotalGrade && takeaways.strengths.length > 0 && (
             <div className="mt-4">
               <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-600">Strengths</div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -301,7 +345,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
             </div>
           )}
 
-          {takeaways.weaknesses.length > 0 && (
+          {showTotalGrade && takeaways.weaknesses.length > 0 && (
             <div className="mt-4">
               <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-amber-600">Areas for Improvement</div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -312,7 +356,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
             </div>
           )}
 
-          {takeaways.mistakes.length > 0 && (
+          {showTotalGrade && takeaways.mistakes.length > 0 && (
             <div className="mt-4">
               <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-red-600">Mistakes to Review</div>
               <div className="mt-2 space-y-2">
@@ -329,8 +373,11 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
             </div>
           )}
 
-          {takeaways.strengths.length === 0 && takeaways.weaknesses.length === 0 && takeaways.mistakes.length === 0 && (
+          {(showTotalGrade && takeaways.strengths.length === 0 && takeaways.weaknesses.length === 0 && takeaways.mistakes.length === 0) && (
             <div className="mt-4 border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">Complete more tasks to see detailed takeaways.</div>
+          )}
+          {!showTotalGrade && (
+            <div className="mt-4 border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-500">Detailed score insights are disabled for this assignment.</div>
           )}
         </section>
 
@@ -347,7 +394,9 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
                   <button type="button" onClick={collapseAll} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900">Collapse all</button>
                 </>
               )}
-              <div className="rounded-full border border-zinc-200 px-3 py-2 text-xs text-zinc-500">{summary.earned} / {summary.total} graded correct</div>
+              <div className="rounded-full border border-zinc-200 px-3 py-2 text-xs text-zinc-500">
+                {showTotalGrade ? `${summary.earned} / ${summary.total} graded correct` : `${sessionPayload.completedCount} submitted tasks`}
+              </div>
             </div>
           </div>
           <div className="mt-5 space-y-3">
@@ -366,7 +415,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
                       <div className="mt-1 text-sm font-medium">{entry.label}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {visibilityPolicy !== 'student_answers_only' && (
+                      {showPerQuestionGrade && showCorrectness && (
                         <div className="rounded-full border border-current px-3 py-1 text-xs">{Math.round((entry.score || 0) * 100)}%</div>
                       )}
                       <span className="text-xs opacity-70">{expanded ? 'Hide' : 'Show'}</span>
@@ -379,9 +428,24 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
                       )}
                       {visibilityPolicy !== 'correctness_only' && (
                         <>
-                          {entry.result?.feedback
-                            ? <div className="text-xs opacity-75">{entry.result.feedback}</div>
-                            : <div className="text-xs opacity-60">No additional feedback.</div>}
+                          {showStudentAnswers && (
+                            <div className="text-xs opacity-80">
+                              <span className="font-medium">Student answer:</span> {entry.result?.studentAnswerText || 'No answer submitted'}
+                            </div>
+                          )}
+                          {showCorrectAnswers && entry.result?.correctAnswerText && (
+                            <div className="text-xs opacity-80">
+                              <span className="font-medium">Correct answer:</span> {entry.result.correctAnswerText}
+                            </div>
+                          )}
+                          {showCorrectness && !showFeedback && (
+                            <div className="text-xs opacity-75">{entry.correct === true ? 'Correct' : entry.correct === false ? 'Incorrect' : 'Submitted'}</div>
+                          )}
+                          {showFeedback && (
+                            entry.result?.feedback
+                              ? <div className="text-xs opacity-75">{entry.result.feedback}</div>
+                              : <div className="text-xs opacity-60">No additional feedback.</div>
+                          )}
                         </>
                       )}
                     </div>

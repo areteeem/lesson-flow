@@ -76,6 +76,16 @@ Parser safety checklist before final output:
 - Media URLs are plain URLs in Media/Image/Video/Audio fields
 `.trim();
 
+export const DSL_QUALITY_GUARDRAILS = `
+Quality guardrails:
+- Avoid repetitive stems: do not reuse the same question opening more than twice in a row.
+- Avoid option-pattern leaks: rotate correct option positions and avoid always placing the answer in the same slot.
+- Keep distractors plausible and level-appropriate; avoid obviously wrong joke options.
+- Keep lexical progression coherent: easier recognition tasks first, then production tasks.
+- Prefer concrete context and short authentic examples over abstract filler text.
+- Do not leave placeholders like <question>, <option>, <answer>, TODO, or ... in the final DSL.
+`.trim();
+
 // ────────────────────────────────────────────────
 //  Per-type DSL templates
 // ────────────────────────────────────────────────
@@ -387,7 +397,12 @@ export function buildGenerationPrompt(config = {}) {
   parts.push('- For multiline fields, place content on lines below the key (not inline after the colon)');
   parts.push('- Every generated #SLIDE and #TASK must be fully authored: no empty Title, Content, Question, Hint, or Explanation placeholders');
   parts.push('- If slideTypes/taskTypes are provided, include each requested type at least once unless impossible for pedagogy');
+  parts.push('- Keep answer distribution balanced and avoid repeating identical wording patterns across consecutive tasks');
+  parts.push('- For grammar-focused lessons, include at least one controlled practice task and one transfer/application task');
   parts.push('- Return ONLY the DSL, no explanations or markdown fences');
+
+  parts.push('\n## Quality guardrails');
+  parts.push(DSL_QUALITY_GUARDRAILS);
 
   parts.push('\n## Parser safety checklist');
   parts.push(DSL_PARSER_SAFETY_CHECKLIST);

@@ -228,7 +228,7 @@ function GradingRoute() {
   return (
     <ErrorBoundary message="Grading console crashed.">
       <Suspense fallback={<ScreenFallback label="Loading grading console…" />}>
-        <GradingConsole sessions={sessions} onBack={() => navigate('/')} />
+        <GradingConsole sessions={sessions} onBack={() => navigate('/')} requireLessonSelection />
       </Suspense>
     </ErrorBoundary>
   );

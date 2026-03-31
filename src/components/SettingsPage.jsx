@@ -385,7 +385,7 @@ export default function SettingsPage({ onBack }) {
                     )}
                   </div>
                 )}
-                <div className="mt-2 text-zinc-500">For lesson cloud sync, create table lesson_drafts with owner scope columns: lesson_id (text), user_id (uuid references auth.users(id)), title (text), payload (jsonb), payload_compressed (text), payload_encoding (text), client_updated_at (timestamptz), updated_at (timestamptz).</div>
+                <div className="mt-2 text-zinc-500">For lesson cloud sync, create table lesson_drafts with owner scope columns: lesson_id (text), user_id (uuid references auth.users(id)), title (text), payload (jsonb), payload_compressed (text), payload_encoding (text), client_updated_at (timestamptz), updated_at (timestamptz), plus a unique index on (user_id, lesson_id).</div>
                 <div className="mt-1 text-zinc-500">For account snapshot sync, create table account_snapshots with columns user_id (uuid primary key, references auth.users(id)), payload (jsonb), client_updated_at (timestamptz), updated_at (timestamptz).</div>
                 <div className="mt-2 text-zinc-500">See LIVE_MODE_SETUP.md in the project root for full live-mode and cross-device setup guidance.</div>
               </div>

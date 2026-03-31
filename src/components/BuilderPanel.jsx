@@ -350,29 +350,6 @@ const DropIndicator = memo(function DropIndicator({ active, label = 'Drop here' 
   );
 });
 
-const InlineQuickFields = memo(function InlineQuickFields({ block, onChange }) {
-  if (!block) return null;
-  const isTask = block.type === 'task';
-  if (!isTask) {
-    return (
-      <div className="space-y-3">
-        <input value={block.title || ''} onChange={(event) => onChange(updateBlockField(block, 'title', event.target.value))} placeholder="Slide title" className="w-full border-b border-zinc-200 bg-transparent px-1 py-2 text-base font-semibold text-zinc-900 outline-none placeholder:text-zinc-300 focus:border-zinc-900" />
-        <input value={block.instruction || ''} onChange={(event) => onChange(updateBlockField(block, 'instruction', event.target.value))} placeholder="Brief instruction or subtitle" className="w-full border-b border-zinc-100 bg-transparent px-1 py-2 text-sm text-zinc-600 outline-none placeholder:text-zinc-300 focus:border-zinc-400" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      <textarea value={block.question || ''} onChange={(event) => onChange(updateBlockField(block, 'question', event.target.value))} rows={2} placeholder="Type your question here…" className="w-full resize-none border-b border-zinc-200 bg-transparent px-1 py-2 text-base font-semibold text-zinc-900 outline-none placeholder:text-zinc-300 focus:border-zinc-900" />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input value={block.hint || ''} onChange={(event) => onChange(updateBlockField(block, 'hint', event.target.value))} placeholder="Hint (optional)" className="w-full border-b border-zinc-100 bg-transparent px-1 py-2 text-sm text-zinc-600 outline-none placeholder:text-zinc-300 focus:border-zinc-400" />
-        <input value={Array.isArray(block.answer) ? block.answer.join(' | ') : (block.answer || '')} onChange={(event) => onChange(updateBlockField(block, 'answer', event.target.value))} placeholder="Correct answer" className="w-full border-b border-zinc-100 bg-transparent px-1 py-2 text-sm text-zinc-600 outline-none placeholder:text-zinc-300 focus:border-zinc-400" />
-      </div>
-    </div>
-  );
-});
-
 const BlockNavigator = memo(function BlockNavigator({ blocks, selectedId, onSelect }) {
   return (
     <div className="flex gap-1 overflow-auto pb-0.5 scrollbar-none" style={{ scrollbarWidth: 'none' }}>
@@ -443,6 +420,17 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="border border-current px-2 py-0.5 text-[10px] uppercase">{index + 1}</span>
+                    {child.type === 'task' && (
+                      <IconActionButton
+                        title={child.enabled === false ? 'Enable task' : 'Disable task'}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onUpdateChild({ ...child, enabled: child.enabled === false });
+                        }}
+                      >
+                        <span className="text-[10px]">{child.enabled === false ? 'OFF' : 'ON'}</span>
+                      </IconActionButton>
+                    )}
                     <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, -1); }}><ChevronIcon direction="up" /></IconActionButton>
                     <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, 1); }}><ChevronIcon direction="down" /></IconActionButton>
                     <IconActionButton title="Delete block" onClick={(event) => { event.stopPropagation(); onDeleteChild(child.id); }}><TrashIcon /></IconActionButton>
@@ -451,8 +439,7 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
               </button>
               {selectedId === child.id && child.type !== 'group' && (
                 <div className="border border-zinc-200 bg-white p-2 sm:p-4">
-                  <InlineQuickFields block={child} onChange={onUpdateChild} />
-                  <div className="mt-3">
+                  <div>
                     <BlockEditorForm block={child} onChange={onUpdateChild} compact />
                   </div>
                   <div className="mt-3 lg:hidden border-t border-zinc-200 pt-3">
@@ -1295,6 +1282,9 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                           </div>
                           {/* Right: Quick actions — horizontal row */}
                           <div className={`shrink-0 flex-row gap-1 ${selectedTopLevel ? 'flex' : 'hidden sm:flex'}`}>
+                            {block.type === 'task' && (
+                              <IconActionButton title={block.enabled === false ? 'Enable task' : 'Disable task'} onClick={(event) => { event.stopPropagation(); replaceBlocks(updateBlockInTree(blocks, block.id, (current) => ({ ...current, enabled: current.enabled === false }))); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-[10px]">{block.enabled === false ? 'OFF' : 'ON'}</span></IconActionButton>
+                            )}
                             <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, -1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="up" /></IconActionButton>
                             <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, 1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="down" /></IconActionButton>
                             <IconActionButton title="Duplicate" onClick={(event) => { event.stopPropagation(); duplicateTopLevelBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-xs">⧉</span></IconActionButton>
@@ -1305,8 +1295,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                         {/* Expanded editor — shown when selected */}
                         {selectedTopLevel && block.type !== 'group' && (
                           <div className="border-t border-zinc-200 bg-[#fcfcfb] p-2 sm:p-4">
-                            <InlineQuickFields block={block} onChange={updateSelected} />
-                            <div className="mt-3 sm:mt-4">
+                            <div>
                               <BlockEditorForm block={block} onChange={updateSelected} />
                             </div>
                             <div className="mt-3 border-t border-zinc-200 pt-3 sm:mt-4 sm:pt-4 lg:hidden">

@@ -17,6 +17,13 @@ function getAllDescendantIds(folder) {
   return [folder.id, ...(folder.children || []).flatMap(getAllDescendantIds)];
 }
 
+function normalizeVisibilityPolicy(policy) {
+  const value = String(policy || '').trim();
+  if (!value) return 'student_answers_only';
+  if (value === 'full_answers') return 'full_feedback';
+  return value;
+}
+
 function findFolder(folders, id) {
   for (const f of folders) {
     if (f.id === id) return f;
@@ -173,7 +180,7 @@ function MoveFolderModal({ lesson, folders, onSave, onClose }) {
   );
 }
 
-function ShareLessonModal({ lesson, shareState, onClose, onCreateLink, onCreateAssignmentLink, onCopyLink }) {
+function ShareLessonModal({ lesson, shareState, assignmentConfig, onChangeAssignmentConfig, onClose, onCreateLink, onCreateAssignmentLink, onCopyLink }) {
   if (!lesson) return null;
 
   return (
@@ -199,9 +206,55 @@ function ShareLessonModal({ lesson, shareState, onClose, onCreateLink, onCreateA
             {shareState.loading ? 'Creating link…' : 'Create / refresh share link'}
           </button>
 
+          <div className="border border-zinc-200 bg-zinc-50 p-3">
+            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">Homework settings</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Answer visibility</span>
+                <select
+                  value={assignmentConfig.visibilityPolicy}
+                  onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, visibilityPolicy: event.target.value }))}
+                  className="w-full border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-zinc-900"
+                >
+                  <option value="correctness_only">Correct/incorrect only</option>
+                  <option value="show_correct_answers">Show correct answers</option>
+                  <option value="student_answers_only">Show student answers only</option>
+                  <option value="full_feedback">Show full feedback</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Homework retries</span>
+                <select
+                  value={assignmentConfig.allowRetry ? 'enabled' : 'disabled'}
+                  onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, allowRetry: event.target.value === 'enabled' }))}
+                  className="w-full border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-zinc-900"
+                >
+                  <option value="disabled">Disabled</option>
+                  <option value="enabled">Enabled</option>
+                </select>
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+                <input type="checkbox" checked={assignmentConfig.enableGrading} onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, enableGrading: event.target.checked }))} />
+                Enable grading
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+                <input type="checkbox" checked={assignmentConfig.showTotalGrade} onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, showTotalGrade: event.target.checked }))} />
+                Show total grade
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+                <input type="checkbox" checked={assignmentConfig.showPerQuestionGrade} onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, showPerQuestionGrade: event.target.checked }))} />
+                Show per-question grade
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
+                <input type="checkbox" checked={assignmentConfig.showCheckButton} onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, showCheckButton: event.target.checked }))} />
+                Show check button
+              </label>
+            </div>
+          </div>
+
           <button
             type="button"
-            onClick={() => onCreateAssignmentLink(lesson)}
+            onClick={() => onCreateAssignmentLink(lesson, assignmentConfig)}
             disabled={shareState.assignmentLoading}
             className="border border-zinc-900 bg-white px-3 py-2 text-xs font-medium text-zinc-700 disabled:opacity-60"
           >
@@ -292,6 +345,14 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
   const [movingLesson, setMovingLesson] = useState(null);
   const [shareLesson, setShareLesson] = useState(null);
   const [shareState, setShareState] = useState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });
+  const [assignmentConfig, setAssignmentConfig] = useState({
+    visibilityPolicy: 'student_answers_only',
+    allowRetry: false,
+    showCheckButton: false,
+    enableGrading: true,
+    showTotalGrade: true,
+    showPerQuestionGrade: true,
+  });
   const [folderPromptParent, setFolderPromptParent] = useState(null);
   const [sortBy, setSortBy] = useState(() => {
     try {
@@ -302,6 +363,7 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
   });
   const [createTemplate, setCreateTemplate] = useState(null);
   const [renderCount, setRenderCount] = useState(48);
+  const [recentSidebarOpen, setRecentSidebarOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -339,12 +401,16 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
     setShareState((prev) => ({ ...prev, loading: false, error: '', link: result.shareUrl || '', copied: false }));
   };
 
-  const handleCreateAssignmentLink = async (lesson) => {
+  const handleCreateAssignmentLink = async (lesson, config) => {
     setShareState((prev) => ({ ...prev, assignmentLoading: true, error: '', assignmentCopied: false }));
     const result = await createAssignmentLink(lesson, {
       oneAttempt: true,
-      allowRetry: false,
-      visibilityPolicy: lesson?.settings?.visibilityPolicy || 'student_answers_only',
+      allowRetry: Boolean(config?.allowRetry),
+      visibilityPolicy: normalizeVisibilityPolicy(config?.visibilityPolicy || lesson?.settings?.visibilityPolicy || 'student_answers_only'),
+      showCheckButton: Boolean(config?.showCheckButton),
+      enableGrading: config?.enableGrading !== false,
+      showTotalGrade: config?.showTotalGrade !== false,
+      showPerQuestionGrade: config?.showPerQuestionGrade !== false,
     });
     if (!result.ok) {
       const reason = result.reason === 'auth_required'
@@ -577,6 +643,15 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
                   onPractice={(l) => onPractice?.(l)}
                   onShare={(l) => {
                     setShareLesson(l);
+                    const settings = l?.settings || {};
+                    setAssignmentConfig({
+                      visibilityPolicy: normalizeVisibilityPolicy(settings.visibilityPolicy || 'student_answers_only'),
+                      allowRetry: Boolean(settings.allowRetryHomework),
+                      showCheckButton: Boolean(settings.showCheckButton),
+                      enableGrading: settings.enableGrading !== false,
+                      showTotalGrade: settings.showTotalGrade !== false,
+                      showPerQuestionGrade: settings.showPerQuestionGrade !== false,
+                    });
                     setShareState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });
                   }}
                   onDelete={onDelete}
@@ -592,49 +667,35 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
             </div>
           )}
 
-          {/* Recent sessions section */}
-          {sessions.length > 0 && (
-            <div className="mt-8">
-              <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Recent Sessions</div>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {sessions.slice(0, 6).map((session) => (
-                  <div key={session.id} className="group flex items-center border border-zinc-200 bg-white transition hover:border-zinc-900">
-                    <button type="button" onClick={() => setActiveSessionId(session.id)} className="flex-1 p-3 text-left">
-                      <div className="text-xs font-medium text-zinc-900">{session.lessonTitle}</div>
-                      <div className="mt-1 text-[10px] text-zinc-500">{session.studentName || 'Unknown'} · {new Date(session.timestamp).toLocaleDateString()} · {session.score}%</div>
-                    </button>
-                    {onDeleteSession && <button type="button" onClick={() => onDeleteSession(session.id)} className="px-3 text-[10px] text-zinc-400 opacity-0 transition hover:text-red-600 group-hover:opacity-100">Delete</button>}
-                  </div>
-              ))}
-              </div>
-            </div>
-          )}
         </main>
 
-        {/* Right sidebar — session detail on wider screens */}
+        {/* Right sidebar — collapsible recent sessions */}
         {sessions.length > 0 && (
-          <aside className="hidden w-[260px] shrink-0 border-l border-zinc-200 bg-white xl:block">
-            <div className="border-b border-zinc-200 px-4 py-3">
-              <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Latest Session</div>
+          <aside className="hidden w-[300px] shrink-0 border-l border-zinc-200 bg-white xl:block">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+              <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Recent Sessions</div>
+              <button type="button" onClick={() => setRecentSidebarOpen((value) => !value)} className="border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:border-zinc-900">{recentSidebarOpen ? 'Collapse' : 'Expand'}</button>
             </div>
-            <div className="p-4">
-              {sessions[0] && (
-                <div>
-                  <div className="text-sm font-medium text-zinc-900">{sessions[0].lessonTitle}</div>
-                  <div className="mt-1 text-xs text-zinc-500">{sessions[0].studentName || 'Unknown'} · {sessions[0].score}%</div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <div className="border border-zinc-200 bg-zinc-50 px-2 py-2 text-center">
-                      <div className="text-[9px] uppercase text-zinc-500">Correct</div>
-                      <div className="text-sm font-semibold">{sessions[0].correctCount ?? '-'}</div>
+            {recentSidebarOpen && (
+              <div className="max-h-[calc(100vh-8rem)] overflow-auto p-3">
+                <div className="space-y-2">
+                  {sessions.map((session) => (
+                    <div key={session.id} className="group border border-zinc-200 bg-white">
+                      <button type="button" onClick={() => setActiveSessionId(session.id)} className="w-full px-3 py-3 text-left">
+                        <div className="text-xs font-medium text-zinc-900">{session.lessonTitle}</div>
+                        <div className="mt-1 text-[10px] text-zinc-500">{session.studentName || 'Unknown'} · {new Date(session.timestamp).toLocaleDateString()}</div>
+                        <div className="mt-1 text-[10px] text-zinc-500">Score {session.score}% · {session.correctCount ?? '-'} / {session.total ?? '-'}</div>
+                      </button>
+                      {onDeleteSession && (
+                        <div className="border-t border-zinc-100 px-3 py-2 text-right">
+                          <button type="button" onClick={() => onDeleteSession(session.id)} className="text-[10px] text-zinc-400 transition hover:text-red-600">Delete</button>
+                        </div>
+                      )}
                     </div>
-                    <div className="border border-zinc-200 bg-zinc-50 px-2 py-2 text-center">
-                      <div className="text-[9px] uppercase text-zinc-500">Total</div>
-                      <div className="text-sm font-semibold">{sessions[0].total ?? '-'}</div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </aside>
         )}
       </div>
@@ -645,6 +706,8 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
       <ShareLessonModal
         lesson={shareLesson}
         shareState={shareState}
+        assignmentConfig={assignmentConfig}
+        onChangeAssignmentConfig={setAssignmentConfig}
         onClose={() => {
           setShareLesson(null);
           setShareState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });

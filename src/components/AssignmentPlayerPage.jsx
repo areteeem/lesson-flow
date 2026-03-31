@@ -70,7 +70,11 @@ export default function AssignmentPlayerPage() {
         <div className="w-full max-w-lg border border-zinc-200 bg-white p-8">
           <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Homework assignment</div>
           <div className="mt-2 text-2xl font-semibold text-zinc-950">{assignment.lesson?.title || 'Untitled lesson'}</div>
-          <div className="mt-2 text-sm text-zinc-500">Enter your name to start. This assignment uses one-attempt mode and disables task retries.</div>
+          <div className="mt-2 text-sm text-zinc-500">
+            Enter your name to start.
+            {assignment.oneAttemptOnly ? ' This assignment uses one-attempt mode.' : ' Multiple attempts are allowed.'}
+            {assignment.allowRetry ? ' Task retries are enabled.' : ' Task retries are disabled.'}
+          </div>
           {assignment.showCheckButton === false && (
             <div className="mt-2 text-xs text-zinc-500">Check button is disabled for this assignment. Use save and submit flow.</div>
           )}
@@ -127,6 +131,9 @@ export default function AssignmentPlayerPage() {
           requireRequiredTasks: true,
           visibilityPolicy: assignment.visibilityPolicy,
           showCheckButton: assignment.showCheckButton,
+          enableGrading: assignment.enableGrading,
+          showTotalGrade: assignment.showTotalGrade,
+          showPerQuestionGrade: assignment.showPerQuestionGrade,
         }}
         onExit={() => navigate('/')}
         onSubmitted={async (sessionPayload) => {

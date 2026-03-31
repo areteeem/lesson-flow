@@ -6,6 +6,8 @@ import { compressJsonPayload } from './compression';
 const CLOUD_STATUS_KEY = 'lesson-flow-cloud-status';
 const DEV_PROXY_BASE = '/__supabase';
 const CAN_USE_DEV_PROXY = Boolean(import.meta.env.DEV);
+const LESSON_DRAFTS_OWNER_CONFLICT = 'user_id,lesson_id';
+const LESSON_DRAFTS_LEGACY_CONFLICT = 'lesson_id';
 
 function safeWriteStatus(status) {
   try {
@@ -233,6 +235,17 @@ function buildNetworkMessage(probe) {
   return 'Saved locally, but cloud sync request could not be completed.';
 }
 
+function encodeConflictTarget(target) {
+  return encodeURIComponent(target || LESSON_DRAFTS_LEGACY_CONFLICT);
+}
+
+function isMissingConflictTargetError(error) {
+  const message = (error?.message || '').toLowerCase();
+  return error?.code === '42P10'
+    || message.includes('there is no unique or exclusion constraint matching the on conflict specification')
+    || (message.includes('on conflict') && message.includes('constraint'));
+}
+
 async function tryProxyUpsert({ payload, now, lesson, source, host, directError }) {
   if (!CAN_USE_DEV_PROXY) {
     return {
@@ -253,11 +266,33 @@ async function tryProxyUpsert({ payload, now, lesson, source, host, directError 
     'Content-Type': 'application/json',
     Prefer: 'resolution=merge-duplicates,return=minimal',
   });
-  const proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/lesson_drafts?on_conflict=lesson_id`, {
+  let conflictTarget = LESSON_DRAFTS_OWNER_CONFLICT;
+  let proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/lesson_drafts?on_conflict=${encodeConflictTarget(conflictTarget)}`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
   });
+
+  if (!proxyResponse.ok) {
+    const ownerErrorText = await proxyResponse.text();
+    const ownerConflictMissing = ownerErrorText.toLowerCase().includes('on conflict')
+      && ownerErrorText.toLowerCase().includes('constraint');
+
+    if (ownerConflictMissing) {
+      conflictTarget = LESSON_DRAFTS_LEGACY_CONFLICT;
+      proxyResponse = await fetch(`${DEV_PROXY_BASE}/rest/v1/lesson_drafts?on_conflict=${encodeConflictTarget(conflictTarget)}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+    } else {
+      proxyResponse = {
+        ok: false,
+        status: proxyResponse.status,
+        async text() { return ownerErrorText; },
+      };
+    }
+  }
 
   if (proxyResponse.ok) {
     const okViaProxy = {
@@ -269,6 +304,7 @@ async function tryProxyUpsert({ payload, now, lesson, source, host, directError 
       diagnostics: {
         host,
         path: 'proxy',
+        conflictTarget,
         directError,
       },
     };
@@ -294,6 +330,7 @@ async function tryProxyUpsert({ payload, now, lesson, source, host, directError 
     diagnostics: {
       host,
       path: 'proxy',
+      conflictTarget,
       status: proxyResponse.status,
       likelyCause,
       response: proxyErrorText || null,
@@ -365,8 +402,15 @@ export async function syncLessonToCloud(lesson, meta = {}) {
 
   try {
     let error = null;
-    const scopedAttempt = await client.from('lesson_drafts').upsert(payload, { onConflict: 'lesson_id' });
+    let conflictTarget = LESSON_DRAFTS_OWNER_CONFLICT;
+    let scopedAttempt = await client.from('lesson_drafts').upsert(payload, { onConflict: conflictTarget });
     error = scopedAttempt.error;
+
+    if (error && isMissingConflictTargetError(error)) {
+      conflictTarget = LESSON_DRAFTS_LEGACY_CONFLICT;
+      scopedAttempt = await client.from('lesson_drafts').upsert(payload, { onConflict: conflictTarget });
+      error = scopedAttempt.error;
+    }
 
     const lowerMessage = (error?.message || '').toLowerCase();
     const missingCompressionColumns = lowerMessage.includes('payload_compressed') || lowerMessage.includes('payload_encoding');
@@ -379,7 +423,7 @@ export async function syncLessonToCloud(lesson, meta = {}) {
         payload: payload.payload,
         client_updated_at: payload.client_updated_at,
         updated_at: payload.updated_at,
-      }, { onConflict: 'lesson_id' });
+      }, { onConflict: conflictTarget });
       error = scopedWithoutCompression.error;
     }
 
@@ -390,7 +434,7 @@ export async function syncLessonToCloud(lesson, meta = {}) {
         payload: payload.payload,
         client_updated_at: payload.client_updated_at,
         updated_at: payload.updated_at,
-      }, { onConflict: 'lesson_id' });
+      }, { onConflict: LESSON_DRAFTS_LEGACY_CONFLICT });
       error = legacyAttempt.error;
     }
 

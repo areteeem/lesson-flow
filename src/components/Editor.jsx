@@ -233,18 +233,35 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
               <input type="checkbox" checked={Boolean(settings.showCheckButton)} onChange={(event) => patchSettings({ showCheckButton: event.target.checked })} />
               Show check button in homework mode
             </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={Boolean(settings.allowRetryHomework)} onChange={(event) => patchSettings({ allowRetryHomework: event.target.checked })} />
+              Allow retry in homework mode
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.enableGrading !== false} onChange={(event) => patchSettings({ enableGrading: event.target.checked })} />
+              Enable grading in reports
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.showTotalGrade !== false} onChange={(event) => patchSettings({ showTotalGrade: event.target.checked })} />
+              Show total grade in reports
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.showPerQuestionGrade !== false} onChange={(event) => patchSettings({ showPerQuestionGrade: event.target.checked })} />
+              Show per-question grade
+            </label>
           </div>
 
           <div className="px-6 pt-4">
             <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Result Visibility Policy</div>
             <select
-              value={settings.visibilityPolicy || 'student_answers_only'}
+              value={settings.visibilityPolicy === 'full_answers' ? 'full_feedback' : (settings.visibilityPolicy || 'student_answers_only')}
               onChange={(event) => patchSettings({ visibilityPolicy: event.target.value })}
               className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
             >
               <option value="student_answers_only">Student answers only</option>
               <option value="correctness_only">Correctness only</option>
-              <option value="full_answers">Full answers</option>
+              <option value="show_correct_answers">Show correct answers</option>
+              <option value="full_feedback">Full feedback</option>
             </select>
             <div className="mt-1 text-[10px] text-zinc-400">Controls what student-facing reports can reveal after submission.</div>
           </div>
@@ -842,7 +859,13 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
         {mode === 'grading' && (
           <div className="h-full overflow-auto bg-white">
             <Suspense fallback={<div className="flex h-full items-center justify-center bg-white text-sm text-zinc-500">Loading grading…</div>}>
-              <GradingConsole sessions={editorSessions} onBack={() => setMode('builder')} />
+              <GradingConsole
+                sessions={editorSessions}
+                onBack={() => setMode('builder')}
+                initialLessonId={lesson?.id || null}
+                initialLessonTitle={parsed.title || null}
+                requireLessonSelection={false}
+              />
             </Suspense>
           </div>
         )}
