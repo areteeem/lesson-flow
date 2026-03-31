@@ -96,7 +96,7 @@ const MAP = {
   text_linking: TextLinkingTask,
 };
 
-export default function TaskRenderer({ block, onComplete, onProgress, existingResult, allowRetry = true, showCheckButton = true }) {
+export default function TaskRenderer({ block, onComplete, onProgress, existingResult, allowRetry = true, showCheckButton = true, lockAfterSubmit = false }) {
   const Component = MAP[block.taskType];
   const [attempt, setAttempt] = useState(0);
   const [feedback, setFeedback] = useState(null);
@@ -136,13 +136,19 @@ export default function TaskRenderer({ block, onComplete, onProgress, existingRe
           </div>
         </div>
       )}
-      <div key={attempt}>
-        <ErrorBoundary message={`Failed to render task: ${block.taskType}`}>
-          {Component
-            ? <Component block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} showCheckButton={showCheckButton} />
-            : <GenericTask block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} showCheckButton={showCheckButton} />}
-        </ErrorBoundary>
-      </div>
+      {lockAfterSubmit && lastResult?.submitted ? (
+        <div className="border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+          Answer submitted. This task accepts one attempt.
+        </div>
+      ) : (
+        <div key={attempt}>
+          <ErrorBoundary message={`Failed to render task: ${block.taskType}`}>
+            {Component
+              ? <Component block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} showCheckButton={showCheckButton} />
+              : <GenericTask block={block} onComplete={handleComplete} onProgress={handleProgress} existingResult={attempt === 0 ? existingResult : undefined} showCheckButton={showCheckButton} />}
+          </ErrorBoundary>
+        </div>
+      )}
       {(hints.length > 0 || (lastResult?.submitted && !lastResult?.correct)) && (
         <div className="mt-3 flex items-center justify-between gap-3">
           {hints.length > 0 && !lastResult?.submitted && (

@@ -51,12 +51,25 @@ export default function LiveHost({ lesson, onExit }) {
   const hasPersistedLiveResultsRef = useRef(false);
 
   const blocks = validation.blocks;
+  const [liveSettings, setLiveSettings] = useState(() => ({
+    allowRetry: lesson?.settings?.allowRetryLive === true,
+    showCheckButton: lesson?.settings?.showCheckButtonLive === true,
+    lockAfterSubmit: lesson?.settings?.lockAfterSubmitLive !== false,
+    hideQuestionContent: lesson?.settings?.hideQuestionContentLive === true,
+  }));
+
   const lessonPayload = useMemo(() => ({
     id: lesson?.id || 'live-lesson',
     title: lesson?.title || 'Live Lesson',
-    settings: lesson?.settings || {},
+    settings: {
+      ...(lesson?.settings || {}),
+      allowRetryLive: liveSettings.allowRetry,
+      showCheckButtonLive: liveSettings.showCheckButton,
+      lockAfterSubmitLive: liveSettings.lockAfterSubmit,
+      hideQuestionContentLive: liveSettings.hideQuestionContent,
+    },
     blocks,
-  }), [blocks, lesson?.id, lesson?.settings, lesson?.title]);
+  }), [blocks, lesson?.id, lesson?.settings, lesson?.title, liveSettings]);
 
   const [phase, setPhase] = useState(PHASE.LOBBY);
   const [students, setStudents] = useState({});
@@ -772,6 +785,15 @@ export default function LiveHost({ lesson, onExit }) {
               <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Pre-check</div>
               <div className="mt-2">{blocks.length} live blocks ready. Slides, media, split views, and all task types are broadcast from one source of truth.</div>
             </div>
+            <div className="mt-4 border border-zinc-800 bg-zinc-900 px-4 py-3 text-left text-sm text-zinc-300">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Student live controls</div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.allowRetry} onChange={(event) => setLiveSettings((current) => ({ ...current, allowRetry: event.target.checked }))} />Allow retries (try again)</label>
+                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showCheckButton} onChange={(event) => setLiveSettings((current) => ({ ...current, showCheckButton: event.target.checked }))} />Show check button</label>
+                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.lockAfterSubmit} onChange={(event) => setLiveSettings((current) => ({ ...current, lockAfterSubmit: event.target.checked }))} />One attempt per task</label>
+                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.hideQuestionContent} onChange={(event) => setLiveSettings((current) => ({ ...current, hideQuestionContent: event.target.checked }))} />Hide question text for students</label>
+              </div>
+            </div>
             <button type="button" onClick={startSession} disabled={playerCount === 0} className="mt-8 border border-white bg-white px-8 py-3 text-sm font-bold text-zinc-900 disabled:opacity-30">
               Start live lesson
             </button>
@@ -786,8 +808,8 @@ export default function LiveHost({ lesson, onExit }) {
                 <div className="mt-1 text-sm text-zinc-300">Block {currentIndex + 1} of {blocks.length}: {currentBlock ? getBlockLabel(currentBlock, currentIndex) : 'Unavailable block'}</div>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={goPrev} disabled={currentIndex === 0} className="border border-zinc-700 px-4 py-2 text-sm text-zinc-200 disabled:opacity-30">Back</button>
-                <button type="button" onClick={goNext} className="border border-white bg-white px-4 py-2 text-sm font-bold text-zinc-900">{currentIndex === blocks.length - 1 ? 'Finish' : 'Next'}</button>
+                <button type="button" onClick={goPrev} disabled={currentIndex === 0} className="border border-zinc-700 px-4 py-2 text-sm text-zinc-200 disabled:opacity-30">← Back</button>
+                <button type="button" onClick={goNext} className="border border-white bg-white px-4 py-2 text-sm font-bold text-zinc-900">{currentIndex === blocks.length - 1 ? 'Finish →' : 'Next →'}</button>
               </div>
             </div>
             <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3">
@@ -803,7 +825,19 @@ export default function LiveHost({ lesson, onExit }) {
                 {topLeaders.length === 0 && <div className="text-xs text-zinc-500">Waiting for submissions...</div>}
               </div>
             </div>
-            <LessonStage blocks={blocks} currentIndex={currentIndex} results={{}} onCompleteBlock={() => {}} emptyMessage="The live session stayed connected, but this block is unavailable." />
+            <LessonStage
+              blocks={blocks}
+              currentIndex={currentIndex}
+              results={{}}
+              onCompleteBlock={() => {}}
+              emptyMessage="The live session stayed connected, but this block is unavailable."
+              taskOptions={{
+                allowRetry: liveSettings.allowRetry,
+                showCheckButton: liveSettings.showCheckButton,
+                lockAfterSubmit: false,
+                hideQuestionContent: false,
+              }}
+            />
           </div>
         )}
 

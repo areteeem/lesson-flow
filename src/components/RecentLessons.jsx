@@ -1,16 +1,41 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { exportLesson, exportSession, importLesson, printSessionReport } from '../storage';
 import { generateDSL } from '../parser';
-import { DotsVerticalIcon, ChevronRightIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, PlusIcon } from './Icons';
+import { DotsVerticalIcon, ChevronRightIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, PlusIcon, CopyIcon, EditIcon, RefreshIcon } from './Icons';
 import PromptModal from './PromptModal';
 import { createLessonShareLink } from '../utils/lessonSharing';
-import { createAssignmentLink } from '../utils/lessonAssignments';
+import { createAssignmentLink, fetchAssignmentsForOwner, fetchAssignmentSubmissionsForOwner } from '../utils/lessonAssignments';
 
 const SORT_OPTIONS = {
   last_opened: 'Last opened',
   date_created: 'Date created',
   name: 'Name',
 };
+
+const DEFAULT_ASSIGNMENT_CONFIG = {
+  visibilityPolicy: 'student_answers_only',
+  allowRetry: false,
+  showCheckButton: false,
+  enableGrading: true,
+  showTotalGrade: true,
+  showPerQuestionGrade: true,
+  dueAt: '',
+};
+
+function toLocalDateTimeValue(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 16);
+}
+
+function fromLocalDateTimeValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
 
 // ─── Folder tree helpers ──────────────────────
 function getAllDescendantIds(folder) {
@@ -106,7 +131,7 @@ function SessionPreviewModal({ session, onClose, onDelete }) {
   );
 }
 
-function LessonCardMenu({ lesson, onClose, onDuplicate, onExport, onRename, onMoveToFolder, onShare, onPractice, onDelete }) {
+function LessonCardMenu({ lesson, onClose, onDuplicate, onExport, onRename, onMoveToFolder, onShare, onAssignments, onPractice, onDelete }) {
   const ref = useRef(null);
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
@@ -116,6 +141,7 @@ function LessonCardMenu({ lesson, onClose, onDuplicate, onExport, onRename, onMo
   const items = [
     { label: 'Duplicate', action: () => { onDuplicate(lesson); onClose(); } },
     { label: 'Start practice mode', action: () => { onPractice(lesson); onClose(); } },
+    { label: 'Assignment center', action: () => { onAssignments(lesson); onClose(); } },
     { label: 'Create share link', action: () => { onShare(lesson); onClose(); } },
     { label: 'Export JSON', action: () => { onExport(lesson); onClose(); } },
     { label: 'Rename', action: () => { onRename(lesson); onClose(); } },
@@ -180,7 +206,7 @@ function MoveFolderModal({ lesson, folders, onSave, onClose }) {
   );
 }
 
-function ShareLessonModal({ lesson, shareState, assignmentConfig, onChangeAssignmentConfig, onClose, onCreateLink, onCreateAssignmentLink, onCopyLink }) {
+function ShareLessonModal({ lesson, shareState, onClose, onCreateLink, onCopyLink }) {
   if (!lesson) return null;
 
   return (
@@ -206,61 +232,6 @@ function ShareLessonModal({ lesson, shareState, assignmentConfig, onChangeAssign
             {shareState.loading ? 'Creating link…' : 'Create / refresh share link'}
           </button>
 
-          <div className="border border-zinc-200 bg-zinc-50 p-3">
-            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">Homework settings</div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1">
-                <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Answer visibility</span>
-                <select
-                  value={assignmentConfig.visibilityPolicy}
-                  onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, visibilityPolicy: event.target.value }))}
-                  className="w-full border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-zinc-900"
-                >
-                  <option value="correctness_only">Correct/incorrect only</option>
-                  <option value="show_correct_answers">Show correct answers</option>
-                  <option value="student_answers_only">Show student answers only</option>
-                  <option value="full_feedback">Show full feedback</option>
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Homework retries</span>
-                <select
-                  value={assignmentConfig.allowRetry ? 'enabled' : 'disabled'}
-                  onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, allowRetry: event.target.value === 'enabled' }))}
-                  className="w-full border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-zinc-900"
-                >
-                  <option value="disabled">Disabled</option>
-                  <option value="enabled">Enabled</option>
-                </select>
-              </label>
-              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-                <input type="checkbox" checked={assignmentConfig.enableGrading} onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, enableGrading: event.target.checked }))} />
-                Enable grading
-              </label>
-              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-                <input type="checkbox" checked={assignmentConfig.showTotalGrade} onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, showTotalGrade: event.target.checked }))} />
-                Show total grade
-              </label>
-              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-                <input type="checkbox" checked={assignmentConfig.showPerQuestionGrade} onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, showPerQuestionGrade: event.target.checked }))} />
-                Show per-question grade
-              </label>
-              <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-                <input type="checkbox" checked={assignmentConfig.showCheckButton} onChange={(event) => onChangeAssignmentConfig((current) => ({ ...current, showCheckButton: event.target.checked }))} />
-                Show check button
-              </label>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => onCreateAssignmentLink(lesson, assignmentConfig)}
-            disabled={shareState.assignmentLoading}
-            className="border border-zinc-900 bg-white px-3 py-2 text-xs font-medium text-zinc-700 disabled:opacity-60"
-          >
-            {shareState.assignmentLoading ? 'Creating assignment…' : 'Create assignment link (one attempt)'}
-          </button>
-
           {shareState.error && (
             <div className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
               {shareState.error}
@@ -281,22 +252,164 @@ function ShareLessonModal({ lesson, shareState, assignmentConfig, onChangeAssign
               </div>
             </div>
           )}
-
-          {shareState.assignmentLink && (
-            <div className="space-y-2">
-              <label className="block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Assignment link</label>
-              <input
-                readOnly
-                value={shareState.assignmentLink}
-                className="w-full border border-zinc-200 px-3 py-2 text-xs text-zinc-700 outline-none"
-              />
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => onCopyLink(shareState.assignmentLink)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900">Copy link</button>
-                {shareState.assignmentCopied && <span className="text-[11px] text-emerald-700">Copied</span>}
-              </div>
-            </div>
-          )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AssignmentCenterModal({
+  open,
+  lessons,
+  assignments,
+  submissionsByAssignment,
+  selectedLessonId,
+  assignmentConfig,
+  saving,
+  loading,
+  error,
+  success,
+  latestLink,
+  copied,
+  expandedAssignmentId,
+  onClose,
+  onRefresh,
+  onSelectedLessonChange,
+  onConfigChange,
+  onSaveAssignment,
+  onEditAssignment,
+  onCopyLink,
+  onToggleExpandedAssignment,
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 bg-black/40 p-3 sm:p-5">
+      <button type="button" onClick={onClose} className="absolute inset-0" aria-label="Close assignment center" />
+      <div className="relative mx-auto max-h-[92vh] w-full max-w-6xl overflow-auto border border-zinc-200 bg-white p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Assignment center</div>
+            <div className="mt-1 text-lg font-semibold text-zinc-950">Create and manage homework links</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onRefresh} disabled={loading} className="inline-flex items-center gap-1 border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900 disabled:opacity-60">
+              <RefreshIcon />
+              Refresh
+            </button>
+            <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900">Close</button>
+          </div>
+        </div>
+
+        <section className="border border-zinc-200 bg-zinc-50 p-3 sm:p-4">
+          <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">Assignment settings</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Lesson</span>
+              <select value={selectedLessonId} onChange={(event) => onSelectedLessonChange(event.target.value)} className="w-full border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-zinc-900">
+                <option value="">Select lesson</option>
+                {lessons.map((lesson) => (
+                  <option key={lesson.id} value={lesson.id}>{lesson.title || 'Untitled lesson'}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Due date/time window</span>
+              <input
+                type="datetime-local"
+                value={assignmentConfig.dueAt}
+                onChange={(event) => onConfigChange((current) => ({ ...current, dueAt: event.target.value }))}
+                className="w-full border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Answer visibility</span>
+              <select
+                value={assignmentConfig.visibilityPolicy}
+                onChange={(event) => onConfigChange((current) => ({ ...current, visibilityPolicy: event.target.value }))}
+                className="w-full border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-zinc-900"
+              >
+                <option value="correctness_only">Correct/incorrect only</option>
+                <option value="show_correct_answers">Show correct answers</option>
+                <option value="student_answers_only">Show student answers only</option>
+                <option value="full_feedback">Show full feedback</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Homework retries</span>
+              <select
+                value={assignmentConfig.allowRetry ? 'enabled' : 'disabled'}
+                onChange={(event) => onConfigChange((current) => ({ ...current, allowRetry: event.target.value === 'enabled' }))}
+                className="w-full border border-zinc-200 px-2 py-2 text-xs outline-none focus:border-zinc-900"
+              >
+                <option value="disabled">Disabled</option>
+                <option value="enabled">Enabled</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.enableGrading} onChange={(event) => onConfigChange((current) => ({ ...current, enableGrading: event.target.checked }))} />Enable grading</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.showTotalGrade} onChange={(event) => onConfigChange((current) => ({ ...current, showTotalGrade: event.target.checked }))} />Show total grade</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.showPerQuestionGrade} onChange={(event) => onConfigChange((current) => ({ ...current, showPerQuestionGrade: event.target.checked }))} />Show per-question grade</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.showCheckButton} onChange={(event) => onConfigChange((current) => ({ ...current, showCheckButton: event.target.checked }))} />Show check button</label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={onSaveAssignment} disabled={saving || !selectedLessonId} className="border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-60">
+              {saving ? 'Saving assignment…' : 'Create / update assignment'}
+            </button>
+            {latestLink && (
+              <button type="button" onClick={() => onCopyLink(latestLink)} className="inline-flex items-center gap-1 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:border-zinc-900">
+                <CopyIcon />
+                Copy latest link
+              </button>
+            )}
+            {copied && <span className="text-[11px] text-emerald-700">Copied</span>}
+          </div>
+          {latestLink && <input readOnly value={latestLink} className="mt-2 w-full border border-zinc-200 bg-white px-2 py-2 text-xs text-zinc-700" />}
+          {error && <div className="mt-2 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
+          {success && <div className="mt-2 border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{success}</div>}
+        </section>
+
+        <section className="mt-4 border border-zinc-200 bg-white">
+          <div className="border-b border-zinc-200 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">Assignments ({assignments.length})</div>
+          <div className="divide-y divide-zinc-200">
+            {assignments.map((assignment) => {
+              const assignmentSubmissions = submissionsByAssignment.get(assignment.assignmentId) || [];
+              const expanded = expandedAssignmentId === assignment.assignmentId;
+              return (
+                <div key={assignment.assignmentId} className="px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-zinc-900">{assignment.lessonTitle}</div>
+                      <div className="mt-1 text-[11px] text-zinc-500">
+                        {assignment.expiresAt ? `Due ${new Date(assignment.expiresAt).toLocaleString()}` : 'No due date'} · {assignmentSubmissions.length} submission{assignmentSubmissions.length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => onEditAssignment(assignment)} className="inline-flex items-center gap-1 border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:border-zinc-900"><EditIcon />Edit</button>
+                      <button type="button" onClick={() => onCopyLink(assignment.assignmentUrl)} className="inline-flex items-center gap-1 border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:border-zinc-900"><CopyIcon />Copy link</button>
+                      <button type="button" onClick={() => onToggleExpandedAssignment(assignment.assignmentId)} className="border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:border-zinc-900">{expanded ? 'Hide submissions' : 'View submissions'}</button>
+                    </div>
+                  </div>
+                  {expanded && (
+                    <div className="mt-2 space-y-1 border border-zinc-200 bg-zinc-50 p-2">
+                      {assignmentSubmissions.length === 0 && <div className="text-xs text-zinc-500">No submissions yet.</div>}
+                      {assignmentSubmissions.map((submission) => (
+                        <div key={submission.submissionId} className="flex flex-wrap items-center justify-between gap-2 border border-zinc-200 bg-white px-2 py-1.5 text-xs">
+                          <div className="text-zinc-700">{submission.studentName}</div>
+                          <div className="text-zinc-500">{new Date(submission.timestamp).toLocaleString()}</div>
+                          <div className="font-medium text-zinc-700">{submission.score}%</div>
+                          <div className="text-zinc-500">{submission.submissionState || 'awaiting_review'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {assignments.length === 0 && <div className="px-3 py-6 text-sm text-zinc-500">No assignments yet. Create one from the form above.</div>}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -344,15 +457,19 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
   const [renamingLesson, setRenamingLesson] = useState(null);
   const [movingLesson, setMovingLesson] = useState(null);
   const [shareLesson, setShareLesson] = useState(null);
-  const [shareState, setShareState] = useState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });
-  const [assignmentConfig, setAssignmentConfig] = useState({
-    visibilityPolicy: 'student_answers_only',
-    allowRetry: false,
-    showCheckButton: false,
-    enableGrading: true,
-    showTotalGrade: true,
-    showPerQuestionGrade: true,
-  });
+  const [shareState, setShareState] = useState({ loading: false, error: '', link: '', copied: false });
+  const [assignmentCenterOpen, setAssignmentCenterOpen] = useState(false);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [assignmentError, setAssignmentError] = useState('');
+  const [assignmentSuccess, setAssignmentSuccess] = useState('');
+  const [assignmentLink, setAssignmentLink] = useState('');
+  const [assignmentLinkCopied, setAssignmentLinkCopied] = useState(false);
+  const [selectedAssignmentLessonId, setSelectedAssignmentLessonId] = useState('');
+  const [assignmentConfig, setAssignmentConfig] = useState(DEFAULT_ASSIGNMENT_CONFIG);
+  const [ownerAssignments, setOwnerAssignments] = useState([]);
+  const [ownerAssignmentSubmissions, setOwnerAssignmentSubmissions] = useState([]);
+  const [expandedAssignmentId, setExpandedAssignmentId] = useState('');
   const [folderPromptParent, setFolderPromptParent] = useState(null);
   const [sortBy, setSortBy] = useState(() => {
     try {
@@ -401,38 +518,138 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
     setShareState((prev) => ({ ...prev, loading: false, error: '', link: result.shareUrl || '', copied: false }));
   };
 
-  const handleCreateAssignmentLink = async (lesson, config) => {
-    setShareState((prev) => ({ ...prev, assignmentLoading: true, error: '', assignmentCopied: false }));
-    const result = await createAssignmentLink(lesson, {
-      oneAttempt: true,
-      allowRetry: Boolean(config?.allowRetry),
-      visibilityPolicy: normalizeVisibilityPolicy(config?.visibilityPolicy || lesson?.settings?.visibilityPolicy || 'student_answers_only'),
-      showCheckButton: Boolean(config?.showCheckButton),
-      enableGrading: config?.enableGrading !== false,
-      showTotalGrade: config?.showTotalGrade !== false,
-      showPerQuestionGrade: config?.showPerQuestionGrade !== false,
-    });
-    if (!result.ok) {
-      const reason = result.reason === 'auth_required'
-        ? 'Sign in with a teacher account in Settings to create assignment links.'
-        : result.reason || 'Failed to create assignment link.';
-      setShareState((prev) => ({ ...prev, assignmentLoading: false, error: reason }));
-      return;
-    }
-    setShareState((prev) => ({ ...prev, assignmentLoading: false, error: '', assignmentLink: result.assignmentUrl || '', assignmentCopied: false }));
-  };
-
   const handleCopyShareLink = async (value) => {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      const isAssignment = value === shareState.assignmentLink;
-      setShareState((prev) => ({ ...prev, copied: !isAssignment, assignmentCopied: isAssignment }));
+      setShareState((prev) => ({ ...prev, copied: true }));
       setTimeout(() => {
-        setShareState((prev) => ({ ...prev, copied: false, assignmentCopied: false }));
+        setShareState((prev) => ({ ...prev, copied: false }));
       }, 1400);
     } catch {
       setShareState((prev) => ({ ...prev, error: 'Clipboard access denied. Copy link manually from the field.' }));
+    }
+  };
+
+  const submissionsByAssignment = useMemo(() => {
+    const map = new Map();
+    ownerAssignmentSubmissions.forEach((submission) => {
+      const key = String(submission.assignmentId || '').trim();
+      if (!key) return;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(submission);
+    });
+    map.forEach((items) => items.sort((left, right) => right.timestamp - left.timestamp));
+    return map;
+  }, [ownerAssignmentSubmissions]);
+
+  const hydrateAssignmentConfigFromLesson = (lesson) => {
+    const settings = lesson?.settings || {};
+    return {
+      visibilityPolicy: normalizeVisibilityPolicy(settings.visibilityPolicy || 'student_answers_only'),
+      allowRetry: Boolean(settings.allowRetryHomework),
+      showCheckButton: Boolean(settings.showCheckButton),
+      enableGrading: settings.enableGrading !== false,
+      showTotalGrade: settings.showTotalGrade !== false,
+      showPerQuestionGrade: settings.showPerQuestionGrade !== false,
+      dueAt: '',
+    };
+  };
+
+  const refreshAssignmentCenter = async () => {
+    setAssignmentLoading(true);
+    setAssignmentError('');
+
+    const [assignmentsResult, submissionsResult] = await Promise.all([
+      fetchAssignmentsForOwner({ limit: 300 }),
+      fetchAssignmentSubmissionsForOwner({ limit: 500 }),
+    ]);
+
+    setAssignmentLoading(false);
+
+    if (!assignmentsResult.ok && !submissionsResult.ok) {
+      setAssignmentError(assignmentsResult.reason || submissionsResult.reason || 'Failed to load assignment center data.');
+      setOwnerAssignments([]);
+      setOwnerAssignmentSubmissions([]);
+      return;
+    }
+
+    setOwnerAssignments(assignmentsResult.ok ? (assignmentsResult.assignments || []) : []);
+    setOwnerAssignmentSubmissions(submissionsResult.ok ? (submissionsResult.sessions || []) : []);
+  };
+
+  const openAssignmentCenter = async (lesson = null) => {
+    const targetLessonId = String(lesson?.id || '').trim() || String(lessons?.[0]?.id || '').trim();
+    setAssignmentCenterOpen(true);
+    setSelectedAssignmentLessonId(targetLessonId);
+    setAssignmentConfig(lesson ? hydrateAssignmentConfigFromLesson(lesson) : DEFAULT_ASSIGNMENT_CONFIG);
+    setAssignmentError('');
+    setAssignmentSuccess('');
+    setAssignmentLink('');
+    setAssignmentLinkCopied(false);
+    setExpandedAssignmentId('');
+    await refreshAssignmentCenter();
+  };
+
+  const handleSaveAssignmentFromCenter = async () => {
+    const lesson = lessons.find((entry) => String(entry.id) === String(selectedAssignmentLessonId));
+    if (!lesson) {
+      setAssignmentError('Pick a lesson before creating an assignment.');
+      return;
+    }
+
+    setAssignmentSaving(true);
+    setAssignmentError('');
+    setAssignmentSuccess('');
+    const result = await createAssignmentLink(lesson, {
+      oneAttempt: true,
+      allowRetry: Boolean(assignmentConfig.allowRetry),
+      visibilityPolicy: normalizeVisibilityPolicy(assignmentConfig.visibilityPolicy || lesson?.settings?.visibilityPolicy || 'student_answers_only'),
+      showCheckButton: Boolean(assignmentConfig.showCheckButton),
+      enableGrading: assignmentConfig.enableGrading !== false,
+      showTotalGrade: assignmentConfig.showTotalGrade !== false,
+      showPerQuestionGrade: assignmentConfig.showPerQuestionGrade !== false,
+      expiresAt: fromLocalDateTimeValue(assignmentConfig.dueAt),
+    });
+    setAssignmentSaving(false);
+
+    if (!result.ok) {
+      const reason = result.reason === 'auth_required'
+        ? 'Sign in with a teacher account in Settings to manage assignments.'
+        : result.reason || 'Failed to create assignment link.';
+      setAssignmentError(reason);
+      return;
+    }
+
+    setAssignmentLink(result.assignmentUrl || '');
+    setAssignmentSuccess('Assignment saved. You can copy and share the link below.');
+    await refreshAssignmentCenter();
+  };
+
+  const handleEditAssignmentFromCenter = (assignment) => {
+    setSelectedAssignmentLessonId(String(assignment.lessonId || ''));
+    setAssignmentConfig({
+      visibilityPolicy: normalizeVisibilityPolicy(assignment.visibilityPolicy || 'student_answers_only'),
+      allowRetry: Boolean(assignment.allowRetry),
+      showCheckButton: Boolean(assignment.showCheckButton),
+      enableGrading: assignment.enableGrading !== false,
+      showTotalGrade: assignment.showTotalGrade !== false,
+      showPerQuestionGrade: assignment.showPerQuestionGrade !== false,
+      dueAt: toLocalDateTimeValue(assignment.expiresAt),
+    });
+    setAssignmentLink(assignment.assignmentUrl || '');
+    setAssignmentSuccess(`Loaded settings for ${assignment.lessonTitle}.`);
+    setAssignmentError('');
+  };
+
+  const handleCopyAssignmentLink = async (value) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setAssignmentLinkCopied(true);
+      setTimeout(() => setAssignmentLinkCopied(false), 1400);
+    } catch {
+      setAssignmentError('Clipboard access denied. Copy link manually from the field.');
     }
   };
 
@@ -532,6 +749,7 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
           <div className="text-lg font-semibold tracking-tight text-zinc-950">Lesson Flow</div>
         </div>
         <div className="flex items-center gap-2">
+          <button type="button" onClick={() => void openAssignmentCenter()} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:border-zinc-900">Assignments</button>
           <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search lessons…" className="w-full sm:w-56 border border-zinc-200 px-3 py-1.5 text-sm outline-none focus:border-zinc-900" />
           <select
             value={sortBy}
@@ -643,17 +861,9 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
                   onPractice={(l) => onPractice?.(l)}
                   onShare={(l) => {
                     setShareLesson(l);
-                    const settings = l?.settings || {};
-                    setAssignmentConfig({
-                      visibilityPolicy: normalizeVisibilityPolicy(settings.visibilityPolicy || 'student_answers_only'),
-                      allowRetry: Boolean(settings.allowRetryHomework),
-                      showCheckButton: Boolean(settings.showCheckButton),
-                      enableGrading: settings.enableGrading !== false,
-                      showTotalGrade: settings.showTotalGrade !== false,
-                      showPerQuestionGrade: settings.showPerQuestionGrade !== false,
-                    });
-                    setShareState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });
+                    setShareState({ loading: false, error: '', link: '', copied: false });
                   }}
+                  onAssignments={(l) => { void openAssignmentCenter(l); }}
                   onDelete={onDelete}
                 />
               )}
@@ -706,15 +916,35 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
       <ShareLessonModal
         lesson={shareLesson}
         shareState={shareState}
-        assignmentConfig={assignmentConfig}
-        onChangeAssignmentConfig={setAssignmentConfig}
         onClose={() => {
           setShareLesson(null);
-          setShareState({ loading: false, assignmentLoading: false, error: '', link: '', copied: false, assignmentLink: '', assignmentCopied: false });
+          setShareState({ loading: false, error: '', link: '', copied: false });
         }}
         onCreateLink={handleCreateShareLink}
-        onCreateAssignmentLink={handleCreateAssignmentLink}
         onCopyLink={handleCopyShareLink}
+      />
+      <AssignmentCenterModal
+        open={assignmentCenterOpen}
+        lessons={lessons}
+        assignments={ownerAssignments}
+        submissionsByAssignment={submissionsByAssignment}
+        selectedLessonId={selectedAssignmentLessonId}
+        assignmentConfig={assignmentConfig}
+        saving={assignmentSaving}
+        loading={assignmentLoading}
+        error={assignmentError}
+        success={assignmentSuccess}
+        latestLink={assignmentLink}
+        copied={assignmentLinkCopied}
+        expandedAssignmentId={expandedAssignmentId}
+        onClose={() => setAssignmentCenterOpen(false)}
+        onRefresh={refreshAssignmentCenter}
+        onSelectedLessonChange={setSelectedAssignmentLessonId}
+        onConfigChange={setAssignmentConfig}
+        onSaveAssignment={handleSaveAssignmentFromCenter}
+        onEditAssignment={handleEditAssignmentFromCenter}
+        onCopyLink={handleCopyAssignmentLink}
+        onToggleExpandedAssignment={(assignmentId) => setExpandedAssignmentId((current) => (current === assignmentId ? '' : assignmentId))}
       />
       <PromptModal
         open={folderPromptParent !== null}

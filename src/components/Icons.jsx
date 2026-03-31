@@ -70,6 +70,14 @@ export function EditIcon(p) {
   return <Icon {...p}><path d="M2.5 15.5l1-4L12.5 2.5l3 3-9 9-4 1Z" /><path d="M10.5 4.5l3 3" /></Icon>;
 }
 
+export function RefreshIcon(p) {
+  return <Icon {...p}><path d="M15 4.5V8.5H11" /><path d="M3 13.5V9.5H7" /><path d="M13.8 8.5A5 5 0 0 0 5.2 5.1" /><path d="M4.2 9.5A5 5 0 0 0 12.8 12.9" /></Icon>;
+}
+
+export function CheckIcon(p) {
+  return <Icon {...p}><path d="M3.5 9l3.5 3.5L14.5 5" /></Icon>;
+}
+
 export function FolderIcon(p) {
   return <Icon {...p}><path d="M2 5V3.5h5l2 1.5h7V14.5H2V5Z" /></Icon>;
 }

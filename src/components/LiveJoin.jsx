@@ -66,6 +66,15 @@ export default function LiveJoin({ onExit }) {
   const joinTimeoutRef = useRef(null);
 
   const blocks = useMemo(() => normalizeVisibleBlocks(session?.lesson?.blocks || []), [session]);
+  const liveTaskOptions = useMemo(() => {
+    const settings = session?.lesson?.settings || {};
+    return {
+      allowRetry: settings.allowRetryLive === true,
+      showCheckButton: settings.showCheckButtonLive === true,
+      lockAfterSubmit: settings.lockAfterSubmitLive !== false,
+      hideQuestionContent: settings.hideQuestionContentLive === true,
+    };
+  }, [session]);
 
   useEffect(() => {
     void ensureSession();
@@ -289,9 +298,17 @@ export default function LiveJoin({ onExit }) {
         )}
 
         {phase === PHASE.RUNNING && (
-          <div className="w-full max-w-6xl">
+          <div className="w-full max-w-6xl text-zinc-900 [&_input]:text-zinc-900 [&_textarea]:text-zinc-900 [&_select]:text-zinc-900">
             <div className="mb-4 text-sm text-zinc-400">Live block {Math.min((session?.currentIndex ?? 0) + 1, Math.max(blocks.length, 1))} / {blocks.length || 1}</div>
-            <LessonStage blocks={blocks} currentIndex={session?.currentIndex || 0} results={results} onCompleteBlock={handleComplete} onProgressBlock={handleProgress} emptyMessage="The teacher advanced to a block that is currently unavailable." />
+            <LessonStage
+              blocks={blocks}
+              currentIndex={session?.currentIndex || 0}
+              results={results}
+              onCompleteBlock={handleComplete}
+              onProgressBlock={handleProgress}
+              emptyMessage="The teacher advanced to a block that is currently unavailable."
+              taskOptions={liveTaskOptions}
+            />
           </div>
         )}
 

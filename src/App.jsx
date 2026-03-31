@@ -223,12 +223,12 @@ function ProfilesRoute() {
 }
 
 function GradingRoute() {
-  const { sessions } = useAppContext();
+  const { sessions, refresh } = useAppContext();
   const navigate = useNavigate();
   return (
     <ErrorBoundary message="Grading console crashed.">
       <Suspense fallback={<ScreenFallback label="Loading grading console…" />}>
-        <GradingConsole sessions={sessions} onBack={() => navigate('/')} requireLessonSelection />
+        <GradingConsole sessions={sessions} onBack={() => navigate('/')} onSessionsChanged={refresh} requireLessonSelection />
       </Suspense>
     </ErrorBoundary>
   );

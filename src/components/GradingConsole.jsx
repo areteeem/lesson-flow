@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchSessionsFromCloud, getGradingCloudAvailability } from '../utils/gradingCloud';
-import { fetchAssignmentSubmissionsForOwner } from '../utils/lessonAssignments';
+import { fetchSessionsFromCloud, getGradingCloudAvailability, updateCloudSessionGrade } from '../utils/gradingCloud';
+import { fetchAssignmentSubmissionsForOwner, updateAssignmentSubmissionGrade } from '../utils/lessonAssignments';
 import { createResultShareLink } from '../utils/resultSharing';
+import { saveSession } from '../storage';
+import { BackIcon, CheckIcon, ChevronDownIcon, CopyIcon, EditIcon, ExportIcon, RefreshIcon } from './Icons';
 
 function toNumber(value, fallback = 0) {
   const next = Number(value);
@@ -10,6 +12,10 @@ function toNumber(value, fallback = 0) {
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, toNumber(value, 0)));
+}
+
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Math.round(toNumber(value, 0))));
 }
 
 function normalizeBreakdownEntry(entry, index = 0) {
@@ -42,15 +48,90 @@ function normalizeSession(session) {
 
   return {
     id: String(session?.id || session?.cloudSessionId || `session-${crypto.randomUUID()}`),
+    localSessionId: session?.localSessionId ? String(session.localSessionId) : null,
+    cloudSessionId: session?.cloudSessionId ? String(session.cloudSessionId) : null,
+    assignmentId: session?.assignmentId ? String(session.assignmentId) : null,
+    submissionId: session?.submissionId ? String(session.submissionId) : null,
     lessonId: session?.lessonId ? String(session.lessonId) : null,
     lessonTitle: String(session?.lessonTitle || 'Untitled Lesson'),
+    lessonPreview: String(session?.lessonPreview || ''),
     studentName: String(session?.studentName || 'Anonymous').trim() || 'Anonymous',
     timestamp: toNumber(session?.timestamp, Date.now()),
     origin: String(session?.origin || session?.sourceType || 'local'),
+    mode: String(session?.mode || 'default'),
+    sourceType: String(session?.sourceType || session?.origin || 'local'),
+    interaction: session?.interaction || null,
+    submissionState: session?.submissionState || null,
+    completedCount: toNumber(session?.completedCount, 0),
+    correctCount: toNumber(session?.correctCount, 0),
     score,
     total,
     earned,
     breakdown,
+  };
+}
+
+function verdictFromEntry(entry) {
+  if (entry.correct === true || entry.score >= 0.999) return 'correct';
+  if (entry.correct === false && entry.score <= 0.001) return 'incorrect';
+  if (entry.correct === null) return 'pending';
+  return 'partial';
+}
+
+function toVerdictDraft(session) {
+  const next = {};
+  (session?.breakdown || []).forEach((entry) => {
+    next[entry.id] = {
+      verdict: verdictFromEntry(entry),
+      scorePercent: clampPercent(entry.score * 100),
+    };
+  });
+  return next;
+}
+
+function toCorrectFromVerdict(verdict, fallback = null) {
+  if (verdict === 'correct') return true;
+  if (verdict === 'incorrect' || verdict === 'partial') return false;
+  if (verdict === 'pending') return null;
+  return typeof fallback === 'boolean' ? fallback : null;
+}
+
+function scoreFromVerdict(verdict, currentScorePercent) {
+  if (verdict === 'correct') return 100;
+  if (verdict === 'incorrect') return 0;
+  if (verdict === 'partial') {
+    if (currentScorePercent > 0 && currentScorePercent < 100) return currentScorePercent;
+    return 50;
+  }
+  return currentScorePercent;
+}
+
+function buildReviewedSession(session, draftMap) {
+  const breakdown = session.breakdown.map((entry) => {
+    const draft = draftMap?.[entry.id];
+    if (!draft) return entry;
+    const normalizedScore = clamp01(clampPercent(draft.scorePercent) / 100);
+    return {
+      ...entry,
+      score: normalizedScore,
+      correct: toCorrectFromVerdict(draft.verdict, entry.correct),
+    };
+  });
+
+  const total = breakdown.reduce((sum, entry) => sum + Math.max(1, toNumber(entry.points, 1)), 0);
+  const earned = breakdown.reduce((sum, entry) => sum + (clamp01(entry.score) * Math.max(1, toNumber(entry.points, 1))), 0);
+  const score = total > 0 ? Math.round((earned / total) * 100) : 0;
+
+  return {
+    ...session,
+    breakdown,
+    total,
+    earned,
+    score,
+    timestamp: Date.now(),
+    completedCount: breakdown.filter((entry) => entry.result).length,
+    correctCount: breakdown.filter((entry) => entry.correct === true).length,
+    submissionState: breakdown.some((entry) => entry.correct === null) ? 'awaiting_review' : 'graded',
   };
 }
 
@@ -139,9 +220,25 @@ function StudentAnswerCard({ entry }) {
   );
 }
 
+function IconActionButton({ onClick, title, children, disabled = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className="inline-flex h-9 w-9 items-center justify-center border border-zinc-200 text-zinc-700 transition hover:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function GradingConsole({
   sessions = [],
   onBack,
+  onSessionsChanged = null,
   initialLessonId = null,
   initialLessonTitle = null,
   requireLessonSelection = true,
@@ -155,6 +252,10 @@ export default function GradingConsole({
   const [cloudMessage, setCloudMessage] = useState('');
   const [cloudSessions, setCloudSessions] = useState([]);
   const [assignmentSessions, setAssignmentSessions] = useState([]);
+  const [sessionOverrides, setSessionOverrides] = useState({});
+  const [verdictDrafts, setVerdictDrafts] = useState({});
+  const [verdictMessages, setVerdictMessages] = useState({});
+  const [verdictSavingId, setVerdictSavingId] = useState('');
   const [boardShareState, setBoardShareState] = useState('idle');
   const [boardShareLink, setBoardShareLink] = useState('');
 
@@ -208,8 +309,18 @@ export default function GradingConsole({
         }
       });
 
-    return [...byId.values()].sort((left, right) => right.timestamp - left.timestamp);
-  }, [sessions, cloudSessions, assignmentSessions]);
+    return [...byId.values()]
+      .map((entry) => sessionOverrides[entry.id] || entry)
+      .sort((left, right) => right.timestamp - left.timestamp);
+  }, [sessions, cloudSessions, assignmentSessions, sessionOverrides]);
+
+  const localSessionIds = useMemo(() => {
+    return new Set(
+      sessions
+        .map((entry) => String(entry?.id || '').trim())
+        .filter(Boolean),
+    );
+  }, [sessions]);
 
   const lessons = useMemo(() => {
     const byLesson = new Map();
@@ -269,6 +380,8 @@ export default function GradingConsole({
     setSelectedStudent('all');
     setSelectedQuestion('all');
     setExpandedStudent('');
+    setVerdictDrafts({});
+    setVerdictMessages({});
     setView('students');
     setBoardShareState('idle');
     setBoardShareLink('');
@@ -362,6 +475,135 @@ export default function GradingConsole({
     }
   };
 
+  const ensureSessionDraft = useCallback((session) => {
+    setVerdictDrafts((current) => {
+      if (current[session.id]) return current;
+      return {
+        ...current,
+        [session.id]: toVerdictDraft(session),
+      };
+    });
+  }, []);
+
+  const handleDraftVerdictChange = useCallback((session, entryId, verdict) => {
+    ensureSessionDraft(session);
+    setVerdictDrafts((current) => {
+      const sessionDraft = current[session.id] || toVerdictDraft(session);
+      const entryDraft = sessionDraft[entryId] || { verdict: 'pending', scorePercent: 0 };
+      const nextScore = scoreFromVerdict(verdict, clampPercent(entryDraft.scorePercent));
+      return {
+        ...current,
+        [session.id]: {
+          ...sessionDraft,
+          [entryId]: {
+            verdict,
+            scorePercent: nextScore,
+          },
+        },
+      };
+    });
+  }, [ensureSessionDraft]);
+
+  const handleDraftScoreChange = useCallback((session, entryId, nextValue) => {
+    ensureSessionDraft(session);
+    setVerdictDrafts((current) => {
+      const sessionDraft = current[session.id] || toVerdictDraft(session);
+      const entryDraft = sessionDraft[entryId] || { verdict: 'pending', scorePercent: 0 };
+      const scorePercent = clampPercent(nextValue);
+      const verdict = scorePercent >= 100
+        ? 'correct'
+        : scorePercent <= 0
+          ? (entryDraft.verdict === 'pending' ? 'pending' : 'incorrect')
+          : 'partial';
+      return {
+        ...current,
+        [session.id]: {
+          ...sessionDraft,
+          [entryId]: {
+            verdict,
+            scorePercent,
+          },
+        },
+      };
+    });
+  }, [ensureSessionDraft]);
+
+  const handleResetSessionDraft = useCallback((session) => {
+    setVerdictDrafts((current) => ({
+      ...current,
+      [session.id]: toVerdictDraft(session),
+    }));
+    setVerdictMessages((current) => ({
+      ...current,
+      [session.id]: '',
+    }));
+  }, []);
+
+  const handleApplySessionVerdict = useCallback(async (session) => {
+    const currentDraft = verdictDrafts[session.id] || toVerdictDraft(session);
+    const reviewedSession = buildReviewedSession(session, currentDraft);
+
+    setSessionOverrides((current) => ({
+      ...current,
+      [session.id]: reviewedSession,
+    }));
+    setVerdictSavingId(session.id);
+    setVerdictMessages((current) => ({
+      ...current,
+      [session.id]: 'Saving verdict changes...',
+    }));
+
+    let localStatus = 'skipped';
+    const localSaveId = String(reviewedSession.localSessionId || reviewedSession.id || '').trim();
+    if (localSaveId && localSessionIds.has(localSaveId)) {
+      saveSession({
+        ...reviewedSession,
+        id: localSaveId,
+        timestamp: reviewedSession.timestamp,
+      });
+      localStatus = 'saved';
+      if (typeof onSessionsChanged === 'function') {
+        onSessionsChanged();
+      }
+    }
+
+    const syncResults = await Promise.allSettled([
+      updateCloudSessionGrade({
+        ...reviewedSession,
+        id: localSaveId || reviewedSession.id,
+      }),
+      reviewedSession.submissionId
+        ? updateAssignmentSubmissionGrade(reviewedSession.submissionId, reviewedSession)
+        : Promise.resolve({ ok: true, skipped: true }),
+    ]);
+
+    const cloudResult = syncResults[0].status === 'fulfilled'
+      ? syncResults[0].value
+      : { state: 'error', reason: 'Cloud sync crashed' };
+    const assignmentResult = syncResults[1].status === 'fulfilled'
+      ? syncResults[1].value
+      : { ok: false, reason: 'Assignment update crashed' };
+
+    const statusParts = [];
+    if (localStatus === 'saved') statusParts.push('local saved');
+    if (cloudResult.state === 'synced') statusParts.push('cloud synced');
+    else if (cloudResult.state === 'unavailable') statusParts.push(`cloud unavailable (${cloudResult.reason || 'offline'})`);
+    else statusParts.push(`cloud failed (${cloudResult.reason || 'unknown'})`);
+
+    if (reviewedSession.submissionId) {
+      if (assignmentResult.ok) statusParts.push('homework updated');
+      else statusParts.push(`homework failed (${assignmentResult.reason || 'unknown'})`);
+    }
+
+    setVerdictSavingId('');
+    setVerdictMessages((current) => ({
+      ...current,
+      [session.id]: `Verdict updated: ${statusParts.join(' · ')}.`,
+    }));
+
+    await refreshCloudSessions();
+  }, [localSessionIds, onSessionsChanged, refreshCloudSessions, verdictDrafts]);
+
   if (!selectedLessonKey) {
     return (
       <div className="min-h-screen bg-[#f7f7f5] p-4 sm:p-6">
@@ -373,8 +615,12 @@ export default function GradingConsole({
               <div className="mt-1 text-[11px] text-zinc-500">{cloudMessage || 'Choose one lesson to open grading.'}</div>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={refreshCloudSessions} disabled={cloudLoading} className="border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:border-zinc-900 disabled:opacity-60">{cloudLoading ? 'Refreshing...' : 'Refresh'}</button>
-              <button type="button" onClick={onBack} className="border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:border-zinc-900">Back</button>
+              <IconActionButton onClick={refreshCloudSessions} disabled={cloudLoading} title={cloudLoading ? 'Refreshing sessions' : 'Refresh sessions'}>
+                <RefreshIcon />
+              </IconActionButton>
+              <IconActionButton onClick={onBack} title="Back to home">
+                <BackIcon />
+              </IconActionButton>
             </div>
           </header>
 
@@ -406,9 +652,15 @@ export default function GradingConsole({
             <div className="mt-1 text-[11px] text-zinc-500">{cloudMessage || 'Student and question grading view.'}</div>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={refreshCloudSessions} disabled={cloudLoading} className="border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:border-zinc-900 disabled:opacity-60">{cloudLoading ? 'Refreshing...' : 'Refresh'}</button>
-            <button type="button" onClick={() => setSelectedLessonKey(null)} className="border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:border-zinc-900">Change lesson</button>
-            <button type="button" onClick={onBack} className="border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:border-zinc-900">Back</button>
+            <IconActionButton onClick={refreshCloudSessions} disabled={cloudLoading} title={cloudLoading ? 'Refreshing sessions' : 'Refresh sessions'}>
+              <RefreshIcon />
+            </IconActionButton>
+            <IconActionButton onClick={() => setSelectedLessonKey(null)} title="Change lesson">
+              <ExportIcon className="rotate-90" />
+            </IconActionButton>
+            <IconActionButton onClick={onBack} title="Back to home">
+              <BackIcon />
+            </IconActionButton>
           </div>
         </header>
 
@@ -445,23 +697,105 @@ export default function GradingConsole({
             <div className="space-y-2">
               {studentRows.map((session) => {
                 const expanded = expandedStudent === session.id;
+                const sessionDraft = verdictDrafts[session.id] || toVerdictDraft(session);
+                const sessionMessage = verdictMessages[session.id] || '';
                 return (
                   <div key={session.id} className="border border-zinc-200">
-                    <button type="button" onClick={() => setExpandedStudent(expanded ? '' : session.id)} className="grid w-full gap-2 px-3 py-3 text-left sm:grid-cols-[1fr_120px_150px_90px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpandedStudent(expanded ? '' : session.id);
+                        if (!expanded) ensureSessionDraft(session);
+                      }}
+                      className="grid w-full gap-2 px-3 py-3 text-left sm:grid-cols-[1fr_120px_150px_90px]"
+                    >
                       <div>
                         <div className="text-sm font-semibold text-zinc-900">{session.studentName}</div>
                         <div className="text-[11px] text-zinc-500">{new Date(session.timestamp).toLocaleString()}</div>
                       </div>
                       <div className="text-sm text-zinc-700">Score: {session.score}%</div>
                       <div className="text-sm text-zinc-700">Questions: {session.breakdown.length}</div>
-                      <div className="text-xs text-zinc-500">{expanded ? 'Hide' : 'View'}</div>
+                      <div className="flex items-center justify-end text-zinc-500">
+                        <ChevronDownIcon className={expanded ? 'rotate-180 transition' : 'transition'} />
+                      </div>
                     </button>
                     {expanded && (
                       <div className="border-t border-zinc-200 bg-zinc-50 p-3">
-                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-zinc-200 bg-white px-3 py-2">
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Verdict editor</div>
+                            <div className="text-xs text-zinc-600">Adjust score and correctness, then apply to sync.</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleResetSessionDraft(session)}
+                              className="inline-flex items-center gap-1 border border-zinc-200 px-2.5 py-1.5 text-[11px] uppercase tracking-[0.14em] text-zinc-700 hover:border-zinc-900"
+                            >
+                              <EditIcon />
+                              Reset
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplySessionVerdict(session)}
+                              disabled={verdictSavingId === session.id}
+                              className="inline-flex items-center gap-1 border border-zinc-900 bg-zinc-900 px-2.5 py-1.5 text-[11px] uppercase tracking-[0.14em] text-white disabled:opacity-60"
+                            >
+                              <CheckIcon />
+                              {verdictSavingId === session.id ? 'Saving' : 'Apply'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {sessionMessage && <div className="mb-3 text-xs text-zinc-600">{sessionMessage}</div>}
+
+                        <div className="space-y-2">
                           {session.breakdown
                             .filter((entry) => selectedQuestion === 'all' || `${entry.taskType}::${entry.label}` === selectedQuestion)
-                            .map((entry) => <StudentAnswerCard key={`${session.id}-${entry.id}`} entry={entry} />)}
+                            .map((entry) => {
+                              const draft = sessionDraft[entry.id] || {
+                                verdict: verdictFromEntry(entry),
+                                scorePercent: clampPercent(entry.score * 100),
+                              };
+                              return (
+                                <div key={`${session.id}-${entry.id}`} className="border border-zinc-200 bg-white p-3">
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                      <div className="text-sm font-semibold text-zinc-900">{entry.label}</div>
+                                      <div className="text-[11px] text-zinc-500">{entry.taskType}</div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <select
+                                        value={draft.verdict}
+                                        onChange={(event) => handleDraftVerdictChange(session, entry.id, event.target.value)}
+                                        className="border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 outline-none focus:border-zinc-900"
+                                      >
+                                        <option value="pending">Pending</option>
+                                        <option value="incorrect">Incorrect</option>
+                                        <option value="partial">Partial</option>
+                                        <option value="correct">Correct</option>
+                                      </select>
+                                      <label className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 focus-within:border-zinc-900">
+                                        <span>Score</span>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          step={1}
+                                          value={draft.scorePercent}
+                                          onChange={(event) => handleDraftScoreChange(session, entry.id, event.target.value)}
+                                          className="w-16 border-none bg-transparent text-right text-xs text-zinc-900 outline-none"
+                                        />
+                                        <span>%</span>
+                                      </label>
+                                    </div>
+                                  </div>
+                                  <div className="mt-2">
+                                    <StudentAnswerCard entry={entry} />
+                                  </div>
+                                </div>
+                              );
+                            })}
                         </div>
                       </div>
                     )}
@@ -507,9 +841,20 @@ export default function GradingConsole({
                 <div className="mt-1 text-sm text-zinc-700">Share one lesson board with ranking and printable layout.</div>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => window.print()} className="border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:border-zinc-900">Print</button>
-                <button type="button" onClick={handleCreateBoardShare} disabled={boardShareState === 'creating'} className="border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white disabled:opacity-50">{boardShareState === 'creating' ? 'Creating...' : 'Publish board'}</button>
-                {boardShareLink && <button type="button" onClick={handleCopyBoardShareLink} className="border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:border-zinc-900">Copy link</button>}
+                <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:border-zinc-900">
+                  <ExportIcon />
+                  Print
+                </button>
+                <button type="button" onClick={handleCreateBoardShare} disabled={boardShareState === 'creating'} className="inline-flex items-center gap-1 border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white disabled:opacity-50">
+                  <ExportIcon />
+                  {boardShareState === 'creating' ? 'Creating...' : 'Publish'}
+                </button>
+                {boardShareLink && (
+                  <button type="button" onClick={handleCopyBoardShareLink} className="inline-flex items-center gap-1 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:border-zinc-900">
+                    <CopyIcon />
+                    Copy
+                  </button>
+                )}
               </div>
             </div>
 

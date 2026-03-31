@@ -43,9 +43,20 @@ function toGradeEntryRow(sessionId, userId, entry, entryIndex, occurredAtIso) {
   };
 }
 
+function toSessionResultPayload(session) {
+  return {
+    lessonPreview: session.lessonPreview || '',
+    mode: session.mode || 'default',
+    origin: session.origin || 'local',
+    interaction: session.interaction || null,
+    submissionState: session.submissionState || null,
+  };
+}
+
 function normalizeCloudSession(base, entries) {
   return {
     id: base.local_session_id || base.id,
+    localSessionId: base.local_session_id || null,
     cloudSessionId: base.id,
     lessonId: base.lesson_id || null,
     lessonTitle: base.lesson_title || 'Untitled Lesson',
@@ -126,11 +137,7 @@ export async function syncSessionGradeToCloud(session) {
     correct_count: Number(session.correctCount || 0),
     occurred_at: occurredAtIso,
     result_payload: {
-      lessonPreview: session.lessonPreview || '',
-      mode: session.mode || 'default',
-      origin: session.origin || 'local',
-      interaction: session.interaction || null,
-      submissionState: session.submissionState || null,
+      ...toSessionResultPayload(session),
     },
     updated_at: new Date(now).toISOString(),
   };
@@ -193,6 +200,118 @@ export async function syncSessionGradeToCloud(session) {
     const failed = {
       state: 'error',
       reason: error?.message || 'Cloud grading sync failed',
+      updatedAt: now,
+    };
+    safeWriteStatus(failed);
+    return failed;
+  }
+}
+
+export async function updateCloudSessionGrade(session) {
+  const cloudSessionId = String(session?.cloudSessionId || '').trim();
+  if (!cloudSessionId) {
+    return syncSessionGradeToCloud(session);
+  }
+
+  const now = Date.now();
+  const availability = getGradingCloudAvailability();
+
+  if (!availability.available) {
+    const status = {
+      state: 'unavailable',
+      reason: availability.reason,
+      updatedAt: now,
+    };
+    safeWriteStatus(status);
+    return status;
+  }
+
+  const user = await ensureSession();
+  if (!user?.id) {
+    const status = {
+      state: 'unavailable',
+      reason: 'no_session',
+      updatedAt: now,
+    };
+    safeWriteStatus(status);
+    return status;
+  }
+
+  const client = getSupabaseClient();
+  const occurredAtIso = new Date(session.timestamp || now).toISOString();
+
+  try {
+    const { data, error } = await client
+      .from('grade_sessions')
+      .update({
+        lesson_id: session.lessonId || null,
+        lesson_title: session.lessonTitle || 'Untitled Lesson',
+        student_name: session.studentName || 'Anonymous',
+        score: Number(session.score || 0),
+        earned: Number(session.earned || 0),
+        total: Number(session.total || 0),
+        completed_count: Number(session.completedCount || 0),
+        correct_count: Number(session.correctCount || 0),
+        occurred_at: occurredAtIso,
+        result_payload: {
+          ...toSessionResultPayload(session),
+        },
+        updated_at: new Date(now).toISOString(),
+      })
+      .eq('id', cloudSessionId)
+      .eq('user_id', user.id)
+      .select('id')
+      .single();
+
+    if (error || !data?.id) {
+      const failed = {
+        state: 'error',
+        reason: error?.message || 'Failed to update cloud grade session',
+        updatedAt: now,
+      };
+      safeWriteStatus(failed);
+      return failed;
+    }
+
+    await client
+      .from('grade_entries')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('grade_session_id', cloudSessionId);
+
+    const rows = (Array.isArray(session.breakdown) ? session.breakdown : []).map((entry, index) => toGradeEntryRow(
+      cloudSessionId,
+      user.id,
+      entry,
+      index,
+      occurredAtIso,
+    ));
+
+    if (rows.length > 0) {
+      const { error: insertError } = await client.from('grade_entries').insert(rows);
+      if (insertError) {
+        const failed = {
+          state: 'error',
+          reason: insertError.message || 'Failed to update cloud grade entries',
+          updatedAt: now,
+        };
+        safeWriteStatus(failed);
+        return failed;
+      }
+    }
+
+    const ok = {
+      state: 'synced',
+      updatedAt: now,
+      sessionId: session.id || null,
+      cloudSessionId,
+    };
+    safeWriteStatus(ok);
+    return ok;
+  } catch (error) {
+    const failed = {
+      state: 'error',
+      reason: error?.message || 'Cloud grading update failed',
       updatedAt: now,
     };
     safeWriteStatus(failed);

@@ -14,9 +14,10 @@ create table if not exists public.lesson_drafts (
   created_at timestamptz not null default now()
 );
 
+drop index if exists lesson_drafts_user_lesson_uniq;
+
 create unique index if not exists lesson_drafts_user_lesson_uniq
-  on public.lesson_drafts (user_id, lesson_id)
-  where user_id is not null;
+  on public.lesson_drafts (user_id, lesson_id);
 
 create index if not exists lesson_drafts_user_updated_idx
   on public.lesson_drafts (user_id, updated_at desc);

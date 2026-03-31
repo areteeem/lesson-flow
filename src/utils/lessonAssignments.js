@@ -40,6 +40,13 @@ function normalizeVisibilityPolicy(policy, fallback = 'student_answers_only') {
   return value;
 }
 
+function normalizeIsoDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
 function summarizeResponseText(result) {
   const response = result?.response;
   if (response === null || response === undefined) return 'No answer submitted';
@@ -110,6 +117,28 @@ function normalizeAssignmentSubmission(row) {
   };
 }
 
+function normalizeOwnerAssignment(row) {
+  const payload = row?.lesson_payload && typeof row.lesson_payload === 'object' ? row.lesson_payload : {};
+  const settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : {};
+  return {
+    assignmentId: row?.assignment_id || null,
+    lessonId: row?.lesson_id || payload?.id || null,
+    lessonTitle: row?.lesson_title || payload?.title || 'Untitled lesson',
+    assignmentUrl: row?.assignment_id ? `${window.location.origin}/assignment/${encodeURIComponent(row.assignment_id)}` : '',
+    oneAttemptOnly: row?.one_attempt_only !== false,
+    allowRetry: Boolean(row?.allow_retry),
+    visibilityPolicy: normalizeVisibilityPolicy(row?.visibility_policy || settings.visibilityPolicy || 'student_answers_only'),
+    showCheckButton: settings.showCheckButton === true,
+    enableGrading: settings.enableGrading !== false,
+    showTotalGrade: settings.showTotalGrade !== false,
+    showPerQuestionGrade: settings.showPerQuestionGrade !== false,
+    isActive: row?.is_active !== false,
+    expiresAt: row?.expires_at || null,
+    createdAt: row?.created_at || null,
+    updatedAt: row?.updated_at || null,
+  };
+}
+
 export function hasLocalAssignmentAttempt(assignmentId, studentName) {
   if (!assignmentId || !studentName) return false;
   try {
@@ -168,6 +197,7 @@ export async function createAssignmentLink(lesson, options = {}) {
       allowRetryHomework: allowRetry,
     },
   };
+  const expiresAt = normalizeIsoDate(options.expiresAt);
 
   const row = {
     assignment_id: assignmentId,
@@ -179,6 +209,7 @@ export async function createAssignmentLink(lesson, options = {}) {
     allow_retry: allowRetry,
     visibility_policy: visibilityPolicy,
     is_active: true,
+    expires_at: expiresAt,
     updated_at: new Date(now).toISOString(),
   };
 
@@ -207,6 +238,7 @@ export async function createAssignmentLink(lesson, options = {}) {
       ok: true,
       assignmentId: resolved,
       assignmentUrl,
+      expiresAt,
       updatedAt: now,
     };
   } catch (error) {
@@ -217,6 +249,41 @@ export async function createAssignmentLink(lesson, options = {}) {
     };
     safeWriteStatus(status);
     return { ok: false, ...status };
+  }
+}
+
+export async function fetchAssignmentsForOwner(options = {}) {
+  const now = Date.now();
+  if (!isSupabaseConfigured()) {
+    return { ok: false, reason: 'unconfigured', assignments: [], updatedAt: now };
+  }
+
+  const user = await ensureSession();
+  if (!user?.id || user.isAnonymous) {
+    return { ok: false, reason: 'auth_required', assignments: [], updatedAt: now };
+  }
+
+  const client = getSupabaseClient();
+  const limit = Math.max(1, Math.min(500, Number(options.limit || 300)));
+
+  try {
+    const { data, error } = await client
+      .from('lesson_assignments')
+      .select('assignment_id,lesson_id,lesson_title,lesson_payload,one_attempt_only,allow_retry,visibility_policy,is_active,expires_at,created_at,updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      return { ok: false, reason: error.message || 'Failed to load assignments', assignments: [], updatedAt: now };
+    }
+
+    return {
+      ok: true,
+      assignments: (data || []).map((row) => normalizeOwnerAssignment(row)),
+      updatedAt: now,
+    };
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'Failed to load assignments', assignments: [], updatedAt: now };
   }
 }
 
@@ -351,13 +418,20 @@ export async function fetchAssignmentSubmissionsForOwner(options = {}) {
 
   const client = getSupabaseClient();
   const limit = Math.max(1, Math.min(500, Number(options.limit || 300)));
+  const assignmentId = String(options.assignmentId || '').trim();
+
+  let query = client
+    .from('assignment_submissions')
+    .select('submission_id,assignment_id,student_name,result_payload,interaction_payload,origin,submission_state,score,submitted_at,updated_at,lesson_assignments:lesson_assignments(lesson_title,lesson_id)')
+    .order('submitted_at', { ascending: false })
+    .limit(limit);
+
+  if (assignmentId) {
+    query = query.eq('assignment_id', assignmentId);
+  }
 
   try {
-    const { data, error } = await client
-      .from('assignment_submissions')
-      .select('submission_id,assignment_id,student_name,result_payload,interaction_payload,origin,submission_state,score,submitted_at,updated_at,lesson_assignments:lesson_assignments(lesson_title,lesson_id)')
-      .order('submitted_at', { ascending: false })
-      .limit(limit);
+    const { data, error } = await query;
 
     if (error) {
       return { ok: false, reason: error.message || 'Failed to load assignment submissions', sessions: [], updatedAt: now };

@@ -8,6 +8,19 @@ import TableSlide from './TableSlide';
 import TaskRenderer from './TaskRenderer';
 import { findLinkedBlock } from '../utils/lesson';
 
+function hideTaskPrompt(block) {
+  if (!block || block.type !== 'task') return block;
+  return {
+    ...block,
+    title: '',
+    question: '',
+    instruction: '',
+    content: '',
+    text: '',
+    prompt: '',
+  };
+}
+
 function renderStandalone(block, results, onCompleteBlock, onProgressBlock, taskOptions) {
   if (!block) return null;
   if (block.type === 'slide') return <Slide block={block} />;
@@ -17,14 +30,16 @@ function renderStandalone(block, results, onCompleteBlock, onProgressBlock, task
   if (!['slide', 'rich', 'structure', 'table', 'group', 'split_group', 'task'].includes(block.type)) return <GenericSlide block={block} />;
   if (block.type === 'group' || block.type === 'split_group') return <GroupBlock block={block} results={results} onCompleteChild={onCompleteBlock} />;
   if (block.type === 'task') {
+    const nextBlock = taskOptions?.hideQuestionContent ? hideTaskPrompt(block) : block;
     return (
       <TaskRenderer
-        block={block}
+        block={nextBlock}
         onComplete={(result) => onCompleteBlock?.(block.id, result)}
         onProgress={(result) => onProgressBlock?.(block.id, result)}
         existingResult={results?.[block.id]}
         allowRetry={taskOptions?.allowRetry !== false}
         showCheckButton={taskOptions?.showCheckButton !== false}
+        lockAfterSubmit={taskOptions?.lockAfterSubmit === true}
       />
     );
   }
