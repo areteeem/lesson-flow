@@ -589,6 +589,7 @@ export default function DslMonacoEditor({ value, onChange }) {
   const [selectedTraceId, setSelectedTraceId] = useState('');
   const [showParsedPanel, setShowParsedPanel] = useState(false);
   const [quickFixNotice, setQuickFixNotice] = useState('');
+  const [showProblemsPanel, setShowProblemsPanel] = useState(false);
 
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -757,8 +758,8 @@ export default function DslMonacoEditor({ value, onChange }) {
   const selectedTrace = parserTrace.find((entry) => entry.id === selectedTraceId) || parserTrace[0] || null;
 
   return (
-    <div className="flex h-full min-h-[60vh] flex-col xl:min-h-0">
-      <div className="flex flex-wrap items-center gap-1.5 border border-b-0 border-zinc-200 bg-zinc-950 px-3 py-1.5">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="scrollbar-none flex items-center gap-1.5 overflow-x-auto whitespace-nowrap border border-b-0 border-zinc-200 bg-zinc-950 px-3 py-1.5">
         <button type="button" onClick={() => copyToClipboard(value || '', 'dsl')} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
           {copied === 'dsl' ? '✓ Copied' : 'Copy DSL'}
         </button>
@@ -778,6 +779,9 @@ export default function DslMonacoEditor({ value, onChange }) {
         <button type="button" onClick={() => setShowParserTrace((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showParserTrace ? 'border-violet-600 bg-violet-600/20 text-violet-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>Parser Trace</button>
         <button type="button" onClick={handleExportWarningsJson} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Warnings JSON</button>
         <button type="button" onClick={handleExportWarningsCsv} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Warnings CSV</button>
+        <button type="button" onClick={() => setShowProblemsPanel((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showProblemsPanel ? 'border-amber-600 bg-amber-600/20 text-amber-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>
+          {showProblemsPanel ? 'Hide Problems' : `Problems (${classifiedWarnings.length})`}
+        </button>
         <button type="button" onClick={() => setShowPasteFix((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showPasteFix ? 'border-emerald-600 bg-emerald-600/20 text-emerald-400' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>
           {showPasteFix ? 'Cancel Paste' : 'Paste Fix'}
         </button>
@@ -850,10 +854,12 @@ export default function DslMonacoEditor({ value, onChange }) {
                 fontSize: 14,
                 wordWrap: 'on',
                 scrollBeyondLastLine: false,
+                smoothScrolling: true,
                 tabSize: 2,
                 lineNumbersMinChars: 3,
                 automaticLayout: true,
                 glyphMargin: true,
+                padding: { top: 10, bottom: 16 },
               }}
             />
           </div>
@@ -903,7 +909,7 @@ export default function DslMonacoEditor({ value, onChange }) {
         </div>
       )}
 
-      {classifiedWarnings.length > 0 && (
+      {classifiedWarnings.length > 0 && showProblemsPanel && (
         <div className="max-h-52 overflow-auto border border-t-0 border-zinc-200 bg-zinc-900">
           <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-1.5">
             <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Problems</span>

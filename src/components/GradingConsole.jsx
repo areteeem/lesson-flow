@@ -432,7 +432,10 @@ function buildBoardFromSessions(sessions) {
     });
   });
 
-  const columns = [...columnMap.values()];
+  const columns = [...columnMap.values()].map((entry, index) => ({
+    ...entry,
+    shortLabel: `T${index + 1}`,
+  }));
   const rows = sessions
     .slice()
     .sort((left, right) => right.score - left.score || right.timestamp - left.timestamp)
@@ -2291,7 +2294,7 @@ export default function GradingConsole({
                       <th className="border-b border-r border-zinc-200 px-3 py-2">Score</th>
                       {board.columns.map((column) => (
                         <th key={column.id} className="min-w-[120px] border-b border-r border-zinc-200 px-3 py-2">
-                          <div className="text-zinc-700">{column.label}</div>
+                          <div className="text-zinc-700" title={column.label}>{column.shortLabel || column.label}</div>
                         </th>
                       ))}
                     </tr>

@@ -79,7 +79,7 @@ const DEFAULT_STUDENT_EXPERIENCE = {
   dyslexiaMode: false,
   reducedMotionMode: false,
   vibrationCue: true,
-  showProgressTimeline: true,
+  showProgressTimeline: false,
   textZoomPreset: 100,
 };
 

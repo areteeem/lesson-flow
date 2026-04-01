@@ -4,19 +4,21 @@ import { exportLesson, importDsl, importLesson, printLessonReport, printStudentL
 import { loadAppSettings } from '../utils/appSettings';
 import { syncLessonToCloud } from '../utils/cloudSync';
 import { addCustomTemplate } from './GuidePanel';
-import { createLessonTemplate, deleteBlockFromTree } from '../utils/builder';
+import { createDefaultBlock, createLessonTemplate, deleteBlockFromTree } from '../utils/builder';
 import { flattenBlocks } from '../utils/lesson';
 import { useAppContext } from '../context/AppContext';
 import HotkeysModal from './HotkeysModal';
 import MarkdownComposer from './MarkdownComposer';
 import TemplatePicker from './TemplatePicker';
 import PromptModal from './PromptModal';
+import { hasAiBridgeToken } from '../utils/aiBridge';
 import { BackIcon, DotsVerticalIcon, PlayIcon as PlayIconSharp, SaveIcon as SaveIconSharp, SettingsIcon as SettingsIconSharp, DslIcon, BuilderIcon, PreviewIcon, TemplateIcon } from './Icons';
 
 const DslMonacoEditor = lazy(() => import('./DslMonacoEditor'));
 const BuilderPanel = lazy(() => import('./BuilderPanel'));
 const BlockPreview = lazy(() => import('./BlockPreview'));
 const GradingConsole = lazy(() => import('./GradingConsole'));
+const HISTORY_LIMIT = 50;
 
 function createStateFromLesson(sourceLesson, existingBlocks) {
   const baseLesson = sourceLesson || createLessonTemplate('blank');
@@ -93,8 +95,28 @@ function SaveStatusTag({ saveState }) {
 
   return (
     <div className={`inline-flex items-center gap-2 border px-2 py-0.5 text-[10px] ${tone}`}>
+      <span className={saveState.status === 'synced' ? 'dot-round h-1.5 w-1.5 bg-emerald-600 animate-sync-check' : saveState.status === 'cloud_error' ? 'dot-round h-1.5 w-1.5 bg-red-600' : 'dot-round h-1.5 w-1.5 bg-zinc-400'} aria-hidden="true" />
       <span className="font-medium uppercase tracking-[0.12em]">{saveState.label}</span>
       <span className="normal-case tracking-normal">{saveState.detail}</span>
+    </div>
+  );
+}
+
+function ToastStack({ toasts, onDismiss }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2">
+      {toasts.map((toast) => (
+        <div key={toast.id} className={toast.tone === 'error' ? 'pointer-events-auto border border-red-300 bg-white px-3 py-2 shadow-lg animate-soft-rise' : toast.tone === 'warning' ? 'pointer-events-auto border border-amber-300 bg-white px-3 py-2 shadow-lg animate-soft-rise' : 'pointer-events-auto border border-emerald-300 bg-white px-3 py-2 shadow-lg animate-soft-rise'}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{toast.title}</div>
+              <div className="mt-0.5 text-xs text-zinc-700">{toast.message}</div>
+            </div>
+            <button type="button" onClick={() => onDismiss(toast.id)} className="text-xs text-zinc-400 transition hover:text-zinc-800" aria-label="Dismiss notification">✕</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -426,6 +448,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   const [focusMode, setFocusMode] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [toasts, setToasts] = useState([]);
   const [saveState, setSaveState] = useState({
     status: 'idle',
     label: 'idle',
@@ -435,6 +458,28 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     lastAttemptAt: null,
     source: 'manual',
   });
+  const toastTimerRef = useRef(new Map());
+  const warningSignatureRef = useRef('');
+  const saveErrorSignatureRef = useRef('');
+
+  const dismissToast = useCallback((id) => {
+    const timer = toastTimerRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimerRef.current.delete(id);
+    }
+    setToasts((current) => current.filter((entry) => entry.id !== id));
+  }, []);
+
+  const pushToast = useCallback((toast) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => [...current.slice(-3), { ...toast, id }]);
+    const timer = setTimeout(() => {
+      setToasts((current) => current.filter((entry) => entry.id !== id));
+      toastTimerRef.current.delete(id);
+    }, toast.duration ?? 4200);
+    toastTimerRef.current.set(id, timer);
+  }, []);
 
   useEffect(() => {
     const next = initialState;
@@ -590,10 +635,53 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     };
   }, [performSave]);
 
+  useEffect(() => {
+    return () => {
+      toastTimerRef.current.forEach((timer) => clearTimeout(timer));
+      toastTimerRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const warningCount = parsed.warnings?.length || 0;
+    const firstWarning = warningCount > 0 ? parsed.warnings[0] : '';
+    const signature = `${warningCount}:${firstWarning}`;
+    if (warningCount > 0 && warningSignatureRef.current !== signature) {
+      warningSignatureRef.current = signature;
+      pushToast({
+        tone: 'warning',
+        title: `${warningCount} issue${warningCount > 1 ? 's' : ''}`,
+        message: `${firstWarning}${warningCount > 1 ? ` (+${warningCount - 1} more)` : ''}`,
+      });
+    }
+    if (warningCount === 0) {
+      warningSignatureRef.current = '';
+    }
+  }, [parsed.warnings, pushToast]);
+
+  useEffect(() => {
+    if (saveState.status === 'cloud_error') {
+      const signature = `${saveState.status}:${saveState.detail}`;
+      if (saveErrorSignatureRef.current !== signature) {
+        saveErrorSignatureRef.current = signature;
+        pushToast({ tone: 'error', title: 'Save warning', message: saveState.detail || 'Cloud sync failed' });
+      }
+      return;
+    }
+    if (saveState.status === 'synced' && saveErrorSignatureRef.current) {
+      saveErrorSignatureRef.current = '';
+      pushToast({ tone: 'success', title: 'Synced', message: 'All lesson changes are now synced.' });
+    }
+  }, [pushToast, saveState.detail, saveState.status]);
+
   const commit = (nextDsl, nextParsed) => {
     setHist(({ entries, index }) => ({
-      entries: [...entries.slice(0, index + 1), { dsl: nextDsl, parsed: nextParsed }],
-      index: index + 1,
+      entries: (() => {
+        const nextEntries = [...entries.slice(0, index + 1), { dsl: nextDsl, parsed: nextParsed }];
+        if (nextEntries.length <= HISTORY_LIMIT) return nextEntries;
+        return nextEntries.slice(nextEntries.length - HISTORY_LIMIT);
+      })(),
+      index: Math.min(HISTORY_LIMIT - 1, index + 1),
     }));
     const nextFlat = flattenBlocks(nextParsed.blocks || []);
     setSelectedBlockId((currentId) => currentId && nextFlat.some((block) => block.id === currentId) ? currentId : nextFlat[0]?.id || null);
@@ -731,10 +819,23 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   }, [sessions, lesson?.id, parsed.title]);
 
   const paletteCommands = useMemo(() => {
+    const aiEnabled = hasAiBridgeToken();
     const blockCommands = allBlocks.map((block, i) => ({
       id: `go-${block.id}`, label: `Go to: ${block.title || block.question || block.instruction || `Block ${i + 1}`}`, group: 'Navigate',
       action: () => { setSelectedBlockId(block.id); setMode('builder'); },
     }));
+    const insertBlockCommand = (type, label) => ({
+      id: `insert-${type}`,
+      label,
+      group: 'Insert',
+      action: () => {
+        const block = createDefaultBlock(type, { blank: true });
+        syncFromModel({ ...parsed, blocks: [...(parsed.blocks || []), block] });
+        setSelectedBlockId(block.id);
+        setMode('builder');
+      },
+    });
+
     return [
       { id: 'undo', label: 'Undo', shortcut: 'Ctrl+Z', group: 'Edit', action: undo },
       { id: 'redo', label: 'Redo', shortcut: 'Ctrl+Shift+Z', group: 'Edit', action: redo },
@@ -747,14 +848,19 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
       { id: 'mode-grading', label: 'Switch to Grading', group: 'Mode', action: () => setMode('grading') },
       { id: 'focus-toggle', label: focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode', group: 'View', action: () => setFocusMode((v) => !v) },
       { id: 'debug-toggle', label: showDebugPanel ? 'Hide Debug Panel' : 'Show Debug Panel', group: 'View', action: () => setShowDebugPanel((v) => !v) },
+      { id: 'quick-add', label: 'Open Quick Add Palette', shortcut: 'Ctrl+K', group: 'Insert', action: () => setMode('builder') },
+      insertBlockCommand('slide', 'Insert Intro Slide'),
+      insertBlockCommand('multiple_choice', 'Insert Multiple Choice Task'),
+      insertBlockCommand('group', 'Insert Group Container'),
       { id: 'export-json', label: 'Export JSON', group: 'File', action: () => exportLesson(payload) },
       { id: 'student-pdf', label: 'Print Student PDF', group: 'File', action: () => printStudentLesson(payload) },
       { id: 'teacher-pdf', label: 'Print Teacher PDF', group: 'File', action: () => printLessonReport(payload) },
       { id: 'save-template', label: 'Save as Template', group: 'File', action: () => setTemplatePromptOpen(true) },
+      ...(aiEnabled ? [{ id: 'ai-enabled', label: 'AI Rephrase Available (token detected)', group: 'AI', action: () => setMode('builder') }] : []),
       { id: 'back', label: 'Back to Home', group: 'Navigation', action: onBack },
       ...blockCommands,
     ];
-  }, [allBlocks, dsl, focusMode, mode, parsed.title, showDebugPanel, performSave]);
+  }, [allBlocks, dsl, focusMode, mode, parsed, payload, showDebugPanel, performSave]);
 
   const loadTemplate = (kind, customDsl = null) => {
     let next;
@@ -770,7 +876,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#f7f7f5]">
+    <div className="kodak-canvas flex h-screen flex-col overflow-hidden bg-[#f7f7f5]">
       {/* Top toolbar */}
       <header className="shrink-0 border-b border-zinc-200 bg-white">
         {focusMode ? (
@@ -862,7 +968,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
               <PlayIcon />
             </IconButton>
             {onGoLive && (
-              <button type="button" onClick={() => onGoLive(payload)} className="border border-red-600 bg-red-600 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-red-500" title="Start live quiz">
+              <button type="button" onClick={() => onGoLive(payload)} className="animate-live-pulse border border-red-600 bg-red-600 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-red-500" title="Start live quiz">
                 Live
               </button>
             )}
@@ -892,13 +998,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
         setMenuOpen(false);
       }} />
 
-      {/* Warnings bar */}
-      {!focusMode && parsed.warnings?.length > 0 && (
-        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-          <span className="font-medium uppercase tracking-wider">{parsed.warnings.length} issue{parsed.warnings.length > 1 ? 's' : ''}</span>
-          <span className="ml-2 text-amber-700">{parsed.warnings[0]}{parsed.warnings.length > 1 ? ` (+${parsed.warnings.length - 1} more)` : ''}</span>
-        </div>
-      )}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
       {/* Main content area — full screen */}
       <div className="min-h-0 flex-1 overflow-hidden">

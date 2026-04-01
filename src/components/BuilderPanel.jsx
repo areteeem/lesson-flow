@@ -2,6 +2,7 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 import { TASK_REGISTRY, getTaskDefinition } from '../config/taskRegistry';
 import { addBlockToGroup, cloneBlockTree, createDefaultBlock, deleteBlockFromTree, findBlockById, getTaskCategories, reorderChildrenInGroup, updateBlockField, updateBlockInTree } from '../utils/builder';
+import { createRephraseVariants, hasAiBridgeToken } from '../utils/aiBridge';
 import { flattenBlocks, getBlockLabel } from '../utils/lesson';
 import useFavorites from '../hooks/useFavorites';
 import { Md } from './FormattedText';
@@ -41,6 +42,67 @@ function IconActionButton({ title, onClick, children, className = '', disabled =
     >
       {children}
     </button>
+  );
+}
+
+function QuickAddDivider({ onAddTask, onAddSlide, onAddGroup }) {
+  return (
+    <div className="group relative flex h-7 items-center justify-center">
+      <div className="h-px w-full bg-zinc-200 transition group-hover:bg-zinc-400" />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition duration-150 group-hover:opacity-100">
+        <div className="pointer-events-auto inline-flex items-center gap-1 border border-zinc-300 bg-white/95 px-1.5 py-0.5 text-[10px] shadow-sm backdrop-blur-sm">
+          <button type="button" onClick={onAddTask} className="border border-zinc-200 px-1.5 py-0.5 text-zinc-700 transition hover:border-zinc-900">+ Task</button>
+          <button type="button" onClick={onAddSlide} className="border border-zinc-200 px-1.5 py-0.5 text-zinc-700 transition hover:border-zinc-900">+ Slide</button>
+          <button type="button" onClick={onAddGroup} className="border border-zinc-200 px-1.5 py-0.5 text-zinc-700 transition hover:border-zinc-900">+ Group</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QualityRing({ score, checks, onFix }) {
+  const normalized = Math.max(0, Math.min(100, Number(score) || 0));
+  const radius = 23;
+  const circumference = 2 * Math.PI * radius;
+  const strokeOffset = circumference - ((normalized / 100) * circumference);
+  const tone = normalized >= 80 ? 'text-emerald-600' : normalized >= 50 ? 'text-amber-600' : 'text-red-600';
+
+  return (
+    <div className="group fixed right-5 top-[88px] z-20 hidden xl:block">
+      <button type="button" title="Lesson health" className="relative h-16 w-16 rounded-full border border-zinc-200 bg-white/85 shadow-[0_10px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+        <svg className="h-16 w-16 -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
+          <circle cx="28" cy="28" r={radius} className="stroke-zinc-200" strokeWidth="6" fill="none" />
+          <circle
+            cx="28"
+            cy="28"
+            r={radius}
+            className={tone}
+            strokeWidth="6"
+            strokeLinecap="round"
+            fill="none"
+            stroke="currentColor"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeOffset}
+          />
+        </svg>
+        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-800">{normalized}</span>
+      </button>
+      <div className="pointer-events-none absolute right-0 top-16 mt-2 w-72 translate-y-1 border border-zinc-200 bg-white p-3 opacity-0 shadow-xl transition group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Health Report</div>
+        <div className="space-y-1">
+          {checks.map((check) => (
+            <div key={check.id} className={check.passed ? 'flex items-center justify-between border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700' : 'flex items-center justify-between border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-600'}>
+              <span>{check.label}</span>
+              {!check.passed && (
+                <button type="button" onClick={() => onFix(check.action)} className="border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-zinc-600">
+                  Fix
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -431,6 +493,11 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                         <span className="text-[10px]">{child.enabled === false ? 'OFF' : 'ON'}</span>
                       </IconActionButton>
                     )}
+                    {aiEnabled && child.type === 'task' && (
+                      <IconActionButton title="AI Rephrase" onClick={(event) => { event.stopPropagation(); rephraseTaskBlock(child); }}>
+                        <span className="text-[10px]">AI</span>
+                      </IconActionButton>
+                    )}
                     <IconActionButton title="Duplicate variant" onClick={(event) => { event.stopPropagation(); onVariantChild(block.id, child.id); }}><span className="text-xs">⋇</span></IconActionButton>
                     <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, -1); }}><ChevronIcon direction="up" /></IconActionButton>
                     <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, 1); }}><ChevronIcon direction="down" /></IconActionButton>
@@ -642,6 +709,7 @@ function findTopLevelContainerId(blocks = [], targetId = '') {
 
 export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLesson, onAddBlock, onDeleteBlock, onOpenGuide }) {
   const { favorites, toggle: toggleFavorite, isFavorite } = useFavorites();
+  const aiEnabled = hasAiBridgeToken();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
   const [libraryMode, setLibraryMode] = useState('catalog');
@@ -656,6 +724,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const [batchRequiredMode, setBatchRequiredMode] = useState('keep');
   const [batchScope, setBatchScope] = useState('all');
   const [batchMessage, setBatchMessage] = useState('');
+  const [showUtilityPanels, setShowUtilityPanels] = useState(false);
 
   const [collapsedLibrarySections, setCollapsedLibrarySections] = useState(() => {
     const initial = {};
@@ -685,6 +754,10 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     });
     return counts;
   }, [blocks]);
+
+  const allSectionsCollapsed = useMemo(() => (
+    collapsedTopSections.slides && collapsedTopSections.tasks && collapsedTopSections.groups
+  ), [collapsedTopSections]);
 
   const duplicateQuestionGroups = useMemo(() => {
     const byQuestion = new Map();
@@ -1067,6 +1140,14 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
 
   const replaceBlocks = (nextBlocks) => onReplaceLesson({ ...lesson, blocks: nextBlocks });
 
+  const insertBlockAtIndex = (index, block) => {
+    trackRecentType(block.taskType || block.type);
+    const nextBlocks = [...blocks];
+    nextBlocks.splice(Math.max(0, Math.min(index, nextBlocks.length)), 0, block);
+    replaceBlocks(nextBlocks);
+    onSelect(block.id);
+  };
+
   const clearLongPress = () => {
     if (longPressRef.current) {
       window.clearTimeout(longPressRef.current);
@@ -1243,6 +1324,20 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
       return { ...group, children, itemRefs: children.map((child) => child.ref) };
     }));
     onSelect(variant.id);
+  };
+
+  const rephraseTaskBlock = (block) => {
+    if (!block || block.type !== 'task') return;
+    const sourceText = block.question || block.instruction || block.title || '';
+    const variants = createRephraseVariants(sourceText);
+    if (variants.length === 0) return;
+    const nextQuestion = variants[Math.floor(Math.random() * variants.length)];
+    const nextBlock = {
+      ...block,
+      question: nextQuestion,
+    };
+    replaceBlocks(updateBlockInTree(blocks, block.id, () => nextBlock));
+    onSelect(block.id);
   };
 
   const wrapChildBlockInGroup = (groupId, childId) => {
@@ -1518,6 +1613,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
 
             <div className="min-h-0 flex-1 overflow-auto">
               <div className="mx-auto max-w-3xl space-y-2 p-2 pb-6 sm:space-y-3 sm:p-4 sm:pb-8">
+                <QualityRing score={qualityScore} checks={qualityChecks} onFix={runQualityAction} />
                 {/* Sticky header with navigator + add buttons */}
                 <div className="sticky top-0 z-10 -mx-2 border-b border-zinc-200 bg-white/95 px-2 py-2 backdrop-blur-sm sm:-mx-4 sm:px-4">
                   <div className="flex flex-wrap items-center justify-between gap-1.5">
@@ -1530,8 +1626,8 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                       <button type="button" onClick={() => setShowSlideLibrary(true)} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900"><PlusIcon /> Slide</button>
                       <button type="button" onClick={() => setIsModalOpen(true)} className="inline-flex items-center gap-1 border border-zinc-900 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-white"><PlusIcon /> Task</button>
                       <button type="button" onClick={() => addBlockAndTrack(createDefaultBlock('group', { blank: true }))} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900"><PlusIcon /> Group</button>
-                      <button type="button" onClick={() => setCollapsedTopSections({ slides: true, tasks: true, groups: true })} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900">Collapse all</button>
-                      <button type="button" onClick={() => setCollapsedTopSections({ slides: false, tasks: false, groups: false })} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900">Expand all</button>
+                      <button type="button" onClick={() => setCollapsedTopSections(allSectionsCollapsed ? { slides: false, tasks: false, groups: false } : { slides: true, tasks: true, groups: true })} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900">{allSectionsCollapsed ? 'Expand all' : 'Collapse all'}</button>
+                      <button type="button" onClick={() => setShowUtilityPanels((current) => !current)} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900">{showUtilityPanels ? 'Hide utilities' : 'Show utilities'}</button>
                       <button type="button" onClick={() => setShowQuickAdd(true)} className="ml-0.5 border border-zinc-200 px-1.5 py-1 text-[9px] text-zinc-400 transition hover:border-zinc-400 hover:text-zinc-600" title="Quick add (Ctrl+K)">⌘K</button>
                     </div>
                   </div>
@@ -1554,7 +1650,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                   </div>
                 )}
 
-                <div className="grid gap-2 lg:grid-cols-2">
+                {showUtilityPanels && <div className="grid gap-2 lg:grid-cols-2">
                   <div className="border border-zinc-200 bg-white p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -1617,7 +1713,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                       ))}
                     </div>
                   </div>
-                </div>
+                </div>}
 
                 {/* Smart suggestions */}
                 {suggestions.length > 0 && !mobileDragItem && (
@@ -1639,6 +1735,13 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                     <button type="button" onClick={finishMobileDrag} className="mt-2 border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800">Cancel</button>
                   </div>
                 )}
+                {!mobileDragItem && blocks.length > 0 && (
+                  <QuickAddDivider
+                    onAddTask={() => insertBlockAtIndex(0, createDefaultBlock('multiple_choice', { blank: true }))}
+                    onAddSlide={() => insertBlockAtIndex(0, createDefaultBlock('slide', { blank: true }))}
+                    onAddGroup={() => insertBlockAtIndex(0, createDefaultBlock('group', { blank: true }))}
+                  />
+                )}
                 {blocks.map((block, index) => {
                   const definition = block.type === 'task' ? getTaskDefinition(block.taskType) : null;
                   const selectedTopLevel = selected?.id === block.id;
@@ -1658,11 +1761,18 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                       key={block.id}
                       className="space-y-1"
                     >
+                      {!mobileDragItem && index > 0 && (
+                        <QuickAddDivider
+                          onAddTask={() => insertBlockAtIndex(index, createDefaultBlock('multiple_choice', { blank: true }))}
+                          onAddSlide={() => insertBlockAtIndex(index, createDefaultBlock('slide', { blank: true }))}
+                          onAddGroup={() => insertBlockAtIndex(index, createDefaultBlock('group', { blank: true }))}
+                        />
+                      )}
                       {showSectionHeader && (
                         <div className="flex items-center justify-between border border-zinc-200 bg-zinc-50 px-3 py-2">
                           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">{sectionLabelFromKey(sectionKey)} ({sectionCounts[sectionKey] || 0})</div>
-                          <button type="button" onClick={() => setCollapsedTopSections((current) => ({ ...current, [sectionKey]: !current[sectionKey] }))} className="border border-zinc-200 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600 hover:border-zinc-900">
-                            {sectionCollapsed ? 'Expand' : 'Collapse'}
+                          <button type="button" title={sectionCollapsed ? 'Expand section' : 'Collapse section'} onClick={() => setCollapsedTopSections((current) => ({ ...current, [sectionKey]: !current[sectionKey] }))} className="inline-flex h-7 w-7 items-center justify-center border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-900">
+                            <ChevronIcon direction={sectionCollapsed ? 'down' : 'up'} />
                           </button>
                         </div>
                       )}
@@ -1735,6 +1845,9 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                           <div className={`shrink-0 flex-row gap-1 ${selectedTopLevel ? 'flex' : 'hidden sm:flex'}`}>
                             {block.type === 'task' && (
                               <IconActionButton title={block.enabled === false ? 'Enable task' : 'Disable task'} onClick={(event) => { event.stopPropagation(); replaceBlocks(updateBlockInTree(blocks, block.id, (current) => ({ ...current, enabled: current.enabled === false }))); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-[10px]">{block.enabled === false ? 'OFF' : 'ON'}</span></IconActionButton>
+                            )}
+                            {aiEnabled && block.type === 'task' && (
+                              <IconActionButton title="AI Rephrase" onClick={(event) => { event.stopPropagation(); rephraseTaskBlock(block); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-[10px]">AI</span></IconActionButton>
                             )}
                             <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, -1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="up" /></IconActionButton>
                             <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, 1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="down" /></IconActionButton>
