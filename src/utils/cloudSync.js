@@ -5,7 +5,7 @@ import { compressJsonPayload } from './compression';
 
 const CLOUD_STATUS_KEY = 'lesson-flow-cloud-status';
 const DEV_PROXY_BASE = '/__supabase';
-const CAN_USE_DEV_PROXY = Boolean(import.meta.env.DEV);
+const CAN_USE_DEV_PROXY = Boolean(import.meta.env?.DEV);
 const LESSON_DRAFTS_OWNER_CONFLICT = 'user_id,lesson_id';
 const LESSON_DRAFTS_LEGACY_CONFLICT = 'lesson_id';
 
@@ -454,9 +454,13 @@ export async function syncLessonToCloud(lesson, meta = {}) {
         }
       }
 
+      const missingConflictTarget = isMissingConflictTargetError(error);
+
       const failed = {
         state: 'error',
-        message: error.message || 'Cloud sync failed.',
+        message: missingConflictTarget
+          ? 'Cloud sync failed: lesson_drafts is missing the required unique upsert index (user_id, lesson_id). Apply the Supabase migration and try again.'
+          : (error.message || 'Cloud sync failed.'),
         updatedAt: now,
         source: meta.source || 'unknown',
         lessonId: lesson?.id || null,

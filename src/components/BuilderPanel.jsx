@@ -365,7 +365,7 @@ const BlockNavigator = memo(function BlockNavigator({ blocks, selectedId, onSele
   );
 });
 
-const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenModalForGroup, onDropBuilder, onDragOverTarget, onDragLeaveTarget, onCombineHover, onCombineLeave, onCombineDrop, dropTarget, onDeleteChild, onMoveChild, onUngroupChild, onBeginMobileDrag, onEndMobileDragPress, onMobileDropGroup, mobileDragItem, level = 0 }) {
+const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenModalForGroup, onDropBuilder, onDragOverTarget, onDragLeaveTarget, onCombineHover, onCombineLeave, onCombineDrop, dropTarget, onDeleteChild, onMoveChild, onUngroupChild, onVariantChild, onBeginMobileDrag, onEndMobileDragPress, onMobileDropGroup, mobileDragItem, level = 0 }) {
   return (
     <div className="space-y-2 border border-zinc-200 bg-zinc-50 p-2 sm:space-y-3 sm:p-4" style={{ marginLeft: level > 0 ? `${level * 12}px` : 0 }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -431,6 +431,7 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                         <span className="text-[10px]">{child.enabled === false ? 'OFF' : 'ON'}</span>
                       </IconActionButton>
                     )}
+                    <IconActionButton title="Duplicate variant" onClick={(event) => { event.stopPropagation(); onVariantChild(block.id, child.id); }}><span className="text-xs">⋇</span></IconActionButton>
                     <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, -1); }}><ChevronIcon direction="up" /></IconActionButton>
                     <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, 1); }}><ChevronIcon direction="down" /></IconActionButton>
                     <IconActionButton title="Delete block" onClick={(event) => { event.stopPropagation(); onDeleteChild(child.id); }}><TrashIcon /></IconActionButton>
@@ -464,6 +465,7 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                   onDeleteChild={onDeleteChild}
                   onMoveChild={onMoveChild}
                   onUngroupChild={onUngroupChild}
+                  onVariantChild={onVariantChild}
                   onBeginMobileDrag={onBeginMobileDrag}
                   onEndMobileDragPress={onEndMobileDragPress}
                   onMobileDropGroup={onMobileDropGroup}
@@ -506,6 +508,138 @@ function createAdHocGroup(children, title = 'New Group') {
   return group;
 }
 
+function sectionKeyForBlock(block) {
+  if (block?.type === 'task') return 'tasks';
+  if (block?.type === 'group' || block?.type === 'split_group') return 'groups';
+  return 'slides';
+}
+
+function sectionLabelFromKey(key) {
+  if (key === 'tasks') return 'Practice Tasks';
+  if (key === 'groups') return 'Groups';
+  return 'Slides';
+}
+
+function cleanText(value = '') {
+  return String(value || '')
+    .replace(/`{1,3}[^`]*`{1,3}/g, ' ')
+    .replace(/\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/[>#*_~|\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function countSyllables(value = '') {
+  const word = String(value || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (!word) return 0;
+  const compact = word.replace(/e$/, '');
+  const matches = compact.match(/[aeiouy]{1,2}/g);
+  return Math.max(1, matches ? matches.length : 1);
+}
+
+function analyzeReadability(text = '') {
+  const normalized = cleanText(text);
+  if (!normalized) {
+    return {
+      words: 0,
+      sentences: 0,
+      score: null,
+      gradeLevel: null,
+    };
+  }
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const sentences = Math.max(1, normalized.split(/[.!?]+/).filter((entry) => entry.trim().length > 0).length);
+  const syllables = words.reduce((sum, word) => sum + countSyllables(word), 0);
+
+  const wordsPerSentence = words.length / sentences;
+  const syllablesPerWord = words.length > 0 ? syllables / words.length : 0;
+  const score = 206.835 - (1.015 * wordsPerSentence) - (84.6 * syllablesPerWord);
+  const gradeLevel = (0.39 * wordsPerSentence) + (11.8 * syllablesPerWord) - 15.59;
+
+  return {
+    words: words.length,
+    sentences,
+    score: Number.isFinite(score) ? Math.round(score * 10) / 10 : null,
+    gradeLevel: Number.isFinite(gradeLevel) ? Math.max(0, Math.round(gradeLevel * 10) / 10) : null,
+  };
+}
+
+function estimateTaskMinutes(block) {
+  const definition = getTaskDefinition(block?.taskType);
+  const baseByKind = {
+    choice: 0.8,
+    text: 1.7,
+    pairs: 1.1,
+    collection: 1.2,
+    grid: 1.6,
+    media: 1.4,
+    branch: 1.5,
+    generic: 1.0,
+  };
+  const base = baseByKind[definition.kind] || 1;
+  const questionWordCount = cleanText(block?.question || '').split(/\s+/).filter(Boolean).length;
+  const readingMinutes = questionWordCount / 160;
+  return Math.max(0.4, base + readingMinutes);
+}
+
+function estimateBlockMinutes(block) {
+  if (!block) return 0;
+  if (block.type === 'task') return estimateTaskMinutes(block);
+  if (block.type === 'group' || block.type === 'split_group') {
+    return (block.children || []).reduce((sum, child) => sum + estimateBlockMinutes(child), 0);
+  }
+  const contentWords = cleanText([block.title, block.content, block.text, block.instruction].filter(Boolean).join(' ')).split(/\s+/).filter(Boolean).length;
+  return Math.max(0.5, contentWords / 170);
+}
+
+function withVariantSuffix(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return 'Variant prompt';
+  if (/\(variant\)$/i.test(text)) return text;
+  return `${text} (Variant)`;
+}
+
+function createVariantBlock(sourceBlock) {
+  const variant = cloneBlockTree(sourceBlock);
+
+  if (variant.type === 'task') {
+    variant.question = withVariantSuffix(variant.question || variant.title || variant.instruction || 'Task');
+    if (Array.isArray(variant.options) && variant.options.length > 1) {
+      variant.options = [...variant.options.slice(1), variant.options[0]];
+    }
+    if (Array.isArray(variant.items) && variant.items.length > 1) {
+      variant.items = [...variant.items.slice(1), variant.items[0]];
+    }
+    if (Array.isArray(variant.pairs) && variant.pairs.length > 1) {
+      variant.pairs = [...variant.pairs].reverse();
+    }
+    if (typeof variant.answer === 'string' && variant.answer.includes('|')) {
+      const answers = variant.answer.split('|').map((entry) => entry.trim()).filter(Boolean);
+      if (answers.length > 1) {
+        variant.answer = [...answers.slice(1), answers[0]].join(' | ');
+      }
+    }
+  } else {
+    variant.title = withVariantSuffix(variant.title || variant.question || variant.instruction || variant.type);
+  }
+
+  return variant;
+}
+
+function findTopLevelContainerId(blocks = [], targetId = '') {
+  const visit = (block) => {
+    if (!block) return false;
+    if (block.id === targetId) return true;
+    return (block.children || []).some((child) => visit(child));
+  };
+
+  for (const block of blocks) {
+    if (visit(block)) return block.id;
+  }
+  return null;
+}
+
 export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLesson, onAddBlock, onDeleteBlock, onOpenGuide }) {
   const { favorites, toggle: toggleFavorite, isFavorite } = useFavorites();
   const [query, setQuery] = useState('');
@@ -517,6 +651,11 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const [showMobileFab, setShowMobileFab] = useState(false);
   const [showSlideLibrary, setShowSlideLibrary] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [collapsedTopSections, setCollapsedTopSections] = useState({ slides: false, tasks: false, groups: false });
+  const [batchPoints, setBatchPoints] = useState('1');
+  const [batchRequiredMode, setBatchRequiredMode] = useState('keep');
+  const [batchScope, setBatchScope] = useState('all');
+  const [batchMessage, setBatchMessage] = useState('');
 
   const [collapsedLibrarySections, setCollapsedLibrarySections] = useState(() => {
     const initial = {};
@@ -535,6 +674,112 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const categories = useMemo(() => ['All', ...getTaskCategories()], []);
   const blocks = lesson.blocks || [];
   const selected = useMemo(() => findBlockById(blocks, selectedId) || flattenBlocks(blocks)[0] || null, [blocks, selectedId]);
+  const flatBlocks = useMemo(() => flattenBlocks(blocks), [blocks]);
+  const taskBlocks = useMemo(() => flatBlocks.filter((block) => block.type === 'task'), [flatBlocks]);
+
+  const sectionCounts = useMemo(() => {
+    const counts = { slides: 0, tasks: 0, groups: 0 };
+    blocks.forEach((block) => {
+      const key = sectionKeyForBlock(block);
+      counts[key] += 1;
+    });
+    return counts;
+  }, [blocks]);
+
+  const duplicateQuestionGroups = useMemo(() => {
+    const byQuestion = new Map();
+    taskBlocks.forEach((block, index) => {
+      const raw = cleanText(block.question || block.instruction || block.title || '');
+      const normalized = raw.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!normalized || normalized.length < 8) return;
+      if (!byQuestion.has(normalized)) byQuestion.set(normalized, []);
+      byQuestion.get(normalized).push({
+        id: block.id,
+        label: getBlockLabel(block, index),
+      });
+    });
+
+    return [...byQuestion.entries()]
+      .filter(([, items]) => items.length > 1)
+      .map(([question, items]) => ({ question, items }));
+  }, [taskBlocks]);
+
+  const duplicateQuestionIdSet = useMemo(() => {
+    const next = new Set();
+    duplicateQuestionGroups.forEach((group) => {
+      group.items.forEach((item) => next.add(item.id));
+    });
+    return next;
+  }, [duplicateQuestionGroups]);
+
+  const readability = useMemo(() => {
+    const sourceText = flatBlocks
+      .map((block) => (block.type === 'task'
+        ? [block.question, block.hint, block.explanation].join(' ')
+        : [block.title, block.content, block.instruction, block.text].join(' ')))
+      .join(' ');
+    return analyzeReadability(sourceText);
+  }, [flatBlocks]);
+
+  const estimatedMinutes = useMemo(() => {
+    const total = blocks.reduce((sum, block) => sum + estimateBlockMinutes(block), 0);
+    return Math.max(1, Math.round(total * 10) / 10);
+  }, [blocks]);
+
+  const qualityChecks = useMemo(() => {
+    const firstBlock = blocks[0] || null;
+    const missingPoints = taskBlocks.some((block) => {
+      const points = Number(block.points);
+      return !Number.isFinite(points) || points <= 0;
+    });
+    const readabilityBalanced = readability.score === null || readability.score >= 45;
+    const timeBalanced = estimatedMinutes >= 5 && estimatedMinutes <= 35;
+
+    return [
+      {
+        id: 'intro',
+        label: 'Start with a context slide before tasks',
+        passed: Boolean(firstBlock) && firstBlock.type !== 'task',
+        action: 'add_intro_slide',
+      },
+      {
+        id: 'task-count',
+        label: 'Include at least 3 practice tasks',
+        passed: taskBlocks.length >= 3,
+        action: 'add_core_task',
+      },
+      {
+        id: 'duplicates',
+        label: 'Avoid duplicate prompts',
+        passed: duplicateQuestionGroups.length === 0,
+        action: 'focus_duplicate',
+      },
+      {
+        id: 'points',
+        label: 'Every task has positive points',
+        passed: !missingPoints,
+        action: 'apply_points',
+      },
+      {
+        id: 'readability',
+        label: 'Prompt readability remains student-friendly',
+        passed: readabilityBalanced,
+        action: 'review_readability',
+      },
+      {
+        id: 'timing',
+        label: 'Estimated runtime stays between 5 and 35 minutes',
+        passed: timeBalanced,
+        action: 'review_timing',
+      },
+    ];
+  }, [blocks, duplicateQuestionGroups.length, estimatedMinutes, readability.score, taskBlocks]);
+
+  const qualityScore = useMemo(() => {
+    if (qualityChecks.length === 0) return 0;
+    const passed = qualityChecks.filter((entry) => entry.passed).length;
+    return Math.round((passed / qualityChecks.length) * 100);
+  }, [qualityChecks]);
 
   useEffect(() => {
     const onPointerMove = (event) => {
@@ -670,6 +915,94 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const addBlockAndTrack = (block) => {
     trackRecentType(block.taskType || block.type);
     onAddBlock(block);
+  };
+
+  const applyBatchTaskUpdates = () => {
+    const numericPoints = Number(batchPoints);
+    const updatePoints = Number.isFinite(numericPoints) && numericPoints > 0;
+    const scopedContainerId = batchScope === 'section' && selected?.id
+      ? findTopLevelContainerId(blocks, selected.id)
+      : null;
+    const scopeBlocks = batchScope === 'section' && scopedContainerId
+      ? blocks.filter((block) => block.id === scopedContainerId)
+      : blocks;
+    const targetTaskIds = new Set(flattenBlocks(scopeBlocks).filter((block) => block.type === 'task').map((block) => block.id));
+
+    if (targetTaskIds.size === 0) {
+      setBatchMessage('No tasks in the selected scope.');
+      return;
+    }
+
+    let changedCount = 0;
+    const patchTree = (items = []) => items.map((block) => {
+      let nextBlock = block;
+      if (block.type === 'task' && targetTaskIds.has(block.id)) {
+        const patch = {};
+        if (updatePoints) patch.points = String(Math.round(numericPoints * 100) / 100);
+        if (batchRequiredMode === 'required') patch.required = true;
+        if (batchRequiredMode === 'optional') patch.required = false;
+        if (Object.keys(patch).length > 0) {
+          nextBlock = { ...block, ...patch };
+          changedCount += 1;
+        }
+      }
+
+      if (block.children?.length) {
+        const nextChildren = patchTree(block.children);
+        if (nextChildren !== block.children) {
+          nextBlock = {
+            ...nextBlock,
+            children: nextChildren,
+            itemRefs: nextChildren.map((child) => child.ref),
+          };
+        }
+      }
+
+      return nextBlock;
+    });
+
+    const nextBlocks = patchTree(blocks);
+    replaceBlocks(nextBlocks);
+    setBatchMessage(`Batch updated ${changedCount} task${changedCount === 1 ? '' : 's'}.`);
+  };
+
+  const runQualityAction = (action) => {
+    if (action === 'add_intro_slide') {
+      const intro = createDefaultBlock('slide', { blank: true });
+      intro.title = 'Lesson Kickoff';
+      intro.content = '## Objective\nSummarize the goal for students before practice starts.';
+      replaceBlocks([intro, ...blocks]);
+      onSelect(intro.id);
+      return;
+    }
+
+    if (action === 'add_core_task') {
+      const task = createDefaultBlock('multiple_choice', { blank: true });
+      task.question = 'New comprehension check';
+      addBlockAndTrack(task);
+      return;
+    }
+
+    if (action === 'focus_duplicate' && duplicateQuestionGroups.length > 0) {
+      onSelect(duplicateQuestionGroups[0].items[0].id);
+      return;
+    }
+
+    if (action === 'apply_points') {
+      setBatchPoints('1');
+      setBatchRequiredMode('required');
+      setBatchMessage('Set points and required mode, then click Apply Batch Edit.');
+      return;
+    }
+
+    if (action === 'review_readability') {
+      setBatchMessage('Consider shortening prompts or splitting long instructions into bullet points.');
+      return;
+    }
+
+    if (action === 'review_timing') {
+      setBatchMessage('Adjust task count or complexity to fit your target runtime window.');
+    }
   };
 
   const stableRef = useRef({});
@@ -860,6 +1193,16 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     onSelect(duplicate.id);
   };
 
+  const duplicateVariantTopLevelBlock = (blockId) => {
+    const sourceIndex = blocks.findIndex((block) => block.id === blockId);
+    if (sourceIndex === -1) return;
+    const variant = createVariantBlock(blocks[sourceIndex]);
+    const nextBlocks = [...blocks];
+    nextBlocks.splice(sourceIndex + 1, 0, variant);
+    replaceBlocks(nextBlocks);
+    onSelect(variant.id);
+  };
+
   const wrapTopLevelBlockInGroup = (blockId) => {
     const sourceIndex = blocks.findIndex((block) => block.id === blockId);
     if (sourceIndex === -1) return;
@@ -887,6 +1230,19 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
       return { ...group, children, itemRefs: children.map((child) => child.ref) };
     }));
     onSelect(duplicate.id);
+  };
+
+  const duplicateVariantChildBlock = (groupId, childId) => {
+    const parent = findBlockById(blocks, groupId);
+    const sourceIndex = parent?.children?.findIndex((child) => child.id === childId) ?? -1;
+    if (sourceIndex === -1) return;
+    const variant = createVariantBlock(parent.children[sourceIndex]);
+    replaceBlocks(updateBlockInTree(blocks, groupId, (group) => {
+      const children = [...(group.children || [])];
+      children.splice(sourceIndex + 1, 0, variant);
+      return { ...group, children, itemRefs: children.map((child) => child.ref) };
+    }));
+    onSelect(variant.id);
   };
 
   const wrapChildBlockInGroup = (groupId, childId) => {
@@ -1167,11 +1523,15 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                   <div className="flex flex-wrap items-center justify-between gap-1.5">
                     <div className="flex items-center gap-2">
                       <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-400">{blocks.length} block{blocks.length !== 1 ? 's' : ''}</span>
+                      <span className="hidden border border-zinc-200 bg-white px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-zinc-500 sm:inline">Est. {estimatedMinutes} min</span>
+                      <span className="hidden border border-zinc-200 bg-white px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-zinc-500 sm:inline">Quality {qualityScore}</span>
                     </div>
                     <div className="hidden items-center gap-1 lg:flex">
                       <button type="button" onClick={() => setShowSlideLibrary(true)} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900"><PlusIcon /> Slide</button>
                       <button type="button" onClick={() => setIsModalOpen(true)} className="inline-flex items-center gap-1 border border-zinc-900 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-white"><PlusIcon /> Task</button>
                       <button type="button" onClick={() => addBlockAndTrack(createDefaultBlock('group', { blank: true }))} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900"><PlusIcon /> Group</button>
+                      <button type="button" onClick={() => setCollapsedTopSections({ slides: true, tasks: true, groups: true })} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900">Collapse all</button>
+                      <button type="button" onClick={() => setCollapsedTopSections({ slides: false, tasks: false, groups: false })} className="inline-flex items-center gap-1 border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 transition hover:border-zinc-900">Expand all</button>
                       <button type="button" onClick={() => setShowQuickAdd(true)} className="ml-0.5 border border-zinc-200 px-1.5 py-1 text-[9px] text-zinc-400 transition hover:border-zinc-400 hover:text-zinc-600" title="Quick add (Ctrl+K)">⌘K</button>
                     </div>
                   </div>
@@ -1193,6 +1553,71 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                     })}
                   </div>
                 )}
+
+                <div className="grid gap-2 lg:grid-cols-2">
+                  <div className="border border-zinc-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Batch edit tasks</div>
+                        <div className="text-[11px] text-zinc-500">Apply points and required flags in one action.</div>
+                      </div>
+                      <div className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[10px] text-zinc-600">{taskBlocks.length} tasks</div>
+                    </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                      <label className="space-y-1">
+                        <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Scope</span>
+                        <select value={batchScope} onChange={(event) => setBatchScope(event.target.value)} className="w-full border border-zinc-200 px-2 py-1.5 text-xs text-zinc-700 outline-none focus:border-zinc-900">
+                          <option value="all">All tasks</option>
+                          <option value="section">Selected section</option>
+                        </select>
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Points</span>
+                        <input type="number" min="0.1" step="0.1" value={batchPoints} onChange={(event) => setBatchPoints(event.target.value)} className="w-full border border-zinc-200 px-2 py-1.5 text-xs text-zinc-700 outline-none focus:border-zinc-900" />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Required</span>
+                        <select value={batchRequiredMode} onChange={(event) => setBatchRequiredMode(event.target.value)} className="w-full border border-zinc-200 px-2 py-1.5 text-xs text-zinc-700 outline-none focus:border-zinc-900">
+                          <option value="keep">Keep as-is</option>
+                          <option value="required">Set required</option>
+                          <option value="optional">Set optional</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button type="button" onClick={applyBatchTaskUpdates} className="border border-zinc-900 bg-zinc-900 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white">Apply batch edit</button>
+                      {batchMessage && <span className="text-[10px] text-zinc-500">{batchMessage}</span>}
+                    </div>
+                  </div>
+
+                  <div className="border border-zinc-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Lesson quality</div>
+                        <div className="text-[11px] text-zinc-500">Readability, timing, and duplication checks.</div>
+                      </div>
+                      <div className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-700">Score {qualityScore}</div>
+                    </div>
+                    <div className="mt-2 grid gap-1 text-[11px] text-zinc-600 sm:grid-cols-3">
+                      <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Readability: {readability.score === null ? 'n/a' : readability.score}</div>
+                      <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Grade level: {readability.gradeLevel === null ? 'n/a' : readability.gradeLevel}</div>
+                      <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Estimate: {estimatedMinutes} min</div>
+                    </div>
+                    {duplicateQuestionGroups.length > 0 && (
+                      <div className="mt-2 border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                        Duplicate prompts detected: {duplicateQuestionGroups.length}. <button type="button" onClick={() => runQualityAction('focus_duplicate')} className="underline">Jump to first duplicate</button>
+                      </div>
+                    )}
+                    <div className="mt-2 space-y-1">
+                      {qualityChecks.map((check) => (
+                        <div key={check.id} className={check.passed ? 'flex items-center justify-between gap-2 border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700' : 'flex items-center justify-between gap-2 border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-600'}>
+                          <span>{check.label}</span>
+                          {!check.passed && <button type="button" onClick={() => runQualityAction(check.action)} className="shrink-0 border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-zinc-600">Fix</button>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
 
                 {/* Smart suggestions */}
                 {suggestions.length > 0 && !mobileDragItem && (
@@ -1218,44 +1643,69 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                   const definition = block.type === 'task' ? getTaskDefinition(block.taskType) : null;
                   const selectedTopLevel = selected?.id === block.id;
                   const catMeta = CATEGORY_META[definition?.category] || { icon: (block.type === 'group' || block.type === 'split_group') ? '▤' : '□', accent: 'border-zinc-300 text-zinc-600' };
+                  const sectionKey = sectionKeyForBlock(block);
+                  const previousSectionKey = index > 0 ? sectionKeyForBlock(blocks[index - 1]) : null;
+                  const showSectionHeader = index === 0 || sectionKey !== previousSectionKey;
+                  const sectionCollapsed = Boolean(collapsedTopSections[sectionKey]);
+                  const blockHasDuplicateQuestion = duplicateQuestionIdSet.has(block.id);
+
+                  if (sectionCollapsed && !showSectionHeader) {
+                    return null;
+                  }
+
                   return (
                     <div
                       key={block.id}
-                      ref={(node) => {
-                        if (node) blockRefs.current.set(block.id, node); else blockRefs.current.delete(block.id);
-                      }}
-                      onDragOver={(event) => {
-                        event.preventDefault();
-                        setDropTarget({ scope: 'top', index });
-                      }}
-                      onDragLeave={(event) => {
-                        if (!event.currentTarget.contains(event.relatedTarget)) setDropTarget((current) => current?.scope === 'top' && current.index === index ? null : current);
-                      }}
-                      onDrop={(event) => handleTopLevelDrop(event, index)}
-                      onClick={() => {
-                        if (mobileDragItem) moveMobileItemToTop(index);
-                      }}
                       className="space-y-1"
                     >
-                      <DropIndicator active={dropTarget?.scope === 'top' && dropTarget.index === index} label={mobileDragItem ? 'Tap to place here' : 'Drop here'} />
-                      <div
-                        draggable
-                        onDragStart={(event) => event.dataTransfer.setData('application/x-block-id', block.id)}
-                        onPointerDown={() => beginMobileDrag({ kind: 'top', blockId: block.id })}
-                        onPointerUp={endMobileDragPress}
-                        onPointerLeave={endMobileDragPress}
-                        onPointerCancel={endMobileDragPress}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          setDropTarget({ scope: 'top-combine', targetId: block.id });
-                        }}
-                        onDragLeave={(event) => {
-                          if (!event.currentTarget.contains(event.relatedTarget)) setDropTarget((current) => current?.scope === 'top-combine' && current.targetId === block.id ? null : current);
-                        }}
-                        onDrop={(event) => combineTopLevelBlocks(event, block.id)}
-                        className={selectedTopLevel ? 'border border-zinc-900 bg-white' : dropTarget?.scope === 'top-combine' && dropTarget.targetId === block.id ? 'border-2 border-dashed border-zinc-900 bg-zinc-50' : mobileDragItem?.blockId === block.id ? 'border-2 border-zinc-900 bg-zinc-50' : 'border border-zinc-200 bg-white transition hover:border-zinc-400'}
-                      >
+                      {showSectionHeader && (
+                        <div className="flex items-center justify-between border border-zinc-200 bg-zinc-50 px-3 py-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">{sectionLabelFromKey(sectionKey)} ({sectionCounts[sectionKey] || 0})</div>
+                          <button type="button" onClick={() => setCollapsedTopSections((current) => ({ ...current, [sectionKey]: !current[sectionKey] }))} className="border border-zinc-200 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-zinc-600 hover:border-zinc-900">
+                            {sectionCollapsed ? 'Expand' : 'Collapse'}
+                          </button>
+                        </div>
+                      )}
+
+                      {sectionCollapsed ? (
+                        <div className="border border-dashed border-zinc-200 px-3 py-2 text-[11px] text-zinc-500">Section collapsed. Expand to edit blocks.</div>
+                      ) : (
+                        <div
+                          ref={(node) => {
+                            if (node) blockRefs.current.set(block.id, node); else blockRefs.current.delete(block.id);
+                          }}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            setDropTarget({ scope: 'top', index });
+                          }}
+                          onDragLeave={(event) => {
+                            if (!event.currentTarget.contains(event.relatedTarget)) setDropTarget((current) => current?.scope === 'top' && current.index === index ? null : current);
+                          }}
+                          onDrop={(event) => handleTopLevelDrop(event, index)}
+                          onClick={() => {
+                            if (mobileDragItem) moveMobileItemToTop(index);
+                          }}
+                          className="space-y-1"
+                        >
+                          <DropIndicator active={dropTarget?.scope === 'top' && dropTarget.index === index} label={mobileDragItem ? 'Tap to place here' : 'Drop here'} />
+                          <div
+                            draggable
+                            onDragStart={(event) => event.dataTransfer.setData('application/x-block-id', block.id)}
+                            onPointerDown={() => beginMobileDrag({ kind: 'top', blockId: block.id })}
+                            onPointerUp={endMobileDragPress}
+                            onPointerLeave={endMobileDragPress}
+                            onPointerCancel={endMobileDragPress}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setDropTarget({ scope: 'top-combine', targetId: block.id });
+                            }}
+                            onDragLeave={(event) => {
+                              if (!event.currentTarget.contains(event.relatedTarget)) setDropTarget((current) => current?.scope === 'top-combine' && current.targetId === block.id ? null : current);
+                            }}
+                            onDrop={(event) => combineTopLevelBlocks(event, block.id)}
+                            className={selectedTopLevel ? 'border border-zinc-900 bg-white' : dropTarget?.scope === 'top-combine' && dropTarget.targetId === block.id ? 'border-2 border-dashed border-zinc-900 bg-zinc-50' : mobileDragItem?.blockId === block.id ? 'border-2 border-zinc-900 bg-zinc-50' : 'border border-zinc-200 bg-white transition hover:border-zinc-400'}
+                          >
                         {/* Block card header — always visible */}
                         <button
                           type="button"
@@ -1274,6 +1724,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                                 {catMeta.icon} {definition?.category || block.type}
                               </span>
                               {!block.enabled && <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-400">Disabled</span>}
+                              {blockHasDuplicateQuestion && <span className="border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-amber-700">Duplicate prompt</span>}
                             </div>
                             <div className={selectedTopLevel ? 'hidden' : 'mt-1 text-sm font-semibold text-zinc-800'}>
                               {getBlockLabel(block, index)}
@@ -1288,6 +1739,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                             <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, -1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="up" /></IconActionButton>
                             <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); moveTopLevelBlock(block.id, 1); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><ChevronIcon direction="down" /></IconActionButton>
                             <IconActionButton title="Duplicate" onClick={(event) => { event.stopPropagation(); duplicateTopLevelBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-xs">⧉</span></IconActionButton>
+                            <IconActionButton title="Duplicate variant" onClick={(event) => { event.stopPropagation(); duplicateVariantTopLevelBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-xs">⋇</span></IconActionButton>
                             <IconActionButton title="Delete" onClick={(event) => { event.stopPropagation(); onDeleteBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-red-600"><TrashIcon /></IconActionButton>
                           </div>
                         </button>
@@ -1325,11 +1777,14 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                           onDeleteChild={(childId) => replaceBlocks(deleteBlockFromTree(blocks, childId))}
                           onMoveChild={moveChildInGroup}
                           onUngroupChild={ungroupChildBlock}
+                          onVariantChild={duplicateVariantChildBlock}
                           onBeginMobileDrag={beginMobileDrag}
                           onEndMobileDragPress={endMobileDragPress}
                           onMobileDropGroup={moveMobileItemToGroup}
                           mobileDragItem={mobileDragItem}
                         />
+                      )}
+                        </div>
                       )}
                     </div>
                   );

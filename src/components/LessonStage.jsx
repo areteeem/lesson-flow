@@ -40,6 +40,8 @@ function renderStandalone(block, results, onCompleteBlock, onProgressBlock, task
         allowRetry={taskOptions?.allowRetry !== false}
         showCheckButton={taskOptions?.showCheckButton !== false}
         lockAfterSubmit={taskOptions?.lockAfterSubmit === true}
+        forceLocked={taskOptions?.forceLocked === true}
+        lockMessage={taskOptions?.lockMessage || 'Responses are closed for this task.'}
       />
     );
   }

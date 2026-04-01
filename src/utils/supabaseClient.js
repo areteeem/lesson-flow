@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 let client = null;
 
 export function getSupabaseConfig() {
-  const url = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
-  const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+  const url = String(import.meta.env?.VITE_SUPABASE_URL || '').trim();
+  const anonKey = String(import.meta.env?.VITE_SUPABASE_ANON_KEY || '').trim();
   const host = url
     ? (() => {
       try {

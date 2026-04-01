@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getBlockLabel, getRequiredTaskBlocks, isTaskRequired, normalizeVisibleBlocks, validateLessonStructure } from '../utils/lesson';
 import GradingScreen from './GradingScreen';
 import LessonStage from './LessonStage';
@@ -28,11 +28,101 @@ function useSwipe(onSwipeLeft, onSwipeRight) {
   return handlers;
 }
 
+function toPositiveNumber(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
+}
+
+function formatCountdown(totalSeconds) {
+  const safe = Math.max(0, Number(totalSeconds) || 0);
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function seededHash(input = '') {
+  let hash = 2166136261;
+  const value = String(input || '');
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0);
+}
+
+function seededShuffle(list = [], seedValue = '') {
+  const arr = [...list];
+  let seed = seededHash(seedValue) || 1;
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const j = seed % (i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function withRandomizedOptions(block, seed) {
+  if (!block || typeof block !== 'object') return block;
+  const next = { ...block };
+  if (Array.isArray(next.options) && next.options.length > 1) {
+    next.options = seededShuffle(next.options, `${seed}:${next.id || ''}:options`);
+  }
+  if (Array.isArray(next.children) && next.children.length > 0) {
+    next.children = next.children.map((child, index) => withRandomizedOptions(child, `${seed}:child:${index}`));
+  }
+  return next;
+}
+
+const STUDENT_EXPERIENCE_KEY = 'lesson-flow-player-student-experience-v1';
+const DEFAULT_STUDENT_EXPERIENCE = {
+  highContrastMode: false,
+  dyslexiaMode: false,
+  reducedMotionMode: false,
+  vibrationCue: true,
+  showProgressTimeline: true,
+  textZoomPreset: 100,
+};
+
+function clampZoomPreset(value, fallback = 100) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(85, Math.min(150, Math.round(numeric)));
+}
+
+function loadStudentExperience() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STUDENT_EXPERIENCE_KEY) || '{}');
+    return {
+      ...DEFAULT_STUDENT_EXPERIENCE,
+      ...parsed,
+      textZoomPreset: clampZoomPreset(parsed?.textZoomPreset, DEFAULT_STUDENT_EXPERIENCE.textZoomPreset),
+    };
+  } catch {
+    return { ...DEFAULT_STUDENT_EXPERIENCE };
+  }
+}
+
+function saveStudentExperience(value) {
+  try {
+    localStorage.setItem(STUDENT_EXPERIENCE_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore storage failures and keep in-memory settings.
+  }
+}
+
+const PLAYER_SHORTCUTS = [
+  { key: 'Arrow Left / Arrow Right', description: 'Navigate previous/next block' },
+  { key: 'M', description: 'Open lesson map drawer' },
+  { key: 'F', description: 'Toggle fullscreen' },
+  { key: 'H', description: 'Toggle high-contrast mode' },
+  { key: '?', description: 'Open keyboard shortcut help' },
+];
+
 export default function LessonPlayer({ lesson, onExit, mode = 'default', sessionMeta = null, onSubmitted = null }) {
   const SIDEBAR_ITEM_HEIGHT = 76;
   const SIDEBAR_OVERSCAN = 6;
   const validation = useMemo(() => validateLessonStructure(lesson), [lesson]);
-  const blocks = useMemo(() => normalizeVisibleBlocks(lesson?.blocks || []), [lesson]);
+  const baseBlocks = useMemo(() => normalizeVisibleBlocks(lesson?.blocks || []), [lesson]);
   const sessionKey = lesson?.id ? `lf-player-${lesson.id}` : null;
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (!sessionKey) return 0;
@@ -48,6 +138,9 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fontSettings, setFontSettings] = useState(loadFontSettings);
   const [showFontPanel, setShowFontPanel] = useState(false);
+  const [showPlayerHotkeys, setShowPlayerHotkeys] = useState(false);
+  const [showAccessibilityPanel, setShowAccessibilityPanel] = useState(false);
+  const [studentExperience, setStudentExperience] = useState(loadStudentExperience);
   const [interactionLog, setInteractionLog] = useState(() => ({
     startedAt: Date.now(),
     tabLeaves: 0,
@@ -58,10 +151,22 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     answers: [],
     events: [],
   }));
+  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(null);
+  const [confidenceByBlock, setConfidenceByBlock] = useState(() => {
+    if (!sessionKey) return {};
+    try {
+      return JSON.parse(sessionStorage.getItem(`${sessionKey}-confidence`) || '{}') || {};
+    } catch {
+      return {};
+    }
+  });
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [policyNotice, setPolicyNotice] = useState('');
   const shellRef = useRef(null);
   const sidebarViewportRef = useRef(null);
   const [sidebarScrollTop, setSidebarScrollTop] = useState(0);
   const [sidebarHeight, setSidebarHeight] = useState(560);
+  const resumePromptInitializedRef = useRef(false);
 
   const modeConfig = useMemo(() => ({
     id: mode || 'default',
@@ -70,7 +175,59 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     allowRestart: sessionMeta?.allowRestart ?? (mode !== 'assignment' && mode !== 'homework'),
     requireRequiredTasks: sessionMeta?.requireRequiredTasks ?? (mode === 'assignment' || mode === 'homework'),
     showCheckButton: sessionMeta?.showCheckButton ?? (mode !== 'assignment' && mode !== 'homework'),
-  }), [mode, sessionMeta]);
+    disableBackNavigation: sessionMeta?.disableBackNavigation ?? (lesson?.settings?.disableBackNavigation === true),
+    sessionTimeLimitMinutes: toPositiveNumber(
+      sessionMeta?.sessionTimeLimitMinutes ?? lesson?.settings?.sessionTimeLimitMinutes,
+      null,
+    ),
+    randomizeQuestions: sessionMeta?.randomizeQuestions === true,
+    randomizeOptions: sessionMeta?.randomizeOptions === true,
+    lockOnTimeout: sessionMeta?.lockOnTimeout !== false,
+    suspiciousTabSwitchThreshold: Math.max(1, Number(sessionMeta?.suspiciousTabSwitchThreshold || lesson?.settings?.suspiciousTabSwitchThreshold || 6)),
+    copyPasteRestricted: sessionMeta?.copyPasteRestricted === true,
+    randomSeed: String(sessionMeta?.randomSeed || `${sessionMeta?.assignmentId || lesson?.id || 'lesson'}:${sessionMeta?.origin || mode}`),
+  }), [lesson?.settings?.disableBackNavigation, lesson?.settings?.sessionTimeLimitMinutes, mode, sessionMeta]);
+
+  const blocks = useMemo(() => {
+    let nextBlocks = [...baseBlocks];
+    if (modeConfig.randomizeQuestions) {
+      nextBlocks = seededShuffle(nextBlocks, `${modeConfig.randomSeed}:questions`);
+    }
+    if (modeConfig.randomizeOptions) {
+      nextBlocks = nextBlocks.map((block, index) => withRandomizedOptions(block, `${modeConfig.randomSeed}:block:${index}`));
+    }
+    return nextBlocks;
+  }, [baseBlocks, modeConfig.randomSeed, modeConfig.randomizeOptions, modeConfig.randomizeQuestions]);
+
+  const updateStudentExperience = useCallback((patch) => {
+    setStudentExperience((current) => ({
+      ...current,
+      ...patch,
+      textZoomPreset: patch.textZoomPreset === undefined
+        ? current.textZoomPreset
+        : clampZoomPreset(patch.textZoomPreset, current.textZoomPreset),
+    }));
+  }, []);
+
+  const resetSessionProgress = useCallback(() => {
+    setResults({});
+    setCurrentIndex(0);
+    setShowGrading(false);
+    setConfidenceByBlock({});
+    setShowResumePrompt(false);
+    if (modeConfig.sessionTimeLimitMinutes) {
+      setTimeRemainingSeconds(Math.round(modeConfig.sessionTimeLimitMinutes * 60));
+    }
+    if (sessionKey) {
+      try {
+        sessionStorage.removeItem(sessionKey);
+        sessionStorage.removeItem(`${sessionKey}-idx`);
+        sessionStorage.removeItem(`${sessionKey}-confidence`);
+      } catch {
+        // Ignore session storage failures.
+      }
+    }
+  }, [modeConfig.sessionTimeLimitMinutes, sessionKey]);
 
   useEffect(() => {
     if (!sidebarOpen || !sidebarViewportRef.current) return undefined;
@@ -82,6 +239,65 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    saveStudentExperience(studentExperience);
+  }, [studentExperience]);
+
+  useEffect(() => {
+    if (!sessionKey) return;
+    try {
+      sessionStorage.setItem(`${sessionKey}-confidence`, JSON.stringify(confidenceByBlock));
+    } catch {
+      // Ignore quota/storage write failures.
+    }
+  }, [confidenceByBlock, sessionKey]);
+
+  useEffect(() => {
+    if (resumePromptInitializedRef.current) return;
+    resumePromptInitializedRef.current = true;
+    if (showGrading) return;
+    const answeredCount = Object.keys(results || {}).length;
+    if (currentIndex > 0 || answeredCount > 0) {
+      setShowResumePrompt(true);
+    }
+  }, [currentIndex, results, showGrading]);
+
+  useEffect(() => {
+    const limitMinutes = modeConfig.sessionTimeLimitMinutes;
+    if (!limitMinutes) {
+      setTimeRemainingSeconds(null);
+      return;
+    }
+    setTimeRemainingSeconds(Math.round(limitMinutes * 60));
+  }, [modeConfig.sessionTimeLimitMinutes]);
+
+  useEffect(() => {
+    if (showGrading || timeRemainingSeconds === null) return undefined;
+    if (timeRemainingSeconds <= 0) {
+      recordDebugEvent('lesson_time_limit_reached', {
+        lessonId: lesson?.id || null,
+        currentIndex,
+        totalBlocks: blocks.length,
+      });
+      if (modeConfig.lockOnTimeout) {
+        setShowGrading(true);
+      } else {
+        setPolicyNotice('Time limit reached. This assignment is configured to continue without hard lock.');
+        setTimeRemainingSeconds(null);
+      }
+      return undefined;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setTimeRemainingSeconds((current) => {
+        if (current === null) return null;
+        return Math.max(0, current - 1);
+      });
+    }, 1000);
+
+    return () => window.clearTimeout(timerId);
+  }, [blocks.length, currentIndex, lesson?.id, modeConfig.lockOnTimeout, showGrading, timeRemainingSeconds]);
 
   useEffect(() => {
     if (blocks.length === 0) {
@@ -115,6 +331,42 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
+
+  useEffect(() => {
+    if (!modeConfig.copyPasteRestricted) return undefined;
+
+    const deny = (eventType, event) => {
+      event.preventDefault();
+      const eventAt = Date.now();
+      setPolicyNotice('Copy/paste is restricted for this assignment.');
+      setInteractionLog((current) => ({
+        ...current,
+        events: [...current.events, { type: `anti_cheat_${eventType}`, at: eventAt, blockId: blocks[currentIndex]?.id || null }],
+      }));
+    };
+
+    const onCopy = (event) => deny('copy', event);
+    const onPaste = (event) => deny('paste', event);
+    const onCut = (event) => deny('cut', event);
+    const onContextMenu = (event) => deny('contextmenu', event);
+
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('paste', onPaste);
+    document.addEventListener('cut', onCut);
+    document.addEventListener('contextmenu', onContextMenu);
+
+    return () => {
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('paste', onPaste);
+      document.removeEventListener('cut', onCut);
+      document.removeEventListener('contextmenu', onContextMenu);
+    };
+  }, [blocks, currentIndex, modeConfig.copyPasteRestricted]);
+
+  useEffect(() => {
+    if (interactionLog.tabLeaves < modeConfig.suspiciousTabSwitchThreshold) return;
+    setPolicyNotice(`Warning: tab switching reached ${interactionLog.tabLeaves} events (threshold ${modeConfig.suspiciousTabSwitchThreshold}).`);
+  }, [interactionLog.tabLeaves, modeConfig.suspiciousTabSwitchThreshold]);
 
   useEffect(() => {
     const onBlur = () => {
@@ -225,6 +477,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     && !results[current.id],
   );
   const canAdvanceCurrent = canAdvance && !currentRequiredBlocked;
+  const canGoBack = !modeConfig.disableBackNavigation && currentIndex > 0;
 
   const goNext = () => {
     if (!canAdvanceCurrent) return;
@@ -243,24 +496,58 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     }
     setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
   };
-  const goPrev = () => setCurrentIndex((v) => Math.max(0, v - 1));
+  const goPrev = () => {
+    if (modeConfig.disableBackNavigation) return;
+    setCurrentIndex((v) => Math.max(0, v - 1));
+  };
   const swipeHandlers = useSwipe(goNext, goPrev);
 
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT') return;
-      if (event.key === 'ArrowLeft') setCurrentIndex((value) => Math.max(0, value - 1));
+      if (event.key === 'ArrowLeft' && !modeConfig.disableBackNavigation) setCurrentIndex((value) => Math.max(0, value - 1));
       if (event.key === 'ArrowRight' && canAdvanceCurrent) {
         setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
+      }
+      if (event.key.toLowerCase() === 'm') {
+        event.preventDefault();
+        setSidebarOpen(true);
+      }
+      if (event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        toggleFullscreen();
+      }
+      if (event.key.toLowerCase() === 'h') {
+        event.preventDefault();
+        updateStudentExperience({ highContrastMode: !studentExperience.highContrastMode });
+      }
+      if (event.key === '?' || (event.key === '/' && (event.ctrlKey || event.metaKey))) {
+        event.preventDefault();
+        setShowPlayerHotkeys(true);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [blocks.length, canAdvanceCurrent]);
+  }, [blocks.length, canAdvanceCurrent, modeConfig.disableBackNavigation, studentExperience.highContrastMode, updateStudentExperience]);
 
   const saveResult = (blockId, result) => {
-    recordDebugEvent('task_complete', { lessonId: lesson?.id || null, blockId, correct: result?.correct ?? null, score: result?.score ?? null });
+    const confidence = typeof confidenceByBlock[blockId] === 'number' ? confidenceByBlock[blockId] : null;
+    recordDebugEvent('task_complete', { lessonId: lesson?.id || null, blockId, correct: result?.correct ?? null, score: result?.score ?? null, confidence });
     const answeredAt = Date.now();
+
+    if (studentExperience.vibrationCue && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      const coarsePointer = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(pointer: coarse)').matches
+        : false;
+      if (coarsePointer) {
+        try {
+          navigator.vibrate(20);
+        } catch {
+          // Ignore vibration API failures.
+        }
+      }
+    }
+
     setInteractionLog((currentLog) => ({
       ...currentLog,
       answers: [
@@ -270,6 +557,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
           answeredAt,
           correct: result?.correct ?? null,
           score: typeof result?.score === 'number' ? result.score : null,
+          confidence,
         },
       ],
       events: [
@@ -280,20 +568,38 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
           blockId,
           correct: result?.correct ?? null,
           score: typeof result?.score === 'number' ? result.score : null,
+          confidence,
         },
       ],
     }));
-    setResults((currentResults) => ({ ...currentResults, [blockId]: result }));
+    setResults((currentResults) => ({
+      ...currentResults,
+      [blockId]: {
+        ...(result || {}),
+        confidence,
+      },
+    }));
   };
 
   const effectiveFontSettings = useMemo(() => {
     const s = lesson?.settings || {};
-    return {
+    const base = {
       fontId: s.fontFamily || fontSettings.fontId,
       sizeId: s.fontSize || fontSettings.sizeId,
       lineHeightId: s.lineHeight || fontSettings.lineHeightId,
     };
-  }, [lesson?.settings, fontSettings]);
+    if (!studentExperience.dyslexiaMode) return base;
+    return {
+      ...base,
+      fontId: 'dyslexic',
+      lineHeightId: base.lineHeightId === 'compact' ? 'normal' : 'relaxed',
+    };
+  }, [lesson?.settings, fontSettings, studentExperience.dyslexiaMode]);
+
+  const playerShellStyle = useMemo(() => ({
+    ...getFontCSSVars(effectiveFontSettings),
+    '--player-zoom-scale': String(clampZoomPreset(studentExperience.textZoomPreset, 100) / 100),
+  }), [effectiveFontSettings, studentExperience.textZoomPreset]);
 
   const virtualWindow = useMemo(() => {
     const total = blocks.length;
@@ -326,6 +632,23 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
   const progressWidth = blocks.length > 0 ? `${(completedCount / blocks.length) * 100}%` : '0%';
   const requiredTasks = getRequiredTaskBlocks(blocks);
   const requiredCompleted = requiredTasks.filter((task) => Boolean(results[task.id])).length;
+  const progressTimelineEntries = useMemo(() => {
+    return blocks.map((block, index) => {
+      const completed = isComplete(block);
+      return {
+        id: block.id,
+        index,
+        completed,
+        isCurrent: index === currentIndex,
+        confidence: typeof confidenceByBlock[block.id] === 'number' ? confidenceByBlock[block.id] : null,
+        label: getBlockLabel(block, index),
+        type: block.taskType || block.type,
+      };
+    });
+  }, [blocks, confidenceByBlock, currentIndex]);
+  const currentConfidence = current?.type === 'task'
+    ? (typeof confidenceByBlock[current.id] === 'number' ? confidenceByBlock[current.id] : 0)
+    : 0;
 
   if (blocks.length === 0) {
     return (
@@ -353,7 +676,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
         results={results}
         studentName={studentName}
         onStudentNameChange={setStudentName}
-        onRestart={() => { setResults({}); setCurrentIndex(0); setShowGrading(false); }}
+        onRestart={resetSessionProgress}
         onExit={handleExit}
         onSubmitted={onSubmitted}
         mode={modeConfig.id}
@@ -370,13 +693,32 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
           answerTimeline: interactionLog.answers,
           events: interactionLog.events,
           startedAt: interactionLog.startedAt,
+          timeLimitMinutes: modeConfig.sessionTimeLimitMinutes,
+          timeRemainingSeconds,
+          timedOut: Boolean(modeConfig.sessionTimeLimitMinutes && timeRemainingSeconds === 0),
+          confidenceByBlock,
+          studentExperience,
+          antiCheatPolicy: {
+            copyPasteRestricted: modeConfig.copyPasteRestricted,
+            suspiciousTabSwitchThreshold: modeConfig.suspiciousTabSwitchThreshold,
+            lockOnTimeout: modeConfig.lockOnTimeout,
+          },
         }}
       />
     );
   }
 
   return (
-    <div ref={shellRef} className="player-shell flex min-h-screen bg-[#f7f7f5]" style={getFontCSSVars(effectiveFontSettings)}>
+    <div
+      ref={shellRef}
+      className={[
+        'player-shell flex min-h-screen bg-[#f7f7f5]',
+        studentExperience.highContrastMode ? 'player-high-contrast' : '',
+        studentExperience.dyslexiaMode ? 'player-dyslexia-mode' : '',
+        studentExperience.reducedMotionMode ? 'player-reduced-motion' : '',
+      ].join(' ')}
+      style={playerShellStyle}
+    >
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex">
           <button type="button" onClick={() => setSidebarOpen(false)} className="absolute inset-0 bg-black/20" />
@@ -391,10 +733,16 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
               {virtualWindow.topPadding > 0 && <div style={{ height: `${virtualWindow.topPadding}px` }} />}
               {visibleBlocks.map((block, offset) => {
                 const index = blocks.length <= 60 ? offset : virtualWindow.start + offset;
+                const mapBackDisabled = modeConfig.disableBackNavigation && index < currentIndex;
                 return (
-                <button key={block.id} type="button" onClick={() => { setCurrentIndex(index); setSidebarOpen(false); }} className={[
+                <button key={block.id} type="button" disabled={mapBackDisabled} onClick={() => {
+                  if (mapBackDisabled) return;
+                  setCurrentIndex(index);
+                  setSidebarOpen(false);
+                }} className={[
                   'w-full border px-3 py-2.5 text-left transition',
                   index === currentIndex ? 'border-zinc-900 bg-zinc-950 text-white' : isComplete(block) ? 'border-zinc-200 bg-zinc-50 text-zinc-500' : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50',
+                  mapBackDisabled ? 'cursor-not-allowed opacity-40 hover:bg-white' : '',
                 ].join(' ')}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -428,17 +776,108 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
                   Required complete: {requiredCompleted}/{requiredTasks.length}
                 </div>
               )}
+              {(modeConfig.disableBackNavigation || timeRemainingSeconds !== null) && (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-zinc-500">
+                  {modeConfig.disableBackNavigation && <span className="border border-zinc-200 bg-zinc-50 px-1.5 py-0.5">Back disabled</span>}
+                  {timeRemainingSeconds !== null && (
+                    <span className={[
+                      'border px-1.5 py-0.5',
+                      timeRemainingSeconds <= 60 ? 'border-red-300 bg-red-50 text-red-700' : 'border-zinc-200 bg-zinc-50',
+                    ].join(' ')}>
+                      Time left {formatCountdown(timeRemainingSeconds)}
+                    </span>
+                  )}
+                </div>
+              )}
+              {studentExperience.showProgressTimeline && (
+                <div className="mt-2 overflow-x-auto pb-1">
+                  <div className="flex min-w-max items-center gap-1.5">
+                    {progressTimelineEntries.map((entry) => (
+                      <button
+                        key={`timeline-${entry.id}`}
+                        type="button"
+                        onClick={() => {
+                          if (modeConfig.disableBackNavigation && entry.index < currentIndex) return;
+                          setCurrentIndex(entry.index);
+                        }}
+                        disabled={modeConfig.disableBackNavigation && entry.index < currentIndex}
+                        className={[
+                          'border px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition',
+                          entry.isCurrent ? 'border-zinc-900 bg-zinc-900 text-white' : entry.completed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-zinc-200 bg-zinc-50 text-zinc-500',
+                          modeConfig.disableBackNavigation && entry.index < currentIndex ? 'cursor-not-allowed opacity-40' : '',
+                        ].join(' ')}
+                        title={`${entry.label}${entry.confidence ? ` • confidence ${entry.confidence}/5` : ''}`}
+                      >
+                        {entry.index + 1}
+                        {entry.confidence ? ` · C${entry.confidence}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <div className="relative">
                 <button type="button" onClick={() => setShowFontPanel(v => !v)} className="border border-zinc-200 px-2.5 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50" title="Font settings">Aa</button>
                 {showFontPanel && <FontSettingsPanel settings={fontSettings} onChange={setFontSettings} onClose={() => setShowFontPanel(false)} />}
               </div>
+              <div className="relative">
+                <button type="button" onClick={() => setShowAccessibilityPanel((value) => !value)} className="border border-zinc-200 px-2.5 py-2 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50" title="Accessibility settings">A11y</button>
+                {showAccessibilityPanel && (
+                  <div className="absolute right-0 top-full z-40 mt-1 w-72 border border-zinc-200 bg-white p-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                    <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Student Experience</div>
+                    <div className="space-y-2 text-xs text-zinc-700">
+                      <label className="flex items-center justify-between gap-2"><span>High contrast</span><input type="checkbox" checked={studentExperience.highContrastMode} onChange={(event) => updateStudentExperience({ highContrastMode: event.target.checked })} /></label>
+                      <label className="flex items-center justify-between gap-2"><span>Dyslexia reading mode</span><input type="checkbox" checked={studentExperience.dyslexiaMode} onChange={(event) => updateStudentExperience({ dyslexiaMode: event.target.checked })} /></label>
+                      <label className="flex items-center justify-between gap-2"><span>Reduced motion</span><input type="checkbox" checked={studentExperience.reducedMotionMode} onChange={(event) => updateStudentExperience({ reducedMotionMode: event.target.checked })} /></label>
+                      <label className="flex items-center justify-between gap-2"><span>Vibration cue on submit</span><input type="checkbox" checked={studentExperience.vibrationCue} onChange={(event) => updateStudentExperience({ vibrationCue: event.target.checked })} /></label>
+                      <label className="flex items-center justify-between gap-2"><span>Progress timeline</span><input type="checkbox" checked={studentExperience.showProgressTimeline} onChange={(event) => updateStudentExperience({ showProgressTimeline: event.target.checked })} /></label>
+                    </div>
+                    <div className="mt-3">
+                      <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Text zoom</div>
+                      <div className="flex gap-1">
+                        {[90, 100, 115, 130].map((zoom) => (
+                          <button
+                            key={`zoom-${zoom}`}
+                            type="button"
+                            onClick={() => updateStudentExperience({ textZoomPreset: zoom })}
+                            className={studentExperience.textZoomPreset === zoom ? 'flex-1 border border-zinc-900 bg-zinc-900 px-1.5 py-1 text-[10px] text-white' : 'flex-1 border border-zinc-200 px-1.5 py-1 text-[10px] text-zinc-600'}
+                          >
+                            {zoom}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={() => setShowPlayerHotkeys(true)} className="border border-zinc-200 px-2.5 py-2 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50" title="Keyboard shortcuts">?</button>
               <button type="button" onClick={toggleFullscreen} className="hidden border border-zinc-200 px-2.5 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50 sm:block" title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>{isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}</button>
               <button type="button" onClick={handleExit} className="player-nav-button border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50">Exit</button>
             </div>
           </div>
         </header>
+
+        {showResumePrompt && (
+          <div className="border-b border-zinc-200 bg-amber-50 px-3 py-3 sm:px-4 md:px-5">
+            <div className="player-frame mx-auto flex flex-wrap items-center justify-between gap-3 text-sm text-amber-900">
+              <div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-amber-700">Session Resume</div>
+                <div className="mt-1">Recovered progress from this browser: {Object.keys(results).length} answered, currently on block {Math.min(currentIndex + 1, Math.max(blocks.length, 1))}.</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setShowResumePrompt(false)} className="border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800">Resume</button>
+                <button type="button" onClick={resetSessionProgress} className="border border-amber-700 bg-amber-700 px-3 py-1.5 text-xs font-medium text-white">Start over</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {policyNotice && (
+          <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 sm:px-4 md:px-5">
+            <div className="player-frame mx-auto text-xs text-amber-800">{policyNotice}</div>
+          </div>
+        )}
 
         {current && (
           <div className="border-b border-zinc-100 bg-white px-3 py-2 sm:px-4 md:px-5">
@@ -452,26 +891,89 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
         )}
 
         <main className="flex-1 px-3 py-4 sm:px-4 sm:py-5 md:px-5 md:py-7 lg:px-6 lg:py-8 xl:py-10" {...swipeHandlers}>
-          <div key={currentIndex} className="player-frame mx-auto animate-soft-rise">
+          <div key={currentIndex} className={studentExperience.reducedMotionMode ? 'player-frame mx-auto' : 'player-frame mx-auto animate-soft-rise'}>
             <LessonStage blocks={blocks} currentIndex={currentIndex} results={results} onCompleteBlock={saveResult} taskOptions={{ allowRetry: modeConfig.allowRetry, showCheckButton: modeConfig.showCheckButton }} emptyMessage="This lesson ended safely because the current block is missing." />
           </div>
         </main>
 
         <footer className="sticky bottom-0 z-20 border-t border-zinc-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4 md:px-5 [padding-bottom:calc(env(safe-area-inset-bottom)+0.75rem)]">
+          {current?.type === 'task' && (
+            <div className="player-frame mx-auto mb-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+              <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Confidence</span>
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={`confidence-${value}`}
+                  type="button"
+                  onClick={() => {
+                    if (!current?.id) return;
+                    setConfidenceByBlock((currentMap) => ({ ...currentMap, [current.id]: value }));
+                    setInteractionLog((currentLog) => ({
+                      ...currentLog,
+                      events: [
+                        ...currentLog.events,
+                        {
+                          type: 'confidence_set',
+                          at: Date.now(),
+                          blockId: current.id,
+                          confidence: value,
+                        },
+                      ],
+                    }));
+                  }}
+                  className={currentConfidence === value ? 'border border-zinc-900 bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white' : 'border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:border-zinc-900'}
+                >
+                  {value}
+                </button>
+              ))}
+              <span className="ml-auto text-[10px] text-zinc-500">1 = unsure, 5 = very confident</span>
+            </div>
+          )}
           <div className="player-frame mx-auto flex items-center justify-between gap-3 md:gap-4">
-            <button type="button" onClick={goPrev} disabled={currentIndex === 0} className="player-nav-button border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-30">← Back</button>
+            <button type="button" onClick={goPrev} disabled={!canGoBack} className="player-nav-button border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-30">← Back</button>
             <div className="hidden items-center gap-1.5 lg:flex">
               {blocks.map((block, index) => (
-                <button key={block.id} type="button" onClick={() => setCurrentIndex(index)} title={getBlockLabel(block, index)} className={[
+                <button key={block.id} type="button" onClick={() => {
+                  if (modeConfig.disableBackNavigation && index < currentIndex) return;
+                  setCurrentIndex(index);
+                }} disabled={modeConfig.disableBackNavigation && index < currentIndex} title={getBlockLabel(block, index)} className={[
                   'h-2 transition-all',
                   index === currentIndex ? 'w-6 bg-zinc-900' : isComplete(block) ? 'w-2 bg-zinc-500' : 'w-2 bg-zinc-200 hover:bg-zinc-300',
+                  modeConfig.disableBackNavigation && index < currentIndex ? 'cursor-not-allowed opacity-40 hover:bg-zinc-200' : '',
                 ].join(' ')} />
               ))}
             </div>
             <button type="button" onClick={goNext} disabled={!canAdvanceCurrent} className="player-nav-button border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">{currentIndex === blocks.length - 1 ? 'Finish ✓' : 'Next →'}</button>
           </div>
-          {currentRequiredBlocked && <div className="player-frame mx-auto mt-2 text-right text-[11px] text-amber-700">Complete this required task before continuing.</div>}
+          {(currentRequiredBlocked || modeConfig.disableBackNavigation) && (
+            <div className="player-frame mx-auto mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+              <div className="text-zinc-500">{modeConfig.disableBackNavigation ? 'Back navigation is locked for this session.' : ''}</div>
+              <div className="text-amber-700">{currentRequiredBlocked ? 'Complete this required task before continuing.' : ''}</div>
+            </div>
+          )}
         </footer>
+
+        {showPlayerHotkeys && (
+          <div className="fixed inset-0 z-50 bg-black/35 p-4" role="dialog" aria-modal="true" aria-label="Player shortcuts">
+            <button type="button" onClick={() => setShowPlayerHotkeys(false)} className="absolute inset-0" />
+            <div className="relative mx-auto mt-10 max-w-xl border border-zinc-900 bg-white p-5 sm:mt-16">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Keyboard Shortcuts</div>
+                  <div className="mt-1 text-lg font-semibold text-zinc-900">Player controls</div>
+                </div>
+                <button type="button" onClick={() => setShowPlayerHotkeys(false)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700">Close</button>
+              </div>
+              <div className="mt-4 space-y-2">
+                {PLAYER_SHORTCUTS.map((row) => (
+                  <div key={row.key} className="flex items-center justify-between gap-3 border border-zinc-200 px-3 py-2 text-xs text-zinc-700">
+                    <span className="font-medium text-zinc-900">{row.key}</span>
+                    <span>{row.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

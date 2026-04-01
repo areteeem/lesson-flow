@@ -12,6 +12,7 @@ export default function AssignmentPlayerPage() {
   const [studentName, setStudentName] = useState('');
   const [started, setStarted] = useState(false);
   const [submitState, setSubmitState] = useState('idle');
+  const [submitMessage, setSubmitMessage] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -36,7 +37,7 @@ export default function AssignmentPlayerPage() {
   }, [assignmentId]);
 
   const attemptBlocked = useMemo(() => {
-    if (!assignment?.oneAttemptOnly) return false;
+    if (!assignment?.oneAttemptOnly && Number(assignment?.maxAttempts || 1) > 1) return false;
     if (!studentName.trim()) return false;
     return hasLocalAssignmentAttempt(assignment.assignmentId, studentName.trim());
   }, [assignment, studentName]);
@@ -44,8 +45,12 @@ export default function AssignmentPlayerPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-6">
-        <div className="w-full max-w-md border border-zinc-200 bg-white p-6 text-center">
-          <div className="text-sm text-zinc-500">Loading assignment...</div>
+        <div className="w-full max-w-md border border-zinc-200 bg-white p-6 overflow-guard">
+          <div className="mb-3 h-4 w-32 animate-pulse bg-zinc-200" />
+          <div className="mb-2 h-3 w-full animate-pulse bg-zinc-100" />
+          <div className="mb-2 h-3 w-5/6 animate-pulse bg-zinc-100" />
+          <div className="h-10 w-full animate-pulse border border-zinc-200 bg-zinc-50" />
+          <div className="mt-3 text-xs text-zinc-500">Loading assignment…</div>
         </div>
       </div>
     );
@@ -72,8 +77,18 @@ export default function AssignmentPlayerPage() {
           <div className="mt-2 text-2xl font-semibold text-zinc-950">{assignment.lesson?.title || 'Untitled lesson'}</div>
           <div className="mt-2 text-sm text-zinc-500">
             Enter your name to start.
-            {assignment.oneAttemptOnly ? ' This assignment uses one-attempt mode.' : ' Multiple attempts are allowed.'}
+            {assignment.oneAttemptOnly ? ' This assignment uses one-attempt mode.' : ` Up to ${assignment.maxAttempts || 1} attempts are allowed.`}
             {assignment.allowRetry ? ' Task retries are enabled.' : ' Task retries are disabled.'}
+            {assignment.disableBackNavigation ? ' Back navigation is disabled.' : ''}
+            {assignment.sessionTimeLimitMinutes ? ` Time limit: ${assignment.sessionTimeLimitMinutes} minute${assignment.sessionTimeLimitMinutes === 1 ? '' : 's'}.` : ''}
+          </div>
+          <div className="mt-3 grid gap-1 text-[11px] text-zinc-600 sm:grid-cols-2">
+            <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Attempts: {assignment.maxAttempts || 1}</div>
+            <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Retry cooldown: {assignment.retryCooldownSeconds || 0}s</div>
+            <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Question randomization: {assignment.randomizeQuestions ? 'On' : 'Off'}</div>
+            <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Option randomization: {assignment.randomizeOptions ? 'On' : 'Off'}</div>
+            <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Copy/paste restriction: {assignment.copyPasteRestricted ? 'On' : 'Off'}</div>
+            <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Tab-switch threshold: {assignment.suspiciousTabSwitchThreshold || 6}</div>
           </div>
           {assignment.showCheckButton === false && (
             <div className="mt-2 text-xs text-zinc-500">Check button is disabled for this assignment. Use save and submit flow.</div>
@@ -101,6 +116,7 @@ export default function AssignmentPlayerPage() {
               disabled={!studentName.trim() || attemptBlocked}
               onClick={() => {
                 setSubmitState('idle');
+                setSubmitMessage('');
                 setStarted(true);
               }}
               className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
@@ -117,7 +133,7 @@ export default function AssignmentPlayerPage() {
     <div className="relative">
       {submitState !== 'idle' && (
         <div className="fixed left-4 top-4 z-40 border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700">
-          Submission: {submitState}
+          Submission: {submitState}{submitMessage ? ` - ${submitMessage}` : ''}
         </div>
       )}
       <LessonPlayer
@@ -134,10 +150,24 @@ export default function AssignmentPlayerPage() {
           enableGrading: assignment.enableGrading,
           showTotalGrade: assignment.showTotalGrade,
           showPerQuestionGrade: assignment.showPerQuestionGrade,
+          disableBackNavigation: assignment.disableBackNavigation,
+          sessionTimeLimitMinutes: assignment.sessionTimeLimitMinutes,
+          maxAttempts: assignment.maxAttempts,
+          retryCooldownSeconds: assignment.retryCooldownSeconds,
+          randomizeQuestions: assignment.randomizeQuestions,
+          randomizeOptions: assignment.randomizeOptions,
+          lockOnTimeout: assignment.lockOnTimeout,
+          bindAttemptToDevice: assignment.bindAttemptToDevice,
+          suspiciousTabSwitchThreshold: assignment.suspiciousTabSwitchThreshold,
+          copyPasteRestricted: assignment.copyPasteRestricted,
+          gracePeriodSeconds: assignment.gracePeriodSeconds,
+          expiresAt: assignment.expiresAt,
+          randomSeed: `${assignment.assignmentId || 'assignment'}:${studentName.trim().toLowerCase()}`,
         }}
         onExit={() => navigate('/')}
         onSubmitted={async (sessionPayload) => {
           setSubmitState('submitting');
+          setSubmitMessage('');
           const submitResult = await submitAssignmentResult({
             assignmentId: assignment.assignmentId,
             studentName: studentName.trim(),
@@ -147,6 +177,22 @@ export default function AssignmentPlayerPage() {
             },
           });
           setSubmitState(submitResult.ok ? 'submitted' : 'error');
+          if (!submitResult.ok) {
+            const reason = submitResult.reason || 'submit_failed';
+            const readable = reason === 'attempt_limit_reached'
+              ? 'Attempt limit reached.'
+              : reason === 'cooldown_active'
+                ? 'Cooldown active before retry.'
+                : reason === 'device_binding_mismatch'
+                  ? 'This assignment is bound to another device.'
+                  : reason === 'expired'
+                    ? 'Assignment window is closed.'
+                    : reason;
+            setSubmitMessage(readable);
+            throw new Error(readable);
+          }
+          setSubmitMessage('Saved successfully.');
+          return submitResult;
         }}
       />
     </div>

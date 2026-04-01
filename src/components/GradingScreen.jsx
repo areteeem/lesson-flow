@@ -1,8 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { exportSession, printSessionReport, saveSession } from '../storage';
 import { summarizeResults } from '../utils/grading';
 import { syncSessionGradeToCloud } from '../utils/gradingCloud';
 import { createResultShareLink } from '../utils/resultSharing';
+
+const OFFLINE_SUBMISSION_QUEUE_KEY = 'lesson-flow-offline-submission-queue-v1';
+
+function loadOfflineSubmissionQueue() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(OFFLINE_SUBMISSION_QUEUE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveOfflineSubmissionQueue(entries) {
+  try {
+    localStorage.setItem(OFFLINE_SUBMISSION_QUEUE_KEY, JSON.stringify((entries || []).slice(0, 200)));
+  } catch {
+    // Ignore local storage write failures and continue with in-memory flow.
+  }
+}
 
 function statusTone(entry) {
   if (entry.correct === true) return 'border-emerald-200 bg-emerald-50 text-emerald-800';
@@ -113,9 +132,12 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
   const [saved, setSaved] = useState(false);
   const [cloudStatus, setCloudStatus] = useState('idle');
   const [cloudMessage, setCloudMessage] = useState('');
+  const [queuedSubmissionCount, setQueuedSubmissionCount] = useState(() => loadOfflineSubmissionQueue().length);
+  const [replayMessage, setReplayMessage] = useState('');
   const [expandedTasks, setExpandedTasks] = useState(() => new Set());
   const [resultShareLink, setResultShareLink] = useState('');
   const [resultShareState, setResultShareState] = useState('idle');
+  const replayInFlightRef = useRef(false);
   const isAssignmentMode = mode === 'assignment' || mode === 'homework';
   const lessonSettings = lesson?.settings || {};
   const visibilityPolicy = normalizeVisibilityPolicy(lessonSettings.visibilityPolicy, isAssignmentMode);
@@ -179,6 +201,90 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
   const primaryPercent = showTotalGrade ? summary.score : completionPercent;
   const dashOffset = circumference - (primaryPercent / 100) * circumference;
 
+  const runExternalSubmission = useCallback(async (payload) => {
+    if (typeof onSubmitted !== 'function') return { ok: true, skipped: true };
+    try {
+      const result = await onSubmitted(payload);
+      if (result && typeof result === 'object' && result.ok === false) {
+        return { ok: false, reason: result.reason || 'submission_failed' };
+      }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: error?.message || 'submission_failed' };
+    }
+  }, [onSubmitted]);
+
+  const queueSubmissionForReplay = useCallback((payload, reason = 'offline') => {
+    const queue = loadOfflineSubmissionQueue();
+    const fingerprint = `${payload?.assignmentId || ''}:${payload?.studentName || ''}:${payload?.timestamp || Date.now()}`;
+    if (!queue.some((entry) => entry.fingerprint === fingerprint)) {
+      queue.unshift({
+        id: crypto.randomUUID(),
+        fingerprint,
+        queuedAt: Date.now(),
+        reason,
+        attempts: 0,
+        payload,
+      });
+      saveOfflineSubmissionQueue(queue);
+    }
+    setQueuedSubmissionCount(queue.length);
+  }, []);
+
+  const flushQueuedSubmissions = useCallback(async () => {
+    if (replayInFlightRef.current) return;
+    if (typeof onSubmitted !== 'function') return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+    const queue = loadOfflineSubmissionQueue();
+    if (queue.length === 0) {
+      setQueuedSubmissionCount(0);
+      return;
+    }
+
+    replayInFlightRef.current = true;
+    let replayedCount = 0;
+    const remaining = [];
+
+    for (const entry of queue) {
+      const submitResult = await runExternalSubmission(entry.payload);
+      if (submitResult.ok) {
+        replayedCount += 1;
+      } else {
+        remaining.push({
+          ...entry,
+          attempts: Number(entry.attempts || 0) + 1,
+          lastError: submitResult.reason || 'submission_failed',
+        });
+      }
+    }
+
+    saveOfflineSubmissionQueue(remaining);
+    setQueuedSubmissionCount(remaining.length);
+    if (replayedCount > 0) {
+      setReplayMessage(`Replayed ${replayedCount} queued submission${replayedCount === 1 ? '' : 's'}.`);
+    } else if (remaining.length > 0) {
+      setReplayMessage(`Replay pending: ${remaining.length} submission${remaining.length === 1 ? '' : 's'} still queued.`);
+    }
+    replayInFlightRef.current = false;
+  }, [onSubmitted, runExternalSubmission]);
+
+  useEffect(() => {
+    setQueuedSubmissionCount(loadOfflineSubmissionQueue().length);
+    if (typeof onSubmitted !== 'function') return undefined;
+
+    const handleOnline = () => {
+      void flushQueuedSubmissions();
+    };
+
+    window.addEventListener('online', handleOnline);
+    void flushQueuedSubmissions();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [flushQueuedSubmissions, onSubmitted]);
+
   const handleSaveSession = async () => {
     const submittedAt = Date.now();
     const savedSession = saveSession({
@@ -200,10 +306,10 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
     const result = await syncSessionGradeToCloud(savedSession);
 
     if (typeof onSubmitted === 'function') {
-      try {
-        await onSubmitted(savedSession);
-      } catch {
-        // External submission failures are surfaced by the callback owner.
+      const submitResult = await runExternalSubmission(savedSession);
+      if (!submitResult.ok) {
+        queueSubmissionForReplay(savedSession, submitResult.reason || 'submission_failed');
+        setReplayMessage('Submission queued for replay when connection is restored.');
       }
     }
     if (result.state === 'synced') {
@@ -307,6 +413,13 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
                     {cloudMessage}
                   </div>
                 )}
+                {queuedSubmissionCount > 0 && (
+                  <div className="mt-2 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <div>Offline submission queue: {queuedSubmissionCount} pending replay.</div>
+                    <button type="button" onClick={() => void flushQueuedSubmissions()} className="mt-1 border border-amber-300 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-800">Replay now</button>
+                  </div>
+                )}
+                {replayMessage && <div className="mt-2 text-xs text-zinc-500">{replayMessage}</div>}
                 {resultShareLink && (
                   <div className="mt-2 space-y-1">
                     <div className="text-[11px] text-zinc-500">Result share link</div>

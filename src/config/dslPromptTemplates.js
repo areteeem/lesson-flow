@@ -48,6 +48,27 @@ Indexed blanks are preferred — they make the mapping to answers explicit.
 - Multiple answers (pipe-separated): \`Answer: answer1 | answer2 | answer3\`
 - For indexed blanks: answers are in order: \`Answer: first | second | third\`
 
+### Lesson-level runtime settings (optional)
+Use these only in \`#LESSON\` when needed:
+- \`VisibilityPolicy: student_answers_only | correctness_only | show_correct_answers | full_feedback\`
+- \`ShowCheckButton: true|false\`
+- \`AllowRetryHomework: true|false\`
+- \`EnableGrading: true|false\`
+- \`ShowTotalGrade: true|false\`
+- \`ShowPerQuestionGrade: true|false\`
+- \`DisableBackNavigation: true|false\`
+- \`SessionTimeLimitMinutes: <positive number>\`
+- \`LiveAutoAdvanceSeconds: <positive number>\`
+- \`LiveAutoAdvancePolicy: timer | all_submitted | submission_threshold\`
+- \`LiveAutoAdvanceSubmissionThreshold: <1..100>\` (used with submission_threshold)
+- \`LiveQuestionResponseDeadlineSeconds: <positive number>\`
+- \`LiveAutoModeTimeLimitMinutes: <positive number>\` (applies when auto-advance is enabled)
+- \`ShowLeaderboardEachQuestionLive: true|false\`
+- \`AllowRetryLive: true|false\`
+- \`ShowCheckButtonLive: true|false\`
+- \`LockAfterSubmitLive: true|false\`
+- \`HideQuestionContentLive: true|false\`
+
 ### Critical rules
 1. **Answer MUST be one of the Options** for choice tasks (multiple_choice, multi_select, true_false, yes_no, either_or)
 2. **Blank count in Text MUST match** the number of Blanks or pipe-separated Answers
@@ -63,6 +84,11 @@ Indexed blanks are preferred — they make the mapping to answers explicit.
 12. For multiline fields (Content, Text, Dialogue, Left, Right, Explanation), put values on the next line after the field name
 13. For list fields (Options, Items, Blanks, Categories, Targets, Pairs, Cards), put one entry per line
 14. Keep each block parser-safe: no prose between blocks and no nested block markers inside field values
+15. Never merge all options into one line like "A, B, C" or "A | B | C" inside a single option item
+16. Remove duplicate options and duplicate answers (case-insensitive)
+17. For single-answer tasks, \`Answer:\` must contain exactly one literal value (no commas/semicolons/pipes)
+18. For multi_select only, \`Answer:\` may use pipes and each answer must exactly match one option text
+19. For highlight_glossary, multi-word targets must be exact contiguous phrases from Text (not split into separate words)
 `.trim();
 
 export const DSL_PARSER_SAFETY_CHECKLIST = `
@@ -71,8 +97,10 @@ Parser safety checklist before final output:
 - One field per line, with multiline/list fields expanded below the key
 - No markdown fences, bullets, numbering, or commentary around DSL
 - Choice-task answers are exact matches from Options
+- Choice options are one item per line and deduplicated (no compact "A, B, C" option blobs)
 - Blank and answer counts align for gap-fill style tasks
 - Targets appear in Text for highlight tasks
+- Highlight glossary phrase targets are contiguous text phrases
 - Media URLs are plain URLs in Media/Image/Video/Audio fields
 `.trim();
 
@@ -210,9 +238,11 @@ Tom lives in Kyiv and studies English after school.
 Targets:
 Kyiv
 studies
+after school
 Pairs:
 Kyiv => Київ
-studies => навчається`,
+studies => навчається
+after school => після школи`,
 
   error_correction: `
 #TASK: ERROR_CORRECTION

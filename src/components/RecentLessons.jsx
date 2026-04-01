@@ -19,8 +19,36 @@ const DEFAULT_ASSIGNMENT_CONFIG = {
   enableGrading: true,
   showTotalGrade: true,
   showPerQuestionGrade: true,
+  disableBackNavigation: false,
+  sessionTimeLimitMinutes: '',
+  maxAttempts: '1',
+  retryCooldownSeconds: '',
+  randomizeQuestions: false,
+  randomizeOptions: false,
+  lockOnTimeout: true,
+  bindAttemptToDevice: false,
+  suspiciousTabSwitchThreshold: '6',
+  copyPasteRestricted: false,
+  gracePeriodSeconds: '',
   dueAt: '',
 };
+
+function EmptyPlaybook({ title, detail, actions = [] }) {
+  return (
+    <div className="border border-dashed border-zinc-300 bg-white px-6 py-8 text-center">
+      <div className="text-sm font-semibold text-zinc-800">{title}</div>
+      <div className="mt-2 text-xs text-zinc-500">{detail}</div>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {actions.map((action) => (
+          <button key={action.label} type="button" onClick={action.onClick} className={action.primary ? 'inline-flex items-center gap-1 border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white' : 'inline-flex items-center gap-1 border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:border-zinc-900'}>
+            {action.icon || null}
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function toLocalDateTimeValue(iso) {
   if (!iso) return '';
@@ -280,6 +308,7 @@ function AssignmentCenterModal({
   onEditAssignment,
   onCopyLink,
   onToggleExpandedAssignment,
+  onOpenGrading,
 }) {
   if (!open) return null;
 
@@ -352,6 +381,72 @@ function AssignmentCenterModal({
             <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.showTotalGrade} onChange={(event) => onConfigChange((current) => ({ ...current, showTotalGrade: event.target.checked }))} />Show total grade</label>
             <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.showPerQuestionGrade} onChange={(event) => onConfigChange((current) => ({ ...current, showPerQuestionGrade: event.target.checked }))} />Show per-question grade</label>
             <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.showCheckButton} onChange={(event) => onConfigChange((current) => ({ ...current, showCheckButton: event.target.checked }))} />Show check button</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.disableBackNavigation} onChange={(event) => onConfigChange((current) => ({ ...current, disableBackNavigation: event.target.checked }))} />Disable back button</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.randomizeQuestions} onChange={(event) => onConfigChange((current) => ({ ...current, randomizeQuestions: event.target.checked }))} />Randomize questions</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.randomizeOptions} onChange={(event) => onConfigChange((current) => ({ ...current, randomizeOptions: event.target.checked }))} />Randomize options</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.lockOnTimeout} onChange={(event) => onConfigChange((current) => ({ ...current, lockOnTimeout: event.target.checked }))} />Lock on timeout</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.bindAttemptToDevice} onChange={(event) => onConfigChange((current) => ({ ...current, bindAttemptToDevice: event.target.checked }))} />Bind attempts to device</label>
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={assignmentConfig.copyPasteRestricted} onChange={(event) => onConfigChange((current) => ({ ...current, copyPasteRestricted: event.target.checked }))} />Restrict copy/paste</label>
+            <label className="space-y-1 text-xs text-zinc-700">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Time limit (minutes)</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={assignmentConfig.sessionTimeLimitMinutes}
+                onChange={(event) => onConfigChange((current) => ({ ...current, sessionTimeLimitMinutes: event.target.value }))}
+                placeholder="None"
+                className="w-full border border-zinc-200 px-2 py-1.5 text-xs outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-700">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Max attempts</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={assignmentConfig.maxAttempts}
+                onChange={(event) => onConfigChange((current) => ({ ...current, maxAttempts: event.target.value }))}
+                placeholder="1"
+                className="w-full border border-zinc-200 px-2 py-1.5 text-xs outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-700">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Retry cooldown (seconds)</span>
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={assignmentConfig.retryCooldownSeconds}
+                onChange={(event) => onConfigChange((current) => ({ ...current, retryCooldownSeconds: event.target.value }))}
+                placeholder="0"
+                className="w-full border border-zinc-200 px-2 py-1.5 text-xs outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-700">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Tab-switch warning threshold</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={assignmentConfig.suspiciousTabSwitchThreshold}
+                onChange={(event) => onConfigChange((current) => ({ ...current, suspiciousTabSwitchThreshold: event.target.value }))}
+                placeholder="6"
+                className="w-full border border-zinc-200 px-2 py-1.5 text-xs outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-zinc-700">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Deadline grace period (seconds)</span>
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={assignmentConfig.gracePeriodSeconds}
+                onChange={(event) => onConfigChange((current) => ({ ...current, gracePeriodSeconds: event.target.value }))}
+                placeholder="0"
+                className="w-full border border-zinc-200 px-2 py-1.5 text-xs outline-none focus:border-zinc-900"
+              />
+            </label>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" onClick={onSaveAssignment} disabled={saving || !selectedLessonId} className="border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-60">
@@ -393,13 +488,18 @@ function AssignmentCenterModal({
                   </div>
                   {expanded && (
                     <div className="mt-2 space-y-1 border border-zinc-200 bg-zinc-50 p-2">
-                      {assignmentSubmissions.length === 0 && <div className="text-xs text-zinc-500">No submissions yet.</div>}
+                      {assignmentSubmissions.length === 0 && (
+                        <div className="text-xs text-zinc-500">No submissions yet. Share the link and ask students to complete this assignment.</div>
+                      )}
                       {assignmentSubmissions.map((submission) => (
                         <div key={submission.submissionId} className="flex flex-wrap items-center justify-between gap-2 border border-zinc-200 bg-white px-2 py-1.5 text-xs">
                           <div className="text-zinc-700">{submission.studentName}</div>
                           <div className="text-zinc-500">{new Date(submission.timestamp).toLocaleString()}</div>
                           <div className="font-medium text-zinc-700">{submission.score}%</div>
                           <div className="text-zinc-500">{submission.submissionState || 'awaiting_review'}</div>
+                          {onOpenGrading && (
+                            <button type="button" onClick={() => onOpenGrading(submission)} className="border border-zinc-200 px-2 py-1 text-[10px] text-zinc-700 hover:border-zinc-900">Grade</button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -407,7 +507,15 @@ function AssignmentCenterModal({
                 </div>
               );
             })}
-            {assignments.length === 0 && <div className="px-3 py-6 text-sm text-zinc-500">No assignments yet. Create one from the form above.</div>}
+            {assignments.length === 0 && (
+              <div className="px-3 py-6">
+                <EmptyPlaybook
+                  title="No assignments yet"
+                  detail="Select a lesson, configure policy controls, and create your first assignment link."
+                  actions={[]}
+                />
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -552,6 +660,17 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
       enableGrading: settings.enableGrading !== false,
       showTotalGrade: settings.showTotalGrade !== false,
       showPerQuestionGrade: settings.showPerQuestionGrade !== false,
+      disableBackNavigation: settings.disableBackNavigation === true,
+      sessionTimeLimitMinutes: settings.sessionTimeLimitMinutes ? String(settings.sessionTimeLimitMinutes) : '',
+      maxAttempts: settings.maxAttempts ? String(settings.maxAttempts) : '1',
+      retryCooldownSeconds: settings.retryCooldownSeconds ? String(settings.retryCooldownSeconds) : '',
+      randomizeQuestions: settings.randomizeQuestions === true,
+      randomizeOptions: settings.randomizeOptions === true,
+      lockOnTimeout: settings.lockOnTimeout !== false,
+      bindAttemptToDevice: settings.bindAttemptToDevice === true,
+      suspiciousTabSwitchThreshold: settings.suspiciousTabSwitchThreshold ? String(settings.suspiciousTabSwitchThreshold) : '6',
+      copyPasteRestricted: settings.copyPasteRestricted === true,
+      gracePeriodSeconds: settings.gracePeriodSeconds ? String(settings.gracePeriodSeconds) : '',
       dueAt: '',
     };
   };
@@ -609,6 +728,17 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
       enableGrading: assignmentConfig.enableGrading !== false,
       showTotalGrade: assignmentConfig.showTotalGrade !== false,
       showPerQuestionGrade: assignmentConfig.showPerQuestionGrade !== false,
+      disableBackNavigation: assignmentConfig.disableBackNavigation === true,
+      sessionTimeLimitMinutes: Number(assignmentConfig.sessionTimeLimitMinutes) > 0 ? Number(assignmentConfig.sessionTimeLimitMinutes) : null,
+      maxAttempts: Math.max(1, Number(assignmentConfig.maxAttempts) || 1),
+      retryCooldownSeconds: Math.max(0, Number(assignmentConfig.retryCooldownSeconds) || 0),
+      randomizeQuestions: assignmentConfig.randomizeQuestions === true,
+      randomizeOptions: assignmentConfig.randomizeOptions === true,
+      lockOnTimeout: assignmentConfig.lockOnTimeout !== false,
+      bindAttemptToDevice: assignmentConfig.bindAttemptToDevice === true,
+      suspiciousTabSwitchThreshold: Math.max(1, Number(assignmentConfig.suspiciousTabSwitchThreshold) || 6),
+      copyPasteRestricted: assignmentConfig.copyPasteRestricted === true,
+      gracePeriodSeconds: Math.max(0, Number(assignmentConfig.gracePeriodSeconds) || 0),
       expiresAt: fromLocalDateTimeValue(assignmentConfig.dueAt),
     });
     setAssignmentSaving(false);
@@ -635,6 +765,17 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
       enableGrading: assignment.enableGrading !== false,
       showTotalGrade: assignment.showTotalGrade !== false,
       showPerQuestionGrade: assignment.showPerQuestionGrade !== false,
+      disableBackNavigation: assignment.disableBackNavigation === true,
+      sessionTimeLimitMinutes: assignment.sessionTimeLimitMinutes ? String(assignment.sessionTimeLimitMinutes) : '',
+      maxAttempts: assignment.maxAttempts ? String(assignment.maxAttempts) : '1',
+      retryCooldownSeconds: assignment.retryCooldownSeconds ? String(assignment.retryCooldownSeconds) : '',
+      randomizeQuestions: assignment.randomizeQuestions === true,
+      randomizeOptions: assignment.randomizeOptions === true,
+      lockOnTimeout: assignment.lockOnTimeout !== false,
+      bindAttemptToDevice: assignment.bindAttemptToDevice === true,
+      suspiciousTabSwitchThreshold: assignment.suspiciousTabSwitchThreshold ? String(assignment.suspiciousTabSwitchThreshold) : '6',
+      copyPasteRestricted: assignment.copyPasteRestricted === true,
+      gracePeriodSeconds: assignment.gracePeriodSeconds ? String(assignment.gracePeriodSeconds) : '',
       dueAt: toLocalDateTimeValue(assignment.expiresAt),
     });
     setAssignmentLink(assignment.assignmentUrl || '');
@@ -823,10 +964,13 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
           </div>
 
           {filteredLessons.length === 0 && (
-            <div className="border border-dashed border-zinc-300 bg-white px-6 py-12 text-center">
-              <div className="text-sm text-zinc-500">{searchQuery ? 'No lessons match your search.' : 'No lessons yet. Create your first one!'}</div>
-              {!searchQuery && <button type="button" onClick={() => setCreateTemplate('blank')} className="mt-4 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white">Create Lesson</button>}
-            </div>
+            <EmptyPlaybook
+              title={searchQuery ? 'No lessons match this filter' : 'No lessons yet'}
+              detail={searchQuery ? 'Try a broader keyword or reset folder and sorting filters.' : 'Start with a blank lesson, then use templates to accelerate authoring.'}
+              actions={searchQuery
+                ? [{ label: 'Clear search', onClick: () => setSearchQuery('') }]
+                : [{ label: 'New lesson', onClick: () => setCreateTemplate('blank'), primary: true, icon: <PlusIcon size={12} /> }]}
+            />
           )}
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{renderedLessons.map((lesson) => (
@@ -945,6 +1089,9 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
         onEditAssignment={handleEditAssignmentFromCenter}
         onCopyLink={handleCopyAssignmentLink}
         onToggleExpandedAssignment={(assignmentId) => setExpandedAssignmentId((current) => (current === assignmentId ? '' : assignmentId))}
+        onOpenGrading={() => {
+          if (typeof window !== 'undefined') window.location.assign('/grading');
+        }}
       />
       <PromptModal
         open={folderPromptParent !== null}

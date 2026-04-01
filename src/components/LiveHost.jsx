@@ -11,6 +11,54 @@ import { saveSession } from '../storage';
 import { syncSessionGradeToCloud } from '../utils/gradingCloud';
 
 const PHASE = { LOBBY: 'lobby', RUNNING: 'running', FINISHED: 'finished' };
+const AUTO_ADVANCE_POLICY = {
+  TIMER: 'timer',
+  ALL_SUBMITTED: 'all_submitted',
+  SUBMISSION_THRESHOLD: 'submission_threshold',
+};
+const LIVE_PACE_MODE = {
+  TEACHER_LED: 'teacher_led',
+  STUDENT_PACED: 'student_paced',
+  HYBRID: 'hybrid',
+};
+
+function normalizeAutoAdvancePolicy(value) {
+  const policy = String(value || '').trim().toLowerCase();
+  if (Object.values(AUTO_ADVANCE_POLICY).includes(policy)) return policy;
+  return AUTO_ADVANCE_POLICY.TIMER;
+}
+
+function clampSubmissionPercent(value, fallback = 70) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(1, Math.min(100, Math.round(numeric)));
+}
+
+function toPositiveInt(value, fallback = null) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  return Math.round(numeric);
+}
+
+function normalizeLivePaceMode(value) {
+  const mode = String(value || '').trim().toLowerCase();
+  if (mode === LIVE_PACE_MODE.STUDENT_PACED || mode === LIVE_PACE_MODE.HYBRID || mode === LIVE_PACE_MODE.TEACHER_LED) {
+    return mode;
+  }
+  return LIVE_PACE_MODE.TEACHER_LED;
+}
+
+function clampGroupCount(value, fallback = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  return Math.max(2, Math.min(8, Math.round(numeric)));
+}
+
+function clampCaptainRotation(value, fallback = 1) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  return Math.max(1, Math.min(10, Math.round(numeric)));
+}
 
 function normalizeAnswerForBucket(answer) {
   if (answer === null || answer === undefined || answer === '') return '(empty)';
@@ -20,6 +68,13 @@ function normalizeAnswerForBucket(answer) {
   } catch {
     return String(answer);
   }
+}
+
+function formatSecondsToClock(totalSeconds) {
+  const safeSeconds = Math.max(0, Number(totalSeconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 export default function LiveHost({ lesson, onExit }) {
@@ -47,7 +102,18 @@ export default function LiveHost({ lesson, onExit }) {
   const pin = sessionId;
   const validation = useMemo(() => validateLessonStructure(lesson), [lesson]);
   const channelRef = useRef(null);
-  const stateRef = useRef({ phase: PHASE.LOBBY, currentIndex: 0, lessonPayload: null });
+  const stateRef = useRef({
+    phase: PHASE.LOBBY,
+    currentIndex: 0,
+    lessonPayload: null,
+    participantCount: 0,
+    autoModeRemainingSeconds: null,
+    questionDeadlineRemainingSeconds: null,
+    paceMode: LIVE_PACE_MODE.TEACHER_LED,
+    teamAssignments: {},
+    captainsByTeam: {},
+    spotlight: null,
+  });
   const hasPersistedLiveResultsRef = useRef(false);
 
   const blocks = validation.blocks;
@@ -56,7 +122,25 @@ export default function LiveHost({ lesson, onExit }) {
     showCheckButton: lesson?.settings?.showCheckButtonLive === true,
     lockAfterSubmit: lesson?.settings?.lockAfterSubmitLive !== false,
     hideQuestionContent: lesson?.settings?.hideQuestionContentLive === true,
+    autoAdvanceSeconds: Number(lesson?.settings?.liveAutoAdvanceSeconds) > 0 ? Number(lesson.settings.liveAutoAdvanceSeconds) : null,
+    autoAdvancePolicy: normalizeAutoAdvancePolicy(lesson?.settings?.liveAutoAdvancePolicy),
+    autoAdvanceSubmissionThreshold: clampSubmissionPercent(lesson?.settings?.liveAutoAdvanceSubmissionThreshold, 70),
+    questionResponseDeadlineSeconds: toPositiveInt(lesson?.settings?.liveQuestionResponseDeadlineSeconds, null),
+    autoModeTimeLimitMinutes: Number(lesson?.settings?.liveAutoModeTimeLimitMinutes) > 0 ? Number(lesson.settings.liveAutoModeTimeLimitMinutes) : null,
+    showLeaderboardEachQuestion: lesson?.settings?.showLeaderboardEachQuestionLive === true,
+    paceMode: normalizeLivePaceMode(lesson?.settings?.livePaceMode),
+    groupModeEnabled: lesson?.settings?.liveGroupModeEnabled === true,
+    groupCount: clampGroupCount(lesson?.settings?.liveGroupCount, 2),
+    captainRotationEvery: clampCaptainRotation(lesson?.settings?.liveCaptainRotationEvery, 1),
   }));
+  const [autoAdvanceRemaining, setAutoAdvanceRemaining] = useState(null);
+  const [autoModeRemainingSeconds, setAutoModeRemainingSeconds] = useState(null);
+  const [autoAdvancePaused, setAutoAdvancePaused] = useState(false);
+  const [questionDeadlineRemainingSeconds, setQuestionDeadlineRemainingSeconds] = useState(null);
+  const [skipAuditTrail, setSkipAuditTrail] = useState([]);
+  const [reopenAuditTrail, setReopenAuditTrail] = useState([]);
+  const [spotlightAuditTrail, setSpotlightAuditTrail] = useState([]);
+  const [spotlight, setSpotlight] = useState(null);
 
   const lessonPayload = useMemo(() => ({
     id: lesson?.id || 'live-lesson',
@@ -67,6 +151,16 @@ export default function LiveHost({ lesson, onExit }) {
       showCheckButtonLive: liveSettings.showCheckButton,
       lockAfterSubmitLive: liveSettings.lockAfterSubmit,
       hideQuestionContentLive: liveSettings.hideQuestionContent,
+      liveAutoAdvanceSeconds: liveSettings.autoAdvanceSeconds,
+      liveAutoAdvancePolicy: liveSettings.autoAdvancePolicy,
+      liveAutoAdvanceSubmissionThreshold: liveSettings.autoAdvanceSubmissionThreshold,
+      liveQuestionResponseDeadlineSeconds: liveSettings.questionResponseDeadlineSeconds,
+      liveAutoModeTimeLimitMinutes: liveSettings.autoModeTimeLimitMinutes,
+      showLeaderboardEachQuestionLive: liveSettings.showLeaderboardEachQuestion,
+      livePaceMode: normalizeLivePaceMode(liveSettings.paceMode),
+      liveGroupModeEnabled: liveSettings.groupModeEnabled === true,
+      liveGroupCount: clampGroupCount(liveSettings.groupCount, 2),
+      liveCaptainRotationEvery: clampCaptainRotation(liveSettings.captainRotationEvery, 1),
     },
     blocks,
   }), [blocks, lesson?.id, lesson?.settings, lesson?.title, liveSettings]);
@@ -82,6 +176,76 @@ export default function LiveHost({ lesson, onExit }) {
   const [transportMode, setTransportMode] = useState(() => (typeof window !== 'undefined' ? getLiveTransportLabel(window.location.search) : 'broadcast-local'));
   const [transportError, setTransportError] = useState('');
   const currentBlock = blocks[currentIndex] || null;
+  const playerCount = Object.keys(students).length;
+  const paceMode = normalizeLivePaceMode(liveSettings.paceMode);
+  const teacherLedPace = paceMode === LIVE_PACE_MODE.TEACHER_LED;
+  const hybridPace = paceMode === LIVE_PACE_MODE.HYBRID;
+  const showPerQuestionLeaderboard = liveSettings.showLeaderboardEachQuestion && playerCount > 1;
+  const autoAdvancePolicy = normalizeAutoAdvancePolicy(liveSettings.autoAdvancePolicy);
+  const submissionThreshold = clampSubmissionPercent(liveSettings.autoAdvanceSubmissionThreshold, 70);
+  const timerPolicyEnabled = teacherLedPace && autoAdvancePolicy === AUTO_ADVANCE_POLICY.TIMER && Number(liveSettings.autoAdvanceSeconds) > 0;
+  const submissionPolicyEnabled = teacherLedPace && (autoAdvancePolicy === AUTO_ADVANCE_POLICY.ALL_SUBMITTED || autoAdvancePolicy === AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD);
+  const autoModeEnabled = timerPolicyEnabled || submissionPolicyEnabled;
+  const questionDeadlineEnabled = teacherLedPace && toPositiveInt(liveSettings.questionResponseDeadlineSeconds, null) !== null;
+  const hostFlowControlsEnabled = teacherLedPace && (autoModeEnabled || questionDeadlineEnabled);
+  const teamAssignments = useMemo(() => {
+    if (!liveSettings.groupModeEnabled) return {};
+    const groupCount = clampGroupCount(liveSettings.groupCount, 2);
+    const ordered = Object.entries(students)
+      .sort((left, right) => (left[1]?.joinedAt || 0) - (right[1]?.joinedAt || 0))
+      .map(([studentId]) => studentId);
+
+    const next = {};
+    ordered.forEach((studentId, index) => {
+      const teamNumber = (index % groupCount) + 1;
+      next[studentId] = `Team ${String(teamNumber).padStart(2, '0')}`;
+    });
+    return next;
+  }, [liveSettings.groupCount, liveSettings.groupModeEnabled, students]);
+
+  const captainsByTeam = useMemo(() => {
+    if (!liveSettings.groupModeEnabled) return {};
+    const teamMembers = new Map();
+    Object.entries(teamAssignments).forEach(([studentId, teamName]) => {
+      if (!teamMembers.has(teamName)) teamMembers.set(teamName, []);
+      teamMembers.get(teamName).push(studentId);
+    });
+
+    const rotationEvery = clampCaptainRotation(liveSettings.captainRotationEvery, 1);
+    const rotationStep = Math.floor(currentIndex / rotationEvery);
+    const next = {};
+    teamMembers.forEach((members, teamName) => {
+      if (!Array.isArray(members) || members.length === 0) return;
+      const captainIndex = rotationStep % members.length;
+      next[teamName] = members[captainIndex];
+    });
+    return next;
+  }, [currentIndex, liveSettings.captainRotationEvery, liveSettings.groupModeEnabled, teamAssignments]);
+
+  const currentTaskResponses = useMemo(() => {
+    if (!currentBlock || currentBlock.type !== 'task') return [];
+    return Object.entries(students)
+      .map(([studentId, student]) => {
+        const result = student?.responses?.[currentBlock.id];
+        if (!result) return null;
+        const answer = result?.response ?? result?.answer ?? null;
+        const submitted = result?.submitted === true || answer !== null;
+        if (!submitted) return null;
+        const teamName = teamAssignments[studentId] || null;
+        const isCaptain = teamName ? captainsByTeam[teamName] === studentId : false;
+        return {
+          studentId,
+          name: student?.name || 'Student',
+          answer,
+          correct: result?.correct,
+          submittedAt: result?.timestamp || Date.now(),
+          teamName,
+          isCaptain,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => (right.submittedAt || 0) - (left.submittedAt || 0));
+  }, [captainsByTeam, currentBlock, students, teamAssignments]);
 
   useEffect(() => {
     if (phase === PHASE.FINISHED) setHostTab('results');
@@ -108,8 +272,19 @@ export default function LiveHost({ lesson, onExit }) {
   }, []);
 
   useEffect(() => {
-    stateRef.current = { phase, currentIndex, lessonPayload };
-  }, [phase, currentIndex, lessonPayload]);
+    stateRef.current = {
+      phase,
+      currentIndex,
+      lessonPayload,
+      participantCount: Object.keys(students).length,
+      autoModeRemainingSeconds,
+      questionDeadlineRemainingSeconds,
+      paceMode,
+      teamAssignments,
+      captainsByTeam,
+      spotlight,
+    };
+  }, [autoModeRemainingSeconds, captainsByTeam, currentIndex, lessonPayload, paceMode, phase, questionDeadlineRemainingSeconds, spotlight, students, teamAssignments]);
 
   const broadcast = useCallback((msg) => {
     channelRef.current?.postMessage(msg);
@@ -121,9 +296,16 @@ export default function LiveHost({ lesson, onExit }) {
       phase: nextPhase,
       currentIndex: nextIndex,
       lesson: lessonPayload,
+      participantCount: Object.keys(students).length,
+      autoModeRemainingSeconds,
+      questionDeadlineRemainingSeconds,
+      paceMode,
+      teamAssignments,
+      captainsByTeam,
+      spotlight,
       timestamp: Date.now(),
     });
-  }, [broadcast, currentIndex, lessonPayload, phase]);
+  }, [autoModeRemainingSeconds, broadcast, captainsByTeam, currentIndex, lessonPayload, paceMode, phase, questionDeadlineRemainingSeconds, spotlight, students, teamAssignments]);
 
   useEffect(() => {
     void ensureSession();
@@ -163,7 +345,21 @@ export default function LiveHost({ lesson, onExit }) {
         });
         ch.postMessage({ type: 'join_ack', playerId: msg.playerId, sessionId, mode: transportMode, timestamp: Date.now() });
         const snapshot = stateRef.current;
-        ch.postMessage({ type: 'sync', sessionId, phase: snapshot.phase, currentIndex: snapshot.currentIndex, lesson: snapshot.lessonPayload, timestamp: Date.now() });
+        ch.postMessage({
+          type: 'sync',
+          sessionId,
+          phase: snapshot.phase,
+          currentIndex: snapshot.currentIndex,
+          lesson: snapshot.lessonPayload,
+          participantCount: snapshot.participantCount || 0,
+          autoModeRemainingSeconds: snapshot.autoModeRemainingSeconds ?? null,
+          questionDeadlineRemainingSeconds: snapshot.questionDeadlineRemainingSeconds ?? null,
+          paceMode: snapshot.paceMode || LIVE_PACE_MODE.TEACHER_LED,
+          teamAssignments: snapshot.teamAssignments || {},
+          captainsByTeam: snapshot.captainsByTeam || {},
+          spotlight: snapshot.spotlight || null,
+          timestamp: Date.now(),
+        });
       }
       if (msg.type === 'leave') {
         setStudents((prev) => {
@@ -174,12 +370,41 @@ export default function LiveHost({ lesson, onExit }) {
       }
       if (msg.type === 'request_sync') {
         const snapshot = stateRef.current;
-        ch.postMessage({ type: 'sync', sessionId, playerId: hostPlayerId, phase: snapshot.phase, currentIndex: snapshot.currentIndex, lesson: snapshot.lessonPayload, timestamp: Date.now() });
+        ch.postMessage({
+          type: 'sync',
+          sessionId,
+          playerId: hostPlayerId,
+          phase: snapshot.phase,
+          currentIndex: snapshot.currentIndex,
+          lesson: snapshot.lessonPayload,
+          participantCount: snapshot.participantCount || 0,
+          autoModeRemainingSeconds: snapshot.autoModeRemainingSeconds ?? null,
+          questionDeadlineRemainingSeconds: snapshot.questionDeadlineRemainingSeconds ?? null,
+          paceMode: snapshot.paceMode || LIVE_PACE_MODE.TEACHER_LED,
+          teamAssignments: snapshot.teamAssignments || {},
+          captainsByTeam: snapshot.captainsByTeam || {},
+          spotlight: snapshot.spotlight || null,
+          timestamp: Date.now(),
+        });
       }
       if (msg.type === 'student_heartbeat' && msg.playerId) {
         updateStudent(msg.playerId, (current) => ({ ...current, lastSeen: Date.now() }));
       }
       if (msg.type === 'response_update' && msg.playerId && msg.blockId) {
+        const snapshot = stateRef.current;
+        const snapshotBlockId = blocks[snapshot.currentIndex]?.id || null;
+        const deadlineReached = Number(snapshot.questionDeadlineRemainingSeconds) === 0;
+        if (deadlineReached && snapshot.phase === PHASE.RUNNING && snapshotBlockId && msg.blockId === snapshotBlockId) {
+          ch.postMessage({
+            type: 'response_rejected',
+            sessionId,
+            playerId: msg.playerId,
+            blockId: msg.blockId,
+            reason: 'deadline_reached',
+            timestamp: Date.now(),
+          });
+          return;
+        }
         updateStudent(msg.playerId, (current) => ({
           ...current,
           name: msg.name || current.name,
@@ -215,18 +440,185 @@ export default function LiveHost({ lesson, onExit }) {
   const startSession = () => {
     recordDebugEvent('live_host_start', { pin, lessonId: lesson?.id || null, totalBlocks: blocks.length, transport: transportMode });
     setCurrentIndex(0);
+    setAutoAdvancePaused(false);
+    setSkipAuditTrail([]);
+    setReopenAuditTrail([]);
+    setSpotlightAuditTrail([]);
+    setSpotlight(null);
     setPhase(PHASE.RUNNING);
   };
 
   const finishSession = () => {
     recordDebugEvent('live_host_finish', { pin, lessonId: lesson?.id || null, totalBlocks: blocks.length });
+    setAutoAdvancePaused(false);
     setPhase(PHASE.FINISHED);
   };
+
+  const advanceToNextBlock = useCallback(() => {
+    if (currentIndex >= blocks.length - 1) {
+      finishSession();
+      return;
+    }
+    setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
+  }, [blocks.length, currentIndex, finishSession]);
+
+  const skipCurrentQuestion = useCallback(() => {
+    if (phase !== PHASE.RUNNING || !currentBlock) return;
+    const inputReason = typeof window !== 'undefined'
+      ? window.prompt('Reason for skipping this question?', 'Time is up')
+      : 'No reason provided';
+    if (inputReason === null) return;
+
+    const reason = String(inputReason || '').trim() || 'No reason provided';
+    const event = {
+      id: `skip-${Date.now()}-${currentIndex}`,
+      action: 'skip',
+      blockId: currentBlock.id || null,
+      blockLabel: getBlockLabel(currentBlock, currentIndex),
+      blockIndex: currentIndex,
+      reason,
+      timestamp: Date.now(),
+    };
+
+    setSkipAuditTrail((current) => [event, ...current].slice(0, 100));
+    recordDebugEvent('live_host_skip_question', {
+      pin,
+      blockId: event.blockId,
+      blockLabel: event.blockLabel,
+      blockIndex: event.blockIndex,
+      reason,
+    });
+    broadcast({
+      type: 'question_skipped',
+      sessionId,
+      ...event,
+    });
+    advanceToNextBlock();
+  }, [advanceToNextBlock, broadcast, currentBlock, currentIndex, phase, pin, sessionId]);
+
+  const reopenPreviousQuestion = useCallback(() => {
+    if (phase !== PHASE.RUNNING || currentIndex <= 0) return;
+
+    const targetIndex = currentIndex - 1;
+    const targetBlock = blocks[targetIndex] || null;
+    const inputReason = typeof window !== 'undefined'
+      ? window.prompt('Reason for re-opening the previous question?', 'Need to review answers')
+      : 'No reason provided';
+    if (inputReason === null) return;
+
+    const reason = String(inputReason || '').trim() || 'No reason provided';
+    const event = {
+      id: `reopen-${Date.now()}-${targetIndex}`,
+      action: 'reopen',
+      blockId: targetBlock?.id || null,
+      blockLabel: targetBlock ? getBlockLabel(targetBlock, targetIndex) : `Block ${targetIndex + 1}`,
+      blockIndex: targetIndex,
+      fromIndex: currentIndex,
+      reason,
+      timestamp: Date.now(),
+    };
+
+    setReopenAuditTrail((current) => [event, ...current].slice(0, 100));
+    setAutoAdvancePaused(true);
+    recordDebugEvent('live_host_reopen_question', {
+      pin,
+      blockId: event.blockId,
+      blockLabel: event.blockLabel,
+      blockIndex: event.blockIndex,
+      fromIndex: event.fromIndex,
+      reason,
+    });
+    broadcast({
+      type: 'question_reopened',
+      sessionId,
+      ...event,
+    });
+    setCurrentIndex(targetIndex);
+  }, [blocks, broadcast, currentIndex, phase, pin, sessionId]);
+
+  const spotlightStudentAnswer = useCallback((studentId) => {
+    if (!currentBlock || currentBlock.type !== 'task') return;
+    const student = students[studentId];
+    const result = student?.responses?.[currentBlock.id];
+    if (!student || !result) return;
+
+    const teamName = teamAssignments[studentId] || null;
+    const payload = {
+      id: `spotlight-${Date.now()}-${studentId}`,
+      studentId,
+      studentName: student?.name || 'Student',
+      blockId: currentBlock.id,
+      blockLabel: getBlockLabel(currentBlock, currentIndex),
+      blockIndex: currentIndex,
+      answer: result?.response ?? result?.answer ?? null,
+      correct: typeof result?.correct === 'boolean' ? result.correct : null,
+      teamName,
+      isCaptain: teamName ? captainsByTeam[teamName] === studentId : false,
+      timestamp: Date.now(),
+    };
+
+    setSpotlight(payload);
+    setSpotlightAuditTrail((current) => [
+      {
+        ...payload,
+        action: 'spotlight',
+      },
+      ...current,
+    ].slice(0, 100));
+
+    broadcast({
+      type: 'spotlight_answer',
+      sessionId,
+      spotlight: payload,
+      timestamp: Date.now(),
+    });
+  }, [broadcast, captainsByTeam, currentBlock, currentIndex, sessionId, students, teamAssignments]);
+
+  const clearSpotlight = useCallback(() => {
+    setSpotlight(null);
+    broadcast({
+      type: 'spotlight_cleared',
+      sessionId,
+      timestamp: Date.now(),
+    });
+  }, [broadcast, sessionId]);
 
   const buildLiveSessions = useCallback((submittedAt) => {
     const lessonId = lesson?.id || `live-${sessionId}`;
     const lessonTitle = lesson?.title || 'Live Lesson';
     const lessonPreview = lesson?.dsl || '';
+    const controlEvents = [
+      ...skipAuditTrail
+        .map((event) => ({
+          type: 'live_host_question_skipped',
+          at: event.timestamp,
+          blockId: event.blockId,
+          blockLabel: event.blockLabel,
+          blockIndex: event.blockIndex,
+          reason: event.reason,
+        })),
+      ...reopenAuditTrail
+        .map((event) => ({
+          type: 'live_host_question_reopened',
+          at: event.timestamp,
+          blockId: event.blockId,
+          blockLabel: event.blockLabel,
+          blockIndex: event.blockIndex,
+          fromIndex: event.fromIndex,
+          reason: event.reason,
+        })),
+      ...spotlightAuditTrail
+        .map((event) => ({
+          type: 'live_host_spotlight_answer',
+          at: event.timestamp,
+          studentId: event.studentId,
+          studentName: event.studentName,
+          blockId: event.blockId,
+          blockLabel: event.blockLabel,
+          blockIndex: event.blockIndex,
+          teamName: event.teamName || null,
+        })),
+    ].sort((left, right) => left.at - right.at);
 
     return Object.entries(students).map(([studentId, student]) => {
       const responses = student?.responses || {};
@@ -287,6 +679,7 @@ export default function LiveHost({ lesson, onExit }) {
         const score = Math.max(0, Math.min(1, Number(entry.score || 0)));
         return sum + points * score;
       }, 0);
+      const teamName = teamAssignments[studentId] || null;
 
       return {
         id: `live-${sessionId}-${studentId}`,
@@ -304,17 +697,23 @@ export default function LiveHost({ lesson, onExit }) {
         mode: 'live',
         origin: 'live',
         sourceType: 'live',
+        teamName,
         submissionState: breakdown.some((entry) => entry.correct === null) ? 'awaiting_review' : 'graded',
         interaction: {
           transport: transportMode,
           liveSessionId: sessionId,
           studentId,
-          events: [{ type: 'live_host_finished', at: submittedAt }],
+          teamName,
+          wasCaptain: teamName ? captainsByTeam[teamName] === studentId : false,
+          events: [
+            ...controlEvents,
+            { type: 'live_host_finished', at: submittedAt },
+          ],
         },
         timestamp: submittedAt,
       };
     }).filter(Boolean);
-  }, [gradableTasks, lesson?.dsl, lesson?.id, lesson?.title, manualPoints, sessionId, students, transportMode]);
+  }, [captainsByTeam, gradableTasks, lesson?.dsl, lesson?.id, lesson?.title, manualPoints, reopenAuditTrail, sessionId, skipAuditTrail, spotlightAuditTrail, students, teamAssignments, transportMode]);
 
   const persistFinishedLiveResults = useCallback(async () => {
     if (hasPersistedLiveResultsRef.current) return;
@@ -338,14 +737,160 @@ export default function LiveHost({ lesson, onExit }) {
 
   const goPrev = () => setCurrentIndex((value) => Math.max(0, value - 1));
   const goNext = () => {
-    if (currentIndex >= blocks.length - 1) {
-      finishSession();
-      return;
-    }
-    setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
+    advanceToNextBlock();
   };
 
-  const playerCount = Object.keys(students).length;
+  const currentBlockStats = useMemo(() => {
+    if (!currentBlock || currentBlock.type !== 'task') return null;
+    let submitted = 0;
+    let correct = 0;
+
+    Object.values(students).forEach((student) => {
+      const result = student?.responses?.[currentBlock.id];
+      if (!result) return;
+      const responded = result.submitted === true || result.response !== undefined || result.answer !== undefined;
+      if (!responded) return;
+      submitted += 1;
+      if (result.correct === true) correct += 1;
+    });
+
+    return {
+      submitted,
+      correct,
+      percent: submitted > 0 ? Math.round((correct / submitted) * 100) : 0,
+    };
+  }, [currentBlock, students]);
+
+  useEffect(() => {
+    if (phase !== PHASE.RUNNING) {
+      setQuestionDeadlineRemainingSeconds(null);
+      return;
+    }
+
+    if (!teacherLedPace) {
+      setQuestionDeadlineRemainingSeconds(null);
+      return;
+    }
+
+    const configured = toPositiveInt(liveSettings.questionResponseDeadlineSeconds, null);
+    if (!currentBlock || currentBlock.type !== 'task' || !configured) {
+      setQuestionDeadlineRemainingSeconds(null);
+      return;
+    }
+
+    setQuestionDeadlineRemainingSeconds(configured);
+  }, [currentBlock, liveSettings.questionResponseDeadlineSeconds, phase, teacherLedPace]);
+
+  useEffect(() => {
+    if (phase !== PHASE.RUNNING || questionDeadlineRemainingSeconds === null || autoAdvancePaused) return undefined;
+    if (questionDeadlineRemainingSeconds <= 0) return undefined;
+
+    const timerId = window.setTimeout(() => {
+      setQuestionDeadlineRemainingSeconds((current) => {
+        if (current === null) return null;
+        return Math.max(0, current - 1);
+      });
+    }, 1000);
+
+    return () => window.clearTimeout(timerId);
+  }, [autoAdvancePaused, phase, questionDeadlineRemainingSeconds]);
+
+  useEffect(() => {
+    if (phase !== PHASE.RUNNING) {
+      setAutoAdvanceRemaining(null);
+      return;
+    }
+
+    if (!teacherLedPace) {
+      setAutoAdvanceRemaining(null);
+      return;
+    }
+
+    const seconds = Number(liveSettings.autoAdvanceSeconds);
+    if (autoAdvancePolicy !== AUTO_ADVANCE_POLICY.TIMER || !Number.isFinite(seconds) || seconds <= 0) {
+      setAutoAdvanceRemaining(null);
+      return;
+    }
+
+    setAutoAdvanceRemaining(Math.round(seconds));
+  }, [autoAdvancePolicy, currentIndex, liveSettings.autoAdvanceSeconds, phase, teacherLedPace]);
+
+  useEffect(() => {
+    if (phase !== PHASE.RUNNING) {
+      setAutoModeRemainingSeconds(null);
+      return;
+    }
+
+    if (!teacherLedPace) {
+      setAutoModeRemainingSeconds(null);
+      return;
+    }
+
+    const limitMinutes = Number(liveSettings.autoModeTimeLimitMinutes);
+    if (!autoModeEnabled || !Number.isFinite(limitMinutes) || limitMinutes <= 0) {
+      setAutoModeRemainingSeconds(null);
+      return;
+    }
+
+    setAutoModeRemainingSeconds(Math.round(limitMinutes * 60));
+  }, [autoModeEnabled, liveSettings.autoModeTimeLimitMinutes, phase, teacherLedPace]);
+
+  useEffect(() => {
+    if (phase !== PHASE.RUNNING || autoAdvanceRemaining === null || autoAdvancePaused) return undefined;
+
+    if (autoAdvanceRemaining <= 0) {
+      advanceToNextBlock();
+      return undefined;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setAutoAdvanceRemaining((current) => {
+        if (current === null) return null;
+        return Math.max(0, current - 1);
+      });
+    }, 1000);
+
+    return () => window.clearTimeout(timerId);
+  }, [advanceToNextBlock, autoAdvancePaused, autoAdvanceRemaining, phase]);
+
+  useEffect(() => {
+    if (phase !== PHASE.RUNNING || autoModeRemainingSeconds === null || autoAdvancePaused) return undefined;
+
+    if (autoModeRemainingSeconds <= 0) {
+      finishSession();
+      return undefined;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setAutoModeRemainingSeconds((current) => {
+        if (current === null) return null;
+        return Math.max(0, current - 1);
+      });
+    }, 1000);
+
+    return () => window.clearTimeout(timerId);
+  }, [autoAdvancePaused, autoModeRemainingSeconds, phase]);
+
+  useEffect(() => {
+    if (phase !== PHASE.RUNNING || !teacherLedPace || autoAdvancePaused || !submissionPolicyEnabled) return;
+    if (!currentBlock || currentBlock.type !== 'task' || playerCount <= 0) return;
+
+    const submittedCount = currentBlockStats?.submitted || 0;
+    if (autoAdvancePolicy === AUTO_ADVANCE_POLICY.ALL_SUBMITTED) {
+      if (submittedCount >= playerCount) {
+        advanceToNextBlock();
+      }
+      return;
+    }
+
+    if (autoAdvancePolicy === AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD) {
+      const submissionPercent = Math.round((submittedCount / playerCount) * 100);
+      if (submissionPercent >= submissionThreshold) {
+        advanceToNextBlock();
+      }
+    }
+  }, [advanceToNextBlock, autoAdvancePaused, autoAdvancePolicy, currentBlock, currentBlockStats, phase, playerCount, submissionPolicyEnabled, submissionThreshold, teacherLedPace]);
+
   const supportsLive = supportsConfiguredLiveTransport(typeof window !== 'undefined' ? window.location.search : '');
 
   const computeStudentStats = useCallback((playerId) => {
@@ -543,6 +1088,43 @@ export default function LiveHost({ lesson, onExit }) {
       .slice(0, 3);
   }, [students, computeStudentStats]);
 
+  const teamLeaderboard = useMemo(() => {
+    if (!liveSettings.groupModeEnabled) return [];
+    const byTeam = new Map();
+    Object.entries(students).forEach(([studentId, student]) => {
+      const teamName = teamAssignments[studentId] || 'Unassigned';
+      const stats = computeStudentStats(studentId);
+      const captainId = captainsByTeam[teamName] || null;
+      if (!byTeam.has(teamName)) {
+        byTeam.set(teamName, {
+          teamName,
+          members: 0,
+          avgPct: 0,
+          totalPct: 0,
+          captainName: captainId && students[captainId] ? students[captainId].name : null,
+          sampleMembers: [],
+        });
+      }
+      const bucket = byTeam.get(teamName);
+      bucket.members += 1;
+      bucket.totalPct += stats.pct;
+      if (bucket.sampleMembers.length < 3) bucket.sampleMembers.push(student.name || 'Student');
+    });
+
+    return [...byTeam.values()]
+      .map((team) => ({
+        ...team,
+        avgPct: team.members > 0 ? Math.round(team.totalPct / team.members) : 0,
+      }))
+      .sort((left, right) => right.avgPct - left.avgPct || right.members - left.members);
+  }, [captainsByTeam, computeStudentStats, liveSettings.groupModeEnabled, students, teamAssignments]);
+
+  const recentControlAudit = useMemo(() => {
+    return [...skipAuditTrail, ...reopenAuditTrail, ...spotlightAuditTrail]
+      .slice()
+      .sort((left, right) => right.timestamp - left.timestamp);
+  }, [reopenAuditTrail, skipAuditTrail, spotlightAuditTrail]);
+
   const studentRows = useMemo(() => {
     return Object.entries(students).map(([studentId, student]) => {
       const stats = computeStudentStats(studentId);
@@ -601,6 +1183,11 @@ export default function LiveHost({ lesson, onExit }) {
     const payload = {
       sessionId,
       exportedAt: new Date().toISOString(),
+      audit: {
+        skippedQuestions: skipAuditTrail,
+        reopenedQuestions: reopenAuditTrail,
+        spotlightedAnswers: spotlightAuditTrail,
+      },
       students: studentRows.map((row) => ({
         sessionId,
         studentId: row.studentId,
@@ -663,7 +1250,7 @@ export default function LiveHost({ lesson, onExit }) {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center p-4 sm:p-6">
+      <main className={`flex flex-1 flex-col items-center p-4 sm:p-6 ${(hostTab === 'live' && phase === PHASE.LOBBY) ? 'justify-center' : 'justify-start overflow-y-auto'}`}>
         {hostTab === 'results' && (
           <div className="w-full max-w-6xl">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -792,7 +1379,145 @@ export default function LiveHost({ lesson, onExit }) {
                 <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showCheckButton} onChange={(event) => setLiveSettings((current) => ({ ...current, showCheckButton: event.target.checked }))} />Show check button</label>
                 <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.lockAfterSubmit} onChange={(event) => setLiveSettings((current) => ({ ...current, lockAfterSubmit: event.target.checked }))} />One attempt per task</label>
                 <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.hideQuestionContent} onChange={(event) => setLiveSettings((current) => ({ ...current, hideQuestionContent: event.target.checked }))} />Hide question text for students</label>
+                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showLeaderboardEachQuestion} onChange={(event) => setLiveSettings((current) => ({ ...current, showLeaderboardEachQuestion: event.target.checked }))} />Show leaderboard each question</label>
+                <label className="space-y-1 text-xs text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Class pace mode</span>
+                  <select
+                    value={liveSettings.paceMode}
+                    onChange={(event) => setLiveSettings((current) => ({
+                      ...current,
+                      paceMode: normalizeLivePaceMode(event.target.value),
+                    }))}
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                  >
+                    <option value={LIVE_PACE_MODE.TEACHER_LED}>Teacher-led</option>
+                    <option value={LIVE_PACE_MODE.HYBRID}>Hybrid (students up to host)</option>
+                    <option value={LIVE_PACE_MODE.STUDENT_PACED}>Student-paced</option>
+                  </select>
+                </label>
+                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.groupModeEnabled === true} onChange={(event) => setLiveSettings((current) => ({ ...current, groupModeEnabled: event.target.checked }))} />Enable teammate/group mode</label>
+                <label className="space-y-1 text-xs text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Team count</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={8}
+                    step={1}
+                    value={liveSettings.groupCount ?? 2}
+                    onChange={(event) => setLiveSettings((current) => ({
+                      ...current,
+                      groupCount: clampGroupCount(event.target.value, 2),
+                    }))}
+                    disabled={liveSettings.groupModeEnabled !== true}
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white disabled:opacity-50"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Captain rotation (blocks)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={liveSettings.captainRotationEvery ?? 1}
+                    onChange={(event) => setLiveSettings((current) => ({
+                      ...current,
+                      captainRotationEvery: clampCaptainRotation(event.target.value, 1),
+                    }))}
+                    disabled={liveSettings.groupModeEnabled !== true}
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white disabled:opacity-50"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto-advance policy</span>
+                  <select
+                    value={liveSettings.autoAdvancePolicy}
+                    onChange={(event) => setLiveSettings((current) => ({
+                      ...current,
+                      autoAdvancePolicy: normalizeAutoAdvancePolicy(event.target.value),
+                    }))}
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                  >
+                    <option value={AUTO_ADVANCE_POLICY.TIMER}>Timer (seconds)</option>
+                    <option value={AUTO_ADVANCE_POLICY.ALL_SUBMITTED}>All submitted</option>
+                    <option value={AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD}>Submission threshold</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-xs text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto-advance (seconds)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={liveSettings.autoAdvanceSeconds ?? ''}
+                    onChange={(event) => setLiveSettings((current) => ({
+                      ...current,
+                      autoAdvanceSeconds: event.target.value ? Number(event.target.value) : null,
+                    }))}
+                    placeholder="Manual"
+                    disabled={liveSettings.autoAdvancePolicy !== AUTO_ADVANCE_POLICY.TIMER}
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Submission threshold (%)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    step={1}
+                    value={liveSettings.autoAdvanceSubmissionThreshold ?? ''}
+                    onChange={(event) => setLiveSettings((current) => ({
+                      ...current,
+                      autoAdvanceSubmissionThreshold: clampSubmissionPercent(event.target.value, 70),
+                    }))}
+                    placeholder="70"
+                    disabled={liveSettings.autoAdvancePolicy !== AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD}
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto mode limit (minutes)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={liveSettings.autoModeTimeLimitMinutes ?? ''}
+                    onChange={(event) => setLiveSettings((current) => ({
+                      ...current,
+                      autoModeTimeLimitMinutes: event.target.value ? Number(event.target.value) : null,
+                    }))}
+                    placeholder="No limit"
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Question response deadline (seconds)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={liveSettings.questionResponseDeadlineSeconds ?? ''}
+                    onChange={(event) => setLiveSettings((current) => ({
+                      ...current,
+                      questionResponseDeadlineSeconds: event.target.value ? toPositiveInt(event.target.value, null) : null,
+                    }))}
+                    placeholder="No deadline"
+                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                  />
+                </label>
               </div>
+              <div className="mt-2 text-[11px] text-zinc-500">
+                Timer policy follows seconds. Submission policies use task submissions and skip non-task blocks.
+              </div>
+              {paceMode !== LIVE_PACE_MODE.TEACHER_LED && (
+                <div className="mt-2 text-[11px] text-zinc-500">
+                  Teacher auto timers and per-question deadlines are paused in {paceMode.replace('_', '-')} mode.
+                </div>
+              )}
+              {liveSettings.showLeaderboardEachQuestion && playerCount <= 1 && (
+                <div className="mt-2 text-[11px] text-zinc-500">Leaderboard cards appear after each question when at least two students are connected.</div>
+              )}
             </div>
             <button type="button" onClick={startSession} disabled={playerCount === 0} className="mt-8 border border-white bg-white px-8 py-3 text-sm font-bold text-zinc-900 disabled:opacity-30">
               Start live lesson
@@ -806,25 +1531,131 @@ export default function LiveHost({ lesson, onExit }) {
               <div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Teacher Control</div>
                 <div className="mt-1 text-sm text-zinc-300">Block {currentIndex + 1} of {blocks.length}: {currentBlock ? getBlockLabel(currentBlock, currentIndex) : 'Unavailable block'}</div>
+                <div className="mt-1 text-xs text-zinc-500">Participants: {playerCount}</div>
+                <div className="mt-1 text-xs text-zinc-500">Pace: {paceMode.replace('_', '-')}</div>
+                {autoAdvanceRemaining !== null && (
+                  <div className="mt-1 text-xs text-zinc-400">Auto-advancing in {autoAdvanceRemaining}s</div>
+                )}
+                {autoAdvancePolicy === AUTO_ADVANCE_POLICY.ALL_SUBMITTED && currentBlock?.type === 'task' && (
+                  <div className="mt-1 text-xs text-zinc-400">Auto policy: advance when all submit ({currentBlockStats?.submitted || 0}/{playerCount})</div>
+                )}
+                {autoAdvancePolicy === AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD && currentBlock?.type === 'task' && (
+                  <div className="mt-1 text-xs text-zinc-400">Auto policy: advance at {submissionThreshold}% submissions ({currentBlockStats?.submitted || 0}/{playerCount})</div>
+                )}
+                {autoModeRemainingSeconds !== null && (
+                  <div className="mt-1 text-xs text-zinc-400">Auto mode ends in {formatSecondsToClock(autoModeRemainingSeconds)}</div>
+                )}
+                {questionDeadlineRemainingSeconds !== null && (
+                  <div className="mt-1 text-xs text-zinc-400">
+                    Question deadline: {questionDeadlineRemainingSeconds > 0 ? `${questionDeadlineRemainingSeconds}s left` : 'responses closed'}
+                  </div>
+                )}
+                {autoAdvancePaused && hostFlowControlsEnabled && (
+                  <div className="mt-1 text-xs text-amber-300">Auto mode paused</div>
+                )}
               </div>
               <div className="flex items-center gap-2">
+                {hostFlowControlsEnabled && (
+                  <button type="button" onClick={() => setAutoAdvancePaused((current) => !current)} className="border border-zinc-700 px-4 py-2 text-sm text-zinc-200">
+                    {autoAdvancePaused ? 'Resume Auto' : 'Pause Auto'}
+                  </button>
+                )}
+                <button type="button" onClick={skipCurrentQuestion} className="border border-amber-600 bg-amber-50/10 px-4 py-2 text-sm text-amber-200 hover:bg-amber-100/10">
+                  Skip Question
+                </button>
+                <button type="button" onClick={reopenPreviousQuestion} disabled={currentIndex === 0} className="border border-sky-700 bg-sky-50/10 px-4 py-2 text-sm text-sky-200 hover:bg-sky-100/10 disabled:opacity-30">
+                  Re-open Previous
+                </button>
+                {spotlight && (
+                  <button type="button" onClick={clearSpotlight} className="border border-violet-700 bg-violet-50/10 px-4 py-2 text-sm text-violet-200 hover:bg-violet-100/10">
+                    Clear Spotlight
+                  </button>
+                )}
                 <button type="button" onClick={goPrev} disabled={currentIndex === 0} className="border border-zinc-700 px-4 py-2 text-sm text-zinc-200 disabled:opacity-30">← Back</button>
                 <button type="button" onClick={goNext} className="border border-white bg-white px-4 py-2 text-sm font-bold text-zinc-900">{currentIndex === blocks.length - 1 ? 'Finish →' : 'Next →'}</button>
               </div>
             </div>
-            <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3">
-              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top 3 Leaderboard</div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {topLeaders.map((leader, index) => (
-                  <div key={leader.id} className="border border-zinc-800 bg-zinc-950/40 px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">#{index + 1}</div>
-                    <div className="mt-1 text-sm font-semibold text-zinc-100">{leader.name}</div>
-                    <div className="text-xs text-zinc-400">{leader.pct}% • {leader.completed} answered</div>
-                  </div>
-                ))}
-                {topLeaders.length === 0 && <div className="text-xs text-zinc-500">Waiting for submissions...</div>}
+            {showPerQuestionLeaderboard && (
+              <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3">
+                <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top 3 Leaderboard</div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {topLeaders.map((leader, index) => (
+                    <div key={leader.id} className="border border-zinc-800 bg-zinc-950/40 px-3 py-2">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">#{index + 1}</div>
+                      <div className="mt-1 text-sm font-semibold text-zinc-100">{leader.name}</div>
+                      <div className="text-xs text-zinc-400">{leader.pct}% • {leader.completed} answered</div>
+                    </div>
+                  ))}
+                  {topLeaders.length === 0 && <div className="text-xs text-zinc-500">Waiting for submissions...</div>}
+                </div>
               </div>
-            </div>
+            )}
+            {liveSettings.showLeaderboardEachQuestion && !showPerQuestionLeaderboard && (
+              <div className="mb-4 border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-400">
+                Leaderboard is enabled and will appear automatically once at least two students are connected.
+              </div>
+            )}
+            {currentBlockStats && (
+              <div className="mb-4 border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
+                Current question: {currentBlockStats.submitted} submitted • {currentBlockStats.correct} correct • {currentBlockStats.percent}% accuracy
+              </div>
+            )}
+            {liveSettings.groupModeEnabled && teamLeaderboard.length > 0 && (
+              <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3">
+                <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Team leaderboard</div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {teamLeaderboard.map((team) => (
+                    <div key={team.teamName} className="border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-300">
+                      <div className="font-semibold text-zinc-100">{team.teamName}</div>
+                      <div className="mt-1 text-zinc-400">Avg score: {team.avgPct}% • {team.members} member{team.members === 1 ? '' : 's'}</div>
+                      <div className="mt-1 text-zinc-500">Captain: {team.captainName || 'TBD'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {currentTaskResponses.length > 0 && currentBlock?.type === 'task' && (
+              <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3">
+                <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Spotlight answers</div>
+                <div className="space-y-2">
+                  {currentTaskResponses.slice(0, 8).map((row) => (
+                    <div key={`${row.studentId}-${row.submittedAt}`} className="flex flex-wrap items-center justify-between gap-2 border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-300">
+                      <div>
+                        <div className="font-medium text-zinc-100">{row.name}{row.teamName ? ` · ${row.teamName}` : ''}{row.isCaptain ? ' · Captain' : ''}</div>
+                        <div className="mt-0.5 max-w-[44rem] truncate text-zinc-400">{normalizeAnswerForBucket(row.answer)}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => spotlightStudentAnswer(row.studentId)}
+                        className="border border-violet-700 bg-violet-50/10 px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-violet-200 hover:bg-violet-100/10"
+                      >
+                        Spotlight
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {spotlight && (
+              <div className="mb-4 border border-violet-500/40 bg-violet-500/10 px-3 py-3 text-xs text-violet-100">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-violet-300">Live Spotlight</div>
+                <div className="mt-1 font-medium">{spotlight.studentName}{spotlight.teamName ? ` · ${spotlight.teamName}` : ''}</div>
+                <div className="mt-1 text-violet-200">{spotlight.blockLabel}</div>
+                <div className="mt-2 whitespace-pre-wrap text-violet-100">{normalizeAnswerForBucket(spotlight.answer)}</div>
+              </div>
+            )}
+            {recentControlAudit.length > 0 && (
+              <div className="mb-4 border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
+                <div className="mb-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Control Audit</div>
+                <div className="space-y-1">
+                  {recentControlAudit.slice(0, 4).map((event) => (
+                    <div key={event.id} className="border border-zinc-800 bg-zinc-950/40 px-2 py-1.5">
+                      {event.action === 'reopen' ? 'Re-opened' : event.action === 'spotlight' ? 'Spotlighted' : 'Skipped'} Q{event.blockIndex + 1} {event.blockLabel}{event.reason ? `: ${event.reason}` : ''}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <LessonStage
               blocks={blocks}
               currentIndex={currentIndex}
@@ -862,6 +1693,31 @@ export default function LiveHost({ lesson, onExit }) {
                 {topLeaders.length === 0 && <div className="text-xs text-zinc-500">No leaderboard data.</div>}
               </div>
             </div>
+            {liveSettings.groupModeEnabled && teamLeaderboard.length > 0 && (
+              <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3 text-left">
+                <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Team standings</div>
+                <div className="space-y-1 text-xs text-zinc-300">
+                  {teamLeaderboard.map((team, index) => (
+                    <div key={`final-${team.teamName}`} className="flex items-center justify-between border border-zinc-800 bg-zinc-950/40 px-2 py-1.5">
+                      <span>#{index + 1} {team.teamName} ({team.members})</span>
+                      <span>{team.avgPct}% · Captain {team.captainName || 'TBD'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {recentControlAudit.length > 0 && (
+              <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3 text-left">
+                <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Control Audit Trail</div>
+                <div className="space-y-1 text-xs text-zinc-300">
+                  {recentControlAudit.map((event) => (
+                    <div key={`finished-${event.id}`} className="border border-zinc-800 bg-zinc-950/40 px-2 py-1.5">
+                      {new Date(event.timestamp).toLocaleTimeString()} · {event.action === 'reopen' ? 'Re-opened' : event.action === 'spotlight' ? 'Spotlighted' : 'Skipped'} Q{event.blockIndex + 1} {event.blockLabel} {event.reason ? `· ${event.reason}` : ''}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               {Object.entries(students).map(([id, student], i) => {
                 const stats = computeStudentStats(id);

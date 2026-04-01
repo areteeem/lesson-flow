@@ -33,6 +33,17 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function toPositiveNumber(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
+}
+
+function toPositiveInteger(value, fallback = null) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  return Math.round(numeric);
+}
+
 function normalizeVisibilityPolicy(policy, fallback = 'student_answers_only') {
   const value = String(policy || '').trim();
   if (!value) return fallback;
@@ -92,6 +103,9 @@ function normalizeAssignmentSubmission(row) {
   const breakdown = rawBreakdown.map((entry, index) => normalizeBreakdownEntry(entry, index));
   const lessonMeta = row?.lesson_assignments || null;
   const timestamp = row?.submitted_at ? new Date(row.submitted_at).getTime() : Date.now();
+  const dueAt = lessonMeta?.expires_at || null;
+  const dueTimestamp = dueAt ? new Date(dueAt).getTime() : NaN;
+  const isLateSubmission = Number.isFinite(dueTimestamp) ? timestamp > dueTimestamp : false;
   const submissionState = row?.submission_state || payload?.submissionState || (breakdown.some((entry) => entry.correct === null) ? 'awaiting_review' : 'graded');
 
   return {
@@ -113,6 +127,8 @@ function normalizeAssignmentSubmission(row) {
     sourceType: row?.origin || payload?.origin || 'homework',
     interaction: payload?.interaction || row?.interaction_payload || null,
     submissionState,
+    dueAt,
+    isLateSubmission,
     breakdown,
   };
 }
@@ -132,6 +148,17 @@ function normalizeOwnerAssignment(row) {
     enableGrading: settings.enableGrading !== false,
     showTotalGrade: settings.showTotalGrade !== false,
     showPerQuestionGrade: settings.showPerQuestionGrade !== false,
+    disableBackNavigation: settings.disableBackNavigation === true,
+    sessionTimeLimitMinutes: toPositiveNumber(settings.sessionTimeLimitMinutes, null),
+    maxAttempts: toPositiveInteger(settings.maxAttempts, 1),
+    retryCooldownSeconds: toPositiveInteger(settings.retryCooldownSeconds, 0),
+    randomizeQuestions: settings.randomizeQuestions === true,
+    randomizeOptions: settings.randomizeOptions === true,
+    lockOnTimeout: settings.lockOnTimeout !== false,
+    bindAttemptToDevice: settings.bindAttemptToDevice === true,
+    suspiciousTabSwitchThreshold: toPositiveInteger(settings.suspiciousTabSwitchThreshold, 6),
+    copyPasteRestricted: settings.copyPasteRestricted === true,
+    gracePeriodSeconds: toPositiveInteger(settings.gracePeriodSeconds, 0),
     isActive: row?.is_active !== false,
     expiresAt: row?.expires_at || null,
     createdAt: row?.created_at || null,
@@ -185,6 +212,24 @@ export async function createAssignmentLink(lesson, options = {}) {
   const showPerQuestionGrade = options.showPerQuestionGrade === undefined
     ? lesson?.settings?.showPerQuestionGrade !== false
     : options.showPerQuestionGrade !== false;
+  const disableBackNavigation = options.disableBackNavigation === undefined
+    ? lesson?.settings?.disableBackNavigation === true
+    : options.disableBackNavigation === true;
+  const sessionTimeLimitMinutes = toPositiveNumber(
+    options.sessionTimeLimitMinutes === undefined
+      ? lesson?.settings?.sessionTimeLimitMinutes
+      : options.sessionTimeLimitMinutes,
+    null,
+  );
+  const maxAttempts = toPositiveInteger(options.maxAttempts, 1) || 1;
+  const retryCooldownSeconds = toPositiveInteger(options.retryCooldownSeconds, 0) || 0;
+  const randomizeQuestions = options.randomizeQuestions === true;
+  const randomizeOptions = options.randomizeOptions === true;
+  const lockOnTimeout = options.lockOnTimeout !== false;
+  const bindAttemptToDevice = options.bindAttemptToDevice === true;
+  const suspiciousTabSwitchThreshold = toPositiveInteger(options.suspiciousTabSwitchThreshold, 6) || 6;
+  const copyPasteRestricted = options.copyPasteRestricted === true;
+  const gracePeriodSeconds = toPositiveInteger(options.gracePeriodSeconds, 0) || 0;
   const lessonPayload = {
     ...(lesson || {}),
     settings: {
@@ -195,6 +240,17 @@ export async function createAssignmentLink(lesson, options = {}) {
       showTotalGrade,
       showPerQuestionGrade,
       allowRetryHomework: allowRetry,
+      disableBackNavigation,
+      sessionTimeLimitMinutes,
+      maxAttempts,
+      retryCooldownSeconds,
+      randomizeQuestions,
+      randomizeOptions,
+      lockOnTimeout,
+      bindAttemptToDevice,
+      suspiciousTabSwitchThreshold,
+      copyPasteRestricted,
+      gracePeriodSeconds,
     },
   };
   const expiresAt = normalizeIsoDate(options.expiresAt);
@@ -311,7 +367,9 @@ export async function fetchAssignmentById(assignmentId) {
     if (error) return { ok: false, reason: error.message || 'Failed to load assignment', updatedAt: now };
     if (!data?.lesson_payload) return { ok: false, reason: 'not_found', updatedAt: now };
 
-    if (data.expires_at && new Date(data.expires_at).getTime() <= Date.now()) {
+    const gracePeriodSeconds = toPositiveInteger(data.lesson_payload?.settings?.gracePeriodSeconds, 0) || 0;
+    const expireAtMs = data.expires_at ? new Date(data.expires_at).getTime() : NaN;
+    if (Number.isFinite(expireAtMs) && expireAtMs + (gracePeriodSeconds * 1000) <= Date.now()) {
       return { ok: false, reason: 'expired', updatedAt: now };
     }
 
@@ -328,6 +386,15 @@ export async function fetchAssignmentById(assignmentId) {
         showPerQuestionGrade: data.lesson_payload?.settings?.showPerQuestionGrade !== false,
         allowRetryHomework: Boolean(data.allow_retry),
         showExplanations: false,
+        maxAttempts: toPositiveInteger(data.lesson_payload?.settings?.maxAttempts, 1) || 1,
+        retryCooldownSeconds: toPositiveInteger(data.lesson_payload?.settings?.retryCooldownSeconds, 0) || 0,
+        randomizeQuestions: data.lesson_payload?.settings?.randomizeQuestions === true,
+        randomizeOptions: data.lesson_payload?.settings?.randomizeOptions === true,
+        lockOnTimeout: data.lesson_payload?.settings?.lockOnTimeout !== false,
+        bindAttemptToDevice: data.lesson_payload?.settings?.bindAttemptToDevice === true,
+        suspiciousTabSwitchThreshold: toPositiveInteger(data.lesson_payload?.settings?.suspiciousTabSwitchThreshold, 6) || 6,
+        copyPasteRestricted: data.lesson_payload?.settings?.copyPasteRestricted === true,
+        gracePeriodSeconds,
       },
     };
 
@@ -343,6 +410,18 @@ export async function fetchAssignmentById(assignmentId) {
         enableGrading: lesson.settings.enableGrading !== false,
         showTotalGrade: lesson.settings.showTotalGrade !== false,
         showPerQuestionGrade: lesson.settings.showPerQuestionGrade !== false,
+        disableBackNavigation: lesson.settings.disableBackNavigation === true,
+        sessionTimeLimitMinutes: toPositiveNumber(lesson.settings.sessionTimeLimitMinutes, null),
+        maxAttempts: toPositiveInteger(lesson.settings.maxAttempts, 1) || 1,
+        retryCooldownSeconds: toPositiveInteger(lesson.settings.retryCooldownSeconds, 0) || 0,
+        randomizeQuestions: lesson.settings.randomizeQuestions === true,
+        randomizeOptions: lesson.settings.randomizeOptions === true,
+        lockOnTimeout: lesson.settings.lockOnTimeout !== false,
+        bindAttemptToDevice: lesson.settings.bindAttemptToDevice === true,
+        suspiciousTabSwitchThreshold: toPositiveInteger(lesson.settings.suspiciousTabSwitchThreshold, 6) || 6,
+        copyPasteRestricted: lesson.settings.copyPasteRestricted === true,
+        gracePeriodSeconds,
+        expiresAt: data.expires_at || null,
       },
       updatedAt: now,
     };
@@ -367,6 +446,62 @@ export async function submitAssignmentResult({ assignmentId, studentName, sessio
   const fingerprint = `${getDeviceId()}::${cleanStudentName.toLowerCase()}`;
 
   try {
+    const assignmentFetch = await client
+      .from('lesson_assignments')
+      .select('assignment_id,expires_at,lesson_payload')
+      .eq('assignment_id', cleanAssignmentId)
+      .maybeSingle();
+
+    if (assignmentFetch.error || !assignmentFetch.data?.assignment_id) {
+      return { ok: false, reason: assignmentFetch.error?.message || 'assignment_not_found', updatedAt: now };
+    }
+
+    const assignmentSettings = assignmentFetch.data.lesson_payload?.settings || {};
+    const maxAttempts = toPositiveInteger(assignmentSettings.maxAttempts, 1) || 1;
+    const retryCooldownSeconds = toPositiveInteger(assignmentSettings.retryCooldownSeconds, 0) || 0;
+    const bindAttemptToDevice = assignmentSettings.bindAttemptToDevice === true;
+    const gracePeriodSeconds = toPositiveInteger(assignmentSettings.gracePeriodSeconds, 0) || 0;
+    const expiresAtMs = assignmentFetch.data.expires_at ? new Date(assignmentFetch.data.expires_at).getTime() : NaN;
+    if (Number.isFinite(expiresAtMs) && (expiresAtMs + (gracePeriodSeconds * 1000)) <= now) {
+      return { ok: false, reason: 'expired', updatedAt: now };
+    }
+
+    const historyResult = await client
+      .from('assignment_submissions')
+      .select('submission_id,attempt_fingerprint,submitted_at')
+      .eq('assignment_id', cleanAssignmentId)
+      .eq('student_name', cleanStudentName)
+      .order('submitted_at', { ascending: false });
+
+    if (historyResult.error) {
+      return { ok: false, reason: historyResult.error.message || 'attempt_history_failed', updatedAt: now };
+    }
+
+    const attempts = historyResult.data || [];
+    if (attempts.length >= maxAttempts) {
+      return { ok: false, reason: 'attempt_limit_reached', updatedAt: now };
+    }
+
+    if (retryCooldownSeconds > 0 && attempts.length > 0) {
+      const lastAttemptAt = new Date(attempts[0].submitted_at || 0).getTime();
+      if (Number.isFinite(lastAttemptAt) && (lastAttemptAt + retryCooldownSeconds * 1000) > now) {
+        const retryAt = lastAttemptAt + retryCooldownSeconds * 1000;
+        return { ok: false, reason: 'cooldown_active', retryAt, updatedAt: now };
+      }
+    }
+
+    if (bindAttemptToDevice && attempts.length > 0) {
+      const currentDevice = String(fingerprint).split('::')[0];
+      const mismatch = attempts.some((entry) => {
+        const source = String(entry.attempt_fingerprint || '');
+        const sourceDevice = source.split('::')[0];
+        return sourceDevice && sourceDevice !== currentDevice;
+      });
+      if (mismatch) {
+        return { ok: false, reason: 'device_binding_mismatch', updatedAt: now };
+      }
+    }
+
     const row = {
       assignment_id: cleanAssignmentId,
       actor_user_id: actorUserId,
@@ -422,7 +557,7 @@ export async function fetchAssignmentSubmissionsForOwner(options = {}) {
 
   let query = client
     .from('assignment_submissions')
-    .select('submission_id,assignment_id,student_name,result_payload,interaction_payload,origin,submission_state,score,submitted_at,updated_at,lesson_assignments:lesson_assignments(lesson_title,lesson_id)')
+    .select('submission_id,assignment_id,student_name,result_payload,interaction_payload,origin,submission_state,score,submitted_at,updated_at,lesson_assignments:lesson_assignments(lesson_title,lesson_id,expires_at)')
     .order('submitted_at', { ascending: false })
     .limit(limit);
 

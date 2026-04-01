@@ -8,7 +8,7 @@ import { getSupabaseClient, getSupabaseConfig } from './supabaseClient.js';
 import { ensureLiveUser, persistLivePayload } from './liveSupabaseData.js';
 
 const DEV_PROXY_BASE = '/__supabase';
-const CAN_USE_DEV_PROXY = Boolean(import.meta.env.DEV);
+const CAN_USE_DEV_PROXY = Boolean(import.meta.env?.DEV);
 
 async function buildSupabaseHeaders(client, extra = {}) {
   const { anonKey } = getSupabaseConfig();

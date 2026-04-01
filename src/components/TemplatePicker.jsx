@@ -18,45 +18,191 @@ function saveCustomTemplates(templates) {
 const BUILTIN_TEMPLATES = [
   {
     id: 'blank',
+    templateKind: 'blank',
     name: 'Blank Lesson',
     description: 'Start from scratch with an empty slide.',
     focus: 'general',
     difficulty: '',
+    topic: 'General',
+    cefr: '',
+    gradeBand: 'Any',
+    pack: 'Starter',
     color: 'bg-zinc-100 border-zinc-300 text-zinc-700',
   },
   {
-    id: 'grammar',
-    name: 'Grammar Lesson',
-    description: 'Structure slide + multiple choice task. Ready for grammar drills.',
+    id: 'grammar-a1-basics',
+    templateKind: 'grammar',
+    name: 'Grammar Foundations (A1)',
+    description: 'Sentence structure starter for present simple and basic routines.',
     focus: 'grammar',
-    difficulty: 'A2',
+    difficulty: 'A1',
+    topic: 'Grammar',
+    cefr: 'A1',
+    gradeBand: 'Grade 4-6',
+    pack: 'Core Grammar',
     color: 'bg-emerald-50 border-emerald-300 text-emerald-800',
+    lessonTitle: 'Present Simple Foundations',
+    grammarTopic: 'Present Simple',
+    firstPrompt: 'Choose the correct verb form for each sentence.',
   },
   {
-    id: 'vocabulary',
-    name: 'Vocabulary Lesson',
-    description: 'Vocab slide + flashcards task. Perfect for word study sessions.',
+    id: 'grammar-b1-accuracy',
+    templateKind: 'grammar',
+    name: 'Grammar Accuracy Clinic (B1)',
+    description: 'Error correction and precision-focused grammar check flow.',
+    focus: 'grammar',
+    difficulty: 'B1',
+    topic: 'Grammar',
+    cefr: 'B1',
+    gradeBand: 'Grade 8-10',
+    pack: 'Core Grammar',
+    color: 'bg-emerald-50 border-emerald-300 text-emerald-800',
+    lessonTitle: 'Grammar Accuracy Clinic',
+    grammarTopic: 'Tense consistency',
+    firstPrompt: 'Identify and correct the tense mistake in each item.',
+  },
+  {
+    id: 'vocabulary-a2-school',
+    templateKind: 'vocabulary',
+    name: 'Vocabulary Builder (A2)',
+    description: 'Classroom and routines vocabulary with scaffolded practice.',
     focus: 'vocabulary',
     difficulty: 'A2',
+    topic: 'Vocabulary',
+    cefr: 'A2',
+    gradeBand: 'Grade 5-7',
+    pack: 'Lexis Pack',
     color: 'bg-sky-50 border-sky-300 text-sky-800',
+    lessonTitle: 'Daily Routines Vocabulary',
+    firstPrompt: 'Choose the best vocabulary word for each routine.',
   },
   {
-    id: 'reading',
-    name: 'Reading Lesson',
-    description: 'Two-column layout + highlight task. Designed for reading comprehension.',
+    id: 'vocabulary-b1-academic',
+    templateKind: 'vocabulary',
+    name: 'Academic Vocabulary (B1)',
+    description: 'Higher-utility terms with context and quick retrieval tasks.',
+    focus: 'vocabulary',
+    difficulty: 'B1',
+    topic: 'Vocabulary',
+    cefr: 'B1',
+    gradeBand: 'Grade 8-10',
+    pack: 'Lexis Pack',
+    color: 'bg-sky-50 border-sky-300 text-sky-800',
+    lessonTitle: 'Academic Word Workshop',
+    firstPrompt: 'Match each term to its best academic definition.',
+  },
+  {
+    id: 'reading-b1-core',
+    templateKind: 'reading',
+    name: 'Reading Comprehension Core (B1)',
+    description: 'Two-column text + highlight flow for inference and details.',
     focus: 'reading',
     difficulty: 'B1',
+    topic: 'Reading',
+    cefr: 'B1',
+    gradeBand: 'Grade 7-9',
+    pack: 'Reading Studio',
     color: 'bg-amber-50 border-amber-300 text-amber-800',
+    lessonTitle: 'Reading Comprehension Core',
+    firstPrompt: 'Highlight evidence that supports the main idea.',
+  },
+  {
+    id: 'reading-b2-analysis',
+    templateKind: 'reading',
+    name: 'Reading Analysis (B2)',
+    description: 'Deeper reading with claims-evidence framing and targeted checks.',
+    focus: 'reading',
+    difficulty: 'B2',
+    topic: 'Reading',
+    cefr: 'B2',
+    gradeBand: 'Grade 9-12',
+    pack: 'Reading Studio',
+    color: 'bg-amber-50 border-amber-300 text-amber-800',
+    lessonTitle: 'Reading Analysis Lab',
+    firstPrompt: 'Find and mark the strongest evidence for each claim.',
+  },
+  {
+    id: 'speaking-b1-discussion',
+    templateKind: 'blank',
+    name: 'Speaking Discussion Loop (B1)',
+    description: 'Prompt-driven speaking checks with confidence calibration.',
+    focus: 'speaking',
+    difficulty: 'B1',
+    topic: 'Speaking',
+    cefr: 'B1',
+    gradeBand: 'Grade 8-10',
+    pack: 'Speaking & Discussion',
+    color: 'bg-orange-50 border-orange-300 text-orange-800',
+    lessonTitle: 'Speaking Discussion Loop',
+    firstPrompt: 'Choose a position and explain your reasoning in 2-3 sentences.',
+  },
+  {
+    id: 'exam-mixed-b2',
+    templateKind: 'reading',
+    name: 'Exam Mix Warm-up (B2)',
+    description: 'Mixed skills rehearsal template for timed exam prep sessions.',
+    focus: 'mixed',
+    difficulty: 'B2',
+    topic: 'Exam Prep',
+    cefr: 'B2',
+    gradeBand: 'Grade 10-12',
+    pack: 'Assessment Prep',
+    color: 'bg-indigo-50 border-indigo-300 text-indigo-800',
+    lessonTitle: 'Exam Mix Warm-up',
+    firstPrompt: 'Answer quickly, then justify the choice with one evidence phrase.',
   },
   {
     id: 'catalog',
+    templateKind: 'catalog',
     name: 'Full Catalog',
     description: 'All slide and task types in one lesson. Great for exploration and testing.',
     focus: 'mixed',
     difficulty: 'B1',
+    topic: 'Mixed',
+    cefr: 'B1',
+    gradeBand: 'Any',
+    pack: 'Reference',
     color: 'bg-violet-50 border-violet-300 text-violet-800',
   },
 ];
+
+function buildTemplateLesson(definition) {
+  const baseLesson = createLessonTemplate(definition.templateKind || 'blank');
+  const blocks = Array.isArray(baseLesson.blocks) ? [...baseLesson.blocks] : [];
+  const firstTaskIndex = blocks.findIndex((entry) => entry.type === 'task');
+
+  if (firstTaskIndex >= 0 && definition.firstPrompt) {
+    blocks[firstTaskIndex] = {
+      ...blocks[firstTaskIndex],
+      question: definition.firstPrompt,
+    };
+  }
+
+  if (blocks.length > 0 && definition.topic) {
+    const firstBlock = blocks[0];
+    if (firstBlock.type !== 'task') {
+      blocks[0] = {
+        ...firstBlock,
+        title: firstBlock.title || `${definition.topic} kickoff`,
+        content: firstBlock.content || `## ${definition.topic}\nFocus: ${definition.focus || 'general'} · Level: ${definition.difficulty || 'mixed'}`,
+      };
+    }
+  }
+
+  return {
+    ...baseLesson,
+    title: definition.lessonTitle || baseLesson.title,
+    settings: {
+      ...(baseLesson.settings || {}),
+      focus: definition.focus || baseLesson.settings?.focus || '',
+      difficulty: definition.difficulty || baseLesson.settings?.difficulty || '',
+      lessonTopic: definition.topic || baseLesson.settings?.lessonTopic || '',
+      grammarTopic: definition.grammarTopic || baseLesson.settings?.grammarTopic || '',
+      gradeBand: definition.gradeBand || baseLesson.settings?.gradeBand || '',
+    },
+    blocks,
+  };
+}
 
 function MiniBlockBadge({ block }) {
   const label = block.type === 'task' ? (block.taskType || 'task') : block.type;
@@ -152,13 +298,22 @@ export default function TemplatePicker({ onSelect, onClose }) {
   const [customTemplates, setCustomTemplates] = useState(loadCustomTemplates);
   const [selectedId, setSelectedId] = useState(null);
   const [tab, setTab] = useState('builtin');
+  const [topicFilter, setTopicFilter] = useState('all');
+  const [cefrFilter, setCefrFilter] = useState('all');
+  const [gradeFilter, setGradeFilter] = useState('all');
 
   const templates = useMemo(() => {
-    const builtins = BUILTIN_TEMPLATES.map(t => {
-      const lesson = createLessonTemplate(t.id);
-      return { ...t, parsed: lesson, isCustom: false };
+    const builtins = BUILTIN_TEMPLATES.map((t) => {
+      const lesson = buildTemplateLesson(t);
+      let dsl = '';
+      try {
+        dsl = generateDSL(lesson);
+      } catch {
+        dsl = '';
+      }
+      return { ...t, parsed: lesson, dsl, isCustom: false };
     });
-    const customs = customTemplates.map(t => {
+    const customs = customTemplates.map((t) => {
       let parsed;
       try { parsed = parseLesson(t.dsl); } catch { parsed = { blocks: [] }; }
       return {
@@ -177,12 +332,33 @@ export default function TemplatePicker({ onSelect, onClose }) {
     return { builtins, customs };
   }, [customTemplates]);
 
-  const visibleTemplates = tab === 'builtin' ? templates.builtins : templates.customs;
+  const builtinTopics = useMemo(() => {
+    return ['all', ...new Set(templates.builtins.map((entry) => entry.topic).filter(Boolean))];
+  }, [templates.builtins]);
+
+  const builtinCefrLevels = useMemo(() => {
+    return ['all', ...new Set(templates.builtins.map((entry) => entry.cefr).filter(Boolean))];
+  }, [templates.builtins]);
+
+  const builtinGrades = useMemo(() => {
+    return ['all', ...new Set(templates.builtins.map((entry) => entry.gradeBand).filter(Boolean))];
+  }, [templates.builtins]);
+
+  const filteredBuiltins = useMemo(() => {
+    return templates.builtins.filter((entry) => {
+      const topicMatches = topicFilter === 'all' || entry.topic === topicFilter;
+      const cefrMatches = cefrFilter === 'all' || entry.cefr === cefrFilter;
+      const gradeMatches = gradeFilter === 'all' || entry.gradeBand === gradeFilter;
+      return topicMatches && cefrMatches && gradeMatches;
+    });
+  }, [cefrFilter, gradeFilter, templates.builtins, topicFilter]);
+
+  const visibleTemplates = tab === 'builtin' ? filteredBuiltins : templates.customs;
   const selected = visibleTemplates.find(t => t.id === selectedId);
 
   const handleUse = () => {
     if (!selected) return;
-    onSelect(selected.id.startsWith('custom-') ? selected.customId : selected.id, selected.isCustom ? selected.dsl : null);
+    onSelect(selected.id.startsWith('custom-') ? selected.customId : selected.id, selected.dsl || null);
     onClose();
   };
 
@@ -222,6 +398,29 @@ export default function TemplatePicker({ onSelect, onClose }) {
             My Templates ({templates.customs.length})
           </button>
         </div>
+
+        {tab === 'builtin' && (
+          <div className="grid shrink-0 gap-2 border-b border-zinc-200 px-5 py-3 sm:grid-cols-3">
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Topic pack</span>
+              <select value={topicFilter} onChange={(event) => setTopicFilter(event.target.value)} className="w-full border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-700 outline-none focus:border-zinc-900">
+                {builtinTopics.map((entry) => <option key={entry} value={entry}>{entry === 'all' ? 'All topics' : entry}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">CEFR level</span>
+              <select value={cefrFilter} onChange={(event) => setCefrFilter(event.target.value)} className="w-full border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-700 outline-none focus:border-zinc-900">
+                {builtinCefrLevels.map((entry) => <option key={entry} value={entry}>{entry === 'all' ? 'All CEFR' : entry}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Grade band</span>
+              <select value={gradeFilter} onChange={(event) => setGradeFilter(event.target.value)} className="w-full border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-700 outline-none focus:border-zinc-900">
+                {builtinGrades.map((entry) => <option key={entry} value={entry}>{entry === 'all' ? 'All grades' : entry}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
 
         {/* Content: grid + preview */}
         <div className="flex min-h-0 flex-1">
@@ -267,7 +466,7 @@ export default function TemplatePicker({ onSelect, onClose }) {
                         'mb-2 inline-block border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
                         t.color,
                       ].join(' ')}>
-                        {t.focus || 'custom'}
+                        {t.pack || t.focus || 'custom'}
                       </div>
                       <h3 className="mb-1 text-sm font-semibold text-zinc-900">{t.name}</h3>
                       <p className="mb-3 text-xs text-zinc-500 line-clamp-2">{t.description}</p>
@@ -275,6 +474,8 @@ export default function TemplatePicker({ onSelect, onClose }) {
                         <span className="bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">{slideCount} slide{slideCount !== 1 ? 's' : ''}</span>
                         <span className="bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">{taskCount} task{taskCount !== 1 ? 's' : ''}</span>
                         {t.difficulty && <span className="border border-zinc-300 px-1 py-0.5 text-[10px] font-bold text-zinc-600">{t.difficulty}</span>}
+                        {!t.isCustom && t.topic && <span className="bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">{t.topic}</span>}
+                        {!t.isCustom && t.gradeBand && <span className="bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">{t.gradeBand}</span>}
                       </div>
                     </button>
                   );

@@ -13,10 +13,15 @@ function splitBlankTokens(text = '') {
   return text.split(BLANK_MARKER_RE).filter((token) => token !== '');
 }
 
+function countWords(value = '') {
+  return String(value || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
 export default function TextEntryTask({ block, onComplete, onProgress, existingResult, showCheckButton = true }) {
   const tokens = useMemo(() => splitBlankTokens(block.text || ''), [block.text]);
   const inlineBlankCount = tokens.filter((token) => /(\{\}|_{3,}|\[blank\]|\[\d+\])/i.test(token)).length;
   const inlineMode = ['fill_typing', 'dialogue_completion', 'type_in_blank'].includes(block.taskType) && inlineBlankCount > 0;
+  const isLongAnswerTask = block.taskType === 'long_answer' || block.taskType === 'open';
 
   // For error_correction with multi-line answers, split into per-line correction
   const isMultiLineCorrection = block.taskType === 'error_correction' && !inlineMode;
@@ -34,7 +39,6 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
     return isMultiLineCorrection ? errorLines.map((l) => l) : Array(blankCount).fill('');
   });
   const [submitted, setSubmitted] = useState(() => Boolean(existingResult?.submitted));
-  const showVerdict = submitted && showCheckButton;
   const answerSets = useMemo(() => {
     if (isMultiLineCorrection) {
       // Parse multi-answer: "corrected1 | corrected2 | ..."
@@ -47,6 +51,12 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
     }
     return [normalizeList(block.answer || block.correct || '')];
   }, [block.answer, block.correct, block.blanks, blankCount, isMultiLineCorrection]);
+  const hasExpectedAnswers = useMemo(() => answerSets.some((set) => Array.isArray(set) && set.length > 0), [answerSets]);
+  const manualReviewOnly = isLongAnswerTask && !hasExpectedAnswers;
+  const showVerdict = submitted && showCheckButton && !manualReviewOnly;
+  const longAnswerText = values[0] || '';
+  const longAnswerWordCount = useMemo(() => countWords(longAnswerText), [longAnswerText]);
+  const longAnswerCharCount = longAnswerText.length;
 
   const fuzzyMatch = (input, targets) => {
     const a = input.trim().toLowerCase();
@@ -68,6 +78,19 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
   };
 
   const submit = () => {
+    if (manualReviewOnly) {
+      setSubmitted(true);
+      onComplete?.({
+        submitted: true,
+        correct: null,
+        score: 0,
+        response: values,
+        correctAnswer: null,
+        feedback: 'Awaiting teacher review.',
+      });
+      return;
+    }
+
     let score;
     if (block.flexibleOrder && values.length > 1) {
       // Accept answers in any order across all blanks
@@ -165,6 +188,47 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
             );
           })}
         </div>
+      ) : isLongAnswerTask ? (
+        <div className="space-y-3">
+          {block.text && <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 whitespace-pre-wrap text-sm leading-7 text-zinc-700">{block.text}</div>}
+          <div className="flex flex-wrap items-center justify-between gap-2 border border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] text-zinc-600">
+            <div className="font-medium text-zinc-700">Long answer editor</div>
+            <div className="flex items-center gap-3">
+              <span>{longAnswerWordCount} word{longAnswerWordCount !== 1 ? 's' : ''}</span>
+              <span>{longAnswerCharCount} char{longAnswerCharCount !== 1 ? 's' : ''}</span>
+            </div>
+          </div>
+          <textarea
+            rows={12}
+            value={longAnswerText}
+            onChange={(event) => {
+              const next = [event.target.value];
+              setValues(next);
+              onProgress?.({ submitted: false, response: next });
+            }}
+            disabled={submitted}
+            placeholder={block.placeholder || 'Write a complete answer. Include key ideas and supporting details.'}
+            className={[
+              'w-full min-h-[260px] resize-y border px-4 py-3 text-sm leading-7 outline-none transition',
+              !submitted ? 'border-zinc-300 focus:border-zinc-900' : 'border-zinc-200 bg-zinc-50',
+            ].join(' ')}
+          />
+          {!submitted && longAnswerText.trim() && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = [''];
+                  setValues(next);
+                  onProgress?.({ submitted: false, response: next });
+                }}
+                className="border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:border-zinc-900"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
       ) : (
         <>
           {block.text && <div className="mb-4 whitespace-pre-wrap text-sm leading-7 text-zinc-700">{block.text}</div>}
@@ -182,7 +246,7 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
                     onProgress?.({ submitted: false, response: next });
                     return next;
                   })}
-                  disabled={submitted && block.taskType !== 'open'}
+                  disabled={submitted}
                   placeholder={block.placeholder || `Answer ${index + 1}`}
                   className={[
                     'w-full resize-y border px-4 py-3 text-sm outline-none transition',
@@ -198,6 +262,11 @@ export default function TextEntryTask({ block, onComplete, onProgress, existingR
       )}
       {submitted && block.explanation && (
         <div className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
+      )}
+      {submitted && manualReviewOnly && (
+        <div className="mt-4 border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+          Response saved. This answer is marked for teacher review.
+        </div>
       )}
       <div className="mt-5 flex items-center justify-between gap-3">
         <div className="text-xs text-zinc-500">{block.examples?.length ? `Example: ${block.examples[0]}` : block.hint || 'Type your answer and check it.'}</div>

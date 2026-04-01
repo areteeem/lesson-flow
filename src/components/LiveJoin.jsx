@@ -8,6 +8,19 @@ import { ensureSession } from '../utils/accountAuth';
 import { fetchStudentResponses } from '../utils/liveSupabaseData';
 
 const PHASE = { WAITING: 'waiting', RUNNING: 'running', FINISHED: 'finished' };
+const LIVE_PACE_MODE = {
+  TEACHER_LED: 'teacher_led',
+  STUDENT_PACED: 'student_paced',
+  HYBRID: 'hybrid',
+};
+
+function normalizeLivePaceMode(value) {
+  const mode = String(value || '').trim().toLowerCase();
+  if (mode === LIVE_PACE_MODE.STUDENT_PACED || mode === LIVE_PACE_MODE.HYBRID || mode === LIVE_PACE_MODE.TEACHER_LED) {
+    return mode;
+  }
+  return LIVE_PACE_MODE.TEACHER_LED;
+}
 
 function getLocalResponseKey(sessionId, playerId) {
   return `lf_live_responses_${sessionId}_${playerId}`;
@@ -56,7 +69,11 @@ export default function LiveJoin({ onExit }) {
   const [status, setStatus] = useState('idle');
   const [results, setResults] = useState({});
   const [error, setError] = useState('');
+  const [liveNotice, setLiveNotice] = useState('');
   const [transportMode, setTransportMode] = useState(() => (typeof window !== 'undefined' ? getLiveTransportLabel(window.location.search) : 'broadcast-local'));
+  const [localIndex, setLocalIndex] = useState(0);
+  const [offlineQueuedUpdates, setOfflineQueuedUpdates] = useState([]);
+  const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
 
   const channelRef = useRef(null);
   const activeSessionRef = useRef('');
@@ -66,6 +83,18 @@ export default function LiveJoin({ onExit }) {
   const joinTimeoutRef = useRef(null);
 
   const blocks = useMemo(() => normalizeVisibleBlocks(session?.lesson?.blocks || []), [session]);
+  const paceMode = normalizeLivePaceMode(session?.paceMode || session?.lesson?.settings?.livePaceMode);
+  const hostIndex = Math.max(0, Math.min(Number(session?.currentIndex) || 0, Math.max(blocks.length - 1, 0)));
+  const maxReachableIndex = paceMode === LIVE_PACE_MODE.STUDENT_PACED
+    ? Math.max(blocks.length - 1, 0)
+    : hostIndex;
+  const effectiveIndex = paceMode === LIVE_PACE_MODE.TEACHER_LED
+    ? hostIndex
+    : Math.max(0, Math.min(localIndex, maxReachableIndex));
+  const currentBlock = useMemo(() => blocks[effectiveIndex] || null, [blocks, effectiveIndex]);
+  const deadlineClosed = paceMode === LIVE_PACE_MODE.TEACHER_LED && Number(session?.questionDeadlineRemainingSeconds) === 0;
+  const myTeam = session?.teamAssignments?.[playerId] || '';
+  const isTeamCaptain = Boolean(myTeam && session?.captainsByTeam?.[myTeam] === playerId);
   const liveTaskOptions = useMemo(() => {
     const settings = session?.lesson?.settings || {};
     return {
@@ -73,8 +102,10 @@ export default function LiveJoin({ onExit }) {
       showCheckButton: settings.showCheckButtonLive === true,
       lockAfterSubmit: settings.lockAfterSubmitLive !== false,
       hideQuestionContent: settings.hideQuestionContentLive === true,
+      forceLocked: deadlineClosed,
+      lockMessage: deadlineClosed ? 'Time is up for this question. Responses are now closed.' : '',
     };
-  }, [session]);
+  }, [deadlineClosed, session]);
 
   useEffect(() => {
     void ensureSession();
@@ -104,7 +135,53 @@ export default function LiveJoin({ onExit }) {
     return () => window.clearInterval(id);
   }, [joined, playerId]);
 
+  useEffect(() => {
+    const handleOffline = () => {
+      setIsOffline(true);
+      setLiveNotice('Network offline. New responses will be queued and replayed on reconnect.');
+    };
+    const handleOnline = () => {
+      setIsOffline(false);
+    };
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!joined) return;
+    if (paceMode === LIVE_PACE_MODE.TEACHER_LED) {
+      setLocalIndex(hostIndex);
+      return;
+    }
+    setLocalIndex((current) => Math.max(0, Math.min(current, maxReachableIndex)));
+  }, [hostIndex, joined, maxReachableIndex, paceMode]);
+
+  useEffect(() => {
+    if (offlineQueuedUpdates.length === 0) return;
+    if (status !== 'connected' || isOffline || !channelRef.current) return;
+
+    offlineQueuedUpdates.forEach((payload) => {
+      channelRef.current?.postMessage({
+        ...payload,
+        mode: payload.mode || 'replay',
+        replayed: true,
+        timestamp: Date.now(),
+      });
+    });
+    setLiveNotice(`Replayed ${offlineQueuedUpdates.length} queued update${offlineQueuedUpdates.length === 1 ? '' : 's'}.`);
+    setOfflineQueuedUpdates([]);
+  }, [isOffline, offlineQueuedUpdates, status]);
+
   const sendResponseUpdate = (sessionId, blockId, result, mode = 'submit') => {
+    if (deadlineClosed && mode !== 'restore') {
+      setLiveNotice('Time is up for this question. Your response was not submitted.');
+      return;
+    }
+
     const answerPayload = result?.response ?? result ?? null;
     const answerSignature = JSON.stringify(answerPayload);
     const signatureKey = `${blockId}:${mode}`;
@@ -127,7 +204,7 @@ export default function LiveJoin({ onExit }) {
       return next;
     });
 
-    channelRef.current?.postMessage({
+    const payload = {
       type: 'response_update',
       sessionId,
       playerId,
@@ -141,7 +218,20 @@ export default function LiveJoin({ onExit }) {
         timestamp: Date.now(),
       },
       timestamp: Date.now(),
-    });
+    };
+
+    const shouldQueue = isOffline || status === 'disconnected' || status === 'reconnecting' || status === 'host-not-found' || !joinAckRef.current;
+    if (shouldQueue) {
+      setOfflineQueuedUpdates((current) => {
+        const deduped = current.filter((entry) => !(entry.blockId === blockId && entry.mode === mode));
+        const next = [...deduped, payload];
+        setLiveNotice(`Offline queue: ${next.length} pending update${next.length === 1 ? '' : 's'}.`);
+        return next;
+      });
+      return;
+    }
+
+    channelRef.current?.postMessage(payload);
   };
 
   const handleJoin = () => {
@@ -199,9 +289,51 @@ export default function LiveJoin({ onExit }) {
         if (msg.sessionId && msg.sessionId !== sessionId) return;
         lastSyncRef.current = Date.now();
         joinAckRef.current = true;
-        setSession({ lesson: msg.lesson, currentIndex: msg.currentIndex, timestamp: msg.timestamp || Date.now() });
+        setSession({
+          lesson: msg.lesson,
+          currentIndex: msg.currentIndex,
+          participantCount: Number(msg.participantCount) || 0,
+          autoModeRemainingSeconds: Number.isFinite(Number(msg.autoModeRemainingSeconds)) ? Number(msg.autoModeRemainingSeconds) : null,
+          questionDeadlineRemainingSeconds: Number.isFinite(Number(msg.questionDeadlineRemainingSeconds)) ? Number(msg.questionDeadlineRemainingSeconds) : null,
+          paceMode: normalizeLivePaceMode(msg.paceMode || msg.lesson?.settings?.livePaceMode),
+          teamAssignments: msg.teamAssignments && typeof msg.teamAssignments === 'object' ? msg.teamAssignments : {},
+          captainsByTeam: msg.captainsByTeam && typeof msg.captainsByTeam === 'object' ? msg.captainsByTeam : {},
+          spotlight: msg.spotlight || null,
+          timestamp: msg.timestamp || Date.now(),
+        });
+        if (Number(msg.questionDeadlineRemainingSeconds) > 0) {
+          setLiveNotice('');
+        }
+        if (normalizeLivePaceMode(msg.paceMode || msg.lesson?.settings?.livePaceMode) === LIVE_PACE_MODE.TEACHER_LED) {
+          setLocalIndex(Math.max(0, Number(msg.currentIndex) || 0));
+        }
         setPhase(msg.phase === 'finished' ? PHASE.FINISHED : msg.phase === 'running' ? PHASE.RUNNING : PHASE.WAITING);
         setStatus('connected');
+      }
+      if (msg.type === 'question_skipped') {
+        const reason = String(msg.reason || 'No reason provided.');
+        setLiveNotice(`Teacher skipped this question: ${reason}`);
+      }
+      if (msg.type === 'question_reopened') {
+        const reason = String(msg.reason || 'No reason provided.');
+        const blockNumber = Number(msg.blockIndex) >= 0 ? Number(msg.blockIndex) + 1 : null;
+        const blockLabel = String(msg.blockLabel || '').trim();
+        const targetLabel = blockNumber && blockLabel
+          ? `Q${blockNumber} ${blockLabel}`
+          : blockNumber
+            ? `Q${blockNumber}`
+            : 'the previous question';
+        setLiveNotice(`Teacher re-opened ${targetLabel}: ${reason}`);
+      }
+      if (msg.type === 'spotlight_answer' && msg.spotlight) {
+        setSession((current) => (current ? { ...current, spotlight: msg.spotlight } : current));
+        setLiveNotice(`Spotlight: ${msg.spotlight.studentName || 'Student'} on ${msg.spotlight.blockLabel || 'current question'}.`);
+      }
+      if (msg.type === 'spotlight_cleared') {
+        setSession((current) => (current ? { ...current, spotlight: null } : current));
+      }
+      if (msg.type === 'response_rejected' && msg.playerId === playerId && msg.reason === 'deadline_reached') {
+        setLiveNotice('Submission window closed. Your late response was not accepted.');
       }
       if (msg.type === 'heartbeat') {
         lastSyncRef.current = Date.now();
@@ -284,25 +416,75 @@ export default function LiveJoin({ onExit }) {
           <span className="text-sm font-semibold">{name}</span>
           <span className="border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{transportMode}</span>
           <span className="border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{status}</span>
+          <span className="border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{Number(session?.participantCount) || 0} participant{Number(session?.participantCount) === 1 ? '' : 's'}</span>
+          <span className="border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{paceMode.replace('_', '-')}</span>
+          {myTeam && <span className="border border-sky-700 bg-sky-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-300">{myTeam}</span>}
+          {isTeamCaptain && <span className="border border-amber-600 bg-amber-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-300">Captain</span>}
+          {offlineQueuedUpdates.length > 0 && <span className="border border-amber-700 bg-amber-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-300">Queue {offlineQueuedUpdates.length}</span>}
         </div>
         <button type="button" onClick={onExit} className="text-xs text-zinc-500 hover:text-white">Leave</button>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center p-4 sm:p-6">
+      <main className={`flex flex-1 flex-col items-center p-4 sm:p-6 ${phase === PHASE.RUNNING ? 'justify-start overflow-y-auto' : 'justify-center'}`}>
         {phase === PHASE.WAITING && (
           <div className="w-full max-w-xl text-center">
             <div className="text-lg font-semibold">You're in!</div>
             <div className="mt-2 text-sm text-zinc-400">Waiting for the host to start the live lesson…</div>
+            <div className="mt-2 text-xs text-zinc-500">Current participants: {Number(session?.participantCount) || 0}</div>
             <div className="mt-6 border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-400">As soon as the teacher advances, you will receive the same slide or task instantly. Current transport: <span className="font-medium text-zinc-200">{transportMode}</span>.</div>
           </div>
         )}
 
         {phase === PHASE.RUNNING && (
-          <div className="w-full max-w-6xl text-zinc-900 [&_input]:text-zinc-900 [&_textarea]:text-zinc-900 [&_select]:text-zinc-900">
-            <div className="mb-4 text-sm text-zinc-400">Live block {Math.min((session?.currentIndex ?? 0) + 1, Math.max(blocks.length, 1))} / {blocks.length || 1}</div>
+          <div className="w-full max-w-6xl pb-8 text-zinc-900 [&_input]:text-zinc-900 [&_textarea]:text-zinc-900 [&_select]:text-zinc-900">
+            <div className="mb-4 text-sm text-zinc-400">Live block {Math.min(effectiveIndex + 1, Math.max(blocks.length, 1))} / {blocks.length || 1}</div>
+            {session?.autoModeRemainingSeconds !== null && session?.autoModeRemainingSeconds !== undefined && (
+              <div className="mb-2 text-xs text-zinc-500">Auto mode time remaining: {Math.max(0, Number(session.autoModeRemainingSeconds) || 0)}s</div>
+            )}
+            {session?.questionDeadlineRemainingSeconds !== null && session?.questionDeadlineRemainingSeconds !== undefined && currentBlock?.type === 'task' && (
+              <div className="mb-2 text-xs text-zinc-500">
+                Response deadline: {Number(session.questionDeadlineRemainingSeconds) > 0 ? `${Math.max(0, Number(session.questionDeadlineRemainingSeconds) || 0)}s` : 'Closed'}
+              </div>
+            )}
+            {liveNotice && (
+              <div className="mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">{liveNotice}</div>
+            )}
+            {session?.spotlight && (
+              <div className="mb-3 border border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+                Spotlight: {session.spotlight.studentName || 'Student'} on {session.spotlight.blockLabel || 'current question'}.
+                <div className="mt-1 whitespace-pre-wrap">{typeof session.spotlight.answer === 'string' ? session.spotlight.answer : JSON.stringify(session.spotlight.answer)}</div>
+              </div>
+            )}
+            {paceMode !== LIVE_PACE_MODE.TEACHER_LED && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
+                <span>You can navigate at your own pace.</span>
+                <button
+                  type="button"
+                  onClick={() => setLocalIndex((current) => Math.max(0, current - 1))}
+                  disabled={effectiveIndex <= 0}
+                  className="border border-zinc-300 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.12em] disabled:opacity-40"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalIndex((current) => Math.min(maxReachableIndex, current + 1))}
+                  disabled={effectiveIndex >= maxReachableIndex}
+                  className="border border-zinc-300 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.12em] disabled:opacity-40"
+                >
+                  Next
+                </button>
+                <span className="ml-auto text-zinc-500">Unlocked: {maxReachableIndex + 1}/{blocks.length || 1}</span>
+              </div>
+            )}
+            {offlineQueuedUpdates.length > 0 && (
+              <div className="mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {offlineQueuedUpdates.length} response update{offlineQueuedUpdates.length === 1 ? '' : 's'} queued. They will sync automatically once connection is restored.
+              </div>
+            )}
             <LessonStage
               blocks={blocks}
-              currentIndex={session?.currentIndex || 0}
+              currentIndex={effectiveIndex}
               results={results}
               onCompleteBlock={handleComplete}
               onProgressBlock={handleProgress}

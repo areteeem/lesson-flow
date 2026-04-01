@@ -27,15 +27,15 @@ export function supportsLocalLiveTransport() {
 }
 
 export function supportsSupabaseLiveTransport() {
-  const url = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
-  const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+  const url = String(import.meta.env?.VITE_SUPABASE_URL || '').trim();
+  const anonKey = String(import.meta.env?.VITE_SUPABASE_ANON_KEY || '').trim();
   return typeof window !== 'undefined' && typeof window.WebSocket !== 'undefined' && Boolean(url) && Boolean(anonKey);
 }
 
 export function getLiveTransportMode(search = '') {
   const queryValue = normalizeTransportMode(getQueryParamValue(search, TRANSPORT_PARAM_KEYS));
   if (queryValue) return queryValue;
-  const envValue = normalizeTransportMode(import.meta.env.VITE_LIVE_TRANSPORT);
+  const envValue = normalizeTransportMode(import.meta.env?.VITE_LIVE_TRANSPORT);
   if (envValue) return envValue;
   return 'auto';
 }

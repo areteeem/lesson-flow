@@ -8,6 +8,7 @@ import DebugPanel from './components/DebugPanel';
 import { recordDebugEvent } from './utils/debug';
 import { applyThemePreference, getThemePreference } from './utils/theme';
 import { getSessionUser, subscribeSessionUser } from './utils/accountAuth';
+import { applyCompactMode, readCompactModeFromSettings } from './utils/appSettings';
 
 const Editor = lazy(() => import('./components/Editor'));
 const GuidePanel = lazy(() => import('./components/GuidePanel'));
@@ -330,9 +331,13 @@ export default function App() {
 
   useEffect(() => {
     applyThemePreference(getThemePreference());
+    applyCompactMode(readCompactModeFromSettings());
   }, []);
 
-  useEffect(() => subscribeSessionUser((user) => setSessionUser(user)), []);
+  useEffect(() => subscribeSessionUser((user) => {
+    setSessionUser(user);
+    applyCompactMode(readCompactModeFromSettings());
+  }), []);
 
   if (needsTeacherAuth) {
     return (

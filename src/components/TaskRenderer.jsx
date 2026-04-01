@@ -96,7 +96,7 @@ const MAP = {
   text_linking: TextLinkingTask,
 };
 
-export default function TaskRenderer({ block, onComplete, onProgress, existingResult, allowRetry = true, showCheckButton = true, lockAfterSubmit = false }) {
+export default function TaskRenderer({ block, onComplete, onProgress, existingResult, allowRetry = true, showCheckButton = true, lockAfterSubmit = false, forceLocked = false, lockMessage = 'Responses are closed for this task.' }) {
   const Component = MAP[block.taskType];
   const [attempt, setAttempt] = useState(0);
   const [feedback, setFeedback] = useState(null);
@@ -136,7 +136,11 @@ export default function TaskRenderer({ block, onComplete, onProgress, existingRe
           </div>
         </div>
       )}
-      {lockAfterSubmit && lastResult?.submitted ? (
+      {forceLocked ? (
+        <div className="border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+          {lockMessage}
+        </div>
+      ) : lockAfterSubmit && lastResult?.submitted ? (
         <div className="border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
           Answer submitted. This task accepts one attempt.
         </div>

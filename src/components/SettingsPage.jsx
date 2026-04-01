@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { loadAppSettings, saveAppSettings } from '../utils/appSettings';
+import { applyCompactMode, loadAppSettings, saveAppSettings } from '../utils/appSettings';
 import { getCloudSyncAvailability, readCloudSyncStatus, testCloudSyncConnection } from '../utils/cloudSync';
 import { getThemePreference, setThemePreference } from '../utils/theme';
 import { getSessionUser, signInWithEmail, signOut, signUpWithEmail, upgradeToEmailAccount } from '../utils/accountAuth';
@@ -30,6 +30,7 @@ export default function SettingsPage({ onBack }) {
 
   const update = (key, value) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
+    if (key === 'compactMode') applyCompactMode(value === true);
     setSaved(false);
   };
 
@@ -273,6 +274,10 @@ export default function SettingsPage({ onBack }) {
               <label className="flex items-center gap-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={settings.autoSave !== false} onChange={(e) => update('autoSave', e.target.checked)} />
                 Auto-save lessons while editing
+              </label>
+              <label className="flex items-center gap-3 text-sm text-zinc-700">
+                <input type="checkbox" checked={settings.compactMode === true} onChange={(e) => update('compactMode', e.target.checked)} />
+                Compact mode for power users
               </label>
               {settings.autoSave !== false && (
                 <label className="ml-6 block">

@@ -1,7 +1,7 @@
-import { useRef, useCallback, useEffect, useState } from 'react';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import MonacoEditor, { loader } from '@monaco-editor/react';
 import * as monacoInstance from 'monaco-editor';
-import { parseLesson } from '../parser';
+import { generateDSL, parseLesson } from '../parser';
 import { TASK_REGISTRY } from '../config/taskRegistry';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 
@@ -17,7 +17,14 @@ const FIELD_KEYS = [
   'Options', 'Items', 'Pairs', 'Blanks', 'Categories', 'Hint', 'Explanation',
   'Shuffle', 'Layout', 'Left', 'Right', 'Steps', 'Media', 'Image', 'Video', 'Audio',
   'Min', 'Max', 'Targets', 'Columns', 'Rows', 'TimeLimit', 'LinkTo', 'Ref',
-  'ShowHints', 'ShowExplanations', 'Multiple', 'Repeat', 'Enabled', 'Group',
+  'ShowHints', 'ShowExplanations', 'AllowSessionSave', 'VisibilityPolicy',
+  'ShowCheckButton', 'AllowRetryHomework', 'EnableGrading', 'ShowTotalGrade', 'ShowPerQuestionGrade',
+  'DisableBackNavigation', 'SessionTimeLimitMinutes',
+  'AllowRetryLive', 'ShowCheckButtonLive', 'LockAfterSubmitLive', 'HideQuestionContentLive',
+  'LiveAutoAdvanceSeconds', 'LiveAutoAdvancePolicy', 'LiveAutoAdvanceSubmissionThreshold',
+  'LiveQuestionResponseDeadlineSeconds', 'LiveAutoModeTimeLimitMinutes', 'ShowLeaderboardEachQuestionLive',
+  'LivePaceMode', 'LiveGroupModeEnabled', 'LiveGroupCount', 'LiveCaptainRotationEvery',
+  'Multiple', 'Repeat', 'Enabled', 'Group',
   'Placeholder', 'Keywords', 'TaskRefs', 'Cards', 'Notes', 'Examples',
   'HiddenRows', 'HiddenCells', 'RevealMode', 'RandomHiddenCount',
   'LessonTopic', 'GrammarTopic', 'Focus', 'Difficulty',
@@ -28,6 +35,43 @@ const BLOCK_MARKERS = [
   ...SLIDE_REGISTRY.filter((e) => e.type !== 'slide').map((e) => `#SLIDE: ${e.type.toUpperCase()}`),
   ...TASK_REGISTRY.map((e) => `#TASK: ${e.type.toUpperCase()}`),
 ];
+
+const FIELD_DOCS = {
+  title: 'Human-readable block or lesson title shown in UI and reports.',
+  question: 'Primary prompt for a task block. Keep it clear and concise.',
+  instruction: 'Optional instructional helper text for the learner.',
+  content: 'Main rich text body for slides.',
+  text: 'Task text body. For blank tasks, this contains placeholders.',
+  answer: 'Expected answer value(s). Use pipe separators for multi-answer tasks.',
+  options: 'Selectable answer options. One option per line.',
+  pairs: 'Left-right pair mappings written as left => right.',
+  blanks: 'Word bank or blank values used by fill/drag blank tasks.',
+  categories: 'Category labels for categorize tasks.',
+  targets: 'Expected highlight/link targets that must exist in text.',
+  media: 'Raw URL for media assets. Avoid markdown links here.',
+  showcheckbutton: 'Controls whether the student can click Check in homework/player mode.',
+  allowretryhomework: 'When true, students can retry homework tasks before final submit.',
+  disablebacknavigation: 'Locks backward movement in player flow.',
+  sessiontimelimitminutes: 'Hard session time cap for the player runtime.',
+  liveautoadvanceseconds: 'Auto-advance countdown for live teacher-led mode.',
+  liveautoadvancepolicy: 'timer | all_submitted | submission_threshold.',
+  liveautoadvancesubmissionthreshold: 'Submission percent required when using submission_threshold policy.',
+  livequestionresponsedeadlineseconds: 'Per-question submission deadline in live mode.',
+  liveautomodetimelimitminutes: 'Total duration cap when auto mode is enabled.',
+  showleaderboardeachquestionlive: 'Shows a per-question leaderboard card in live mode.',
+  livepacemode: 'teacher_led | hybrid | student_paced classroom pacing behavior.',
+  livegroupmodeenabled: 'Enables team assignment and team leaderboard in live sessions.',
+  livegroupcount: 'Number of teams for group mode (2-8).',
+  livecaptainrotationevery: 'Rotate team captains every N blocks (1-10).',
+};
+
+const LINT_PRESETS = [
+  { value: 'strict', label: 'Strict' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'relaxed', label: 'Relaxed' },
+];
+
+const LINT_WORKSPACE_STORAGE_KEY = 'lesson-flow-dsl-lint-workspaces-v1';
 
 const DSL_THEME_DEF = {
   base: 'vs-dark',
@@ -60,7 +104,7 @@ function registerDslLanguage(monaco) {
         [/^#TASK\b.*$/, 'type.task-marker'],
         [/^#GROUP\b.*$/, 'type.group-marker'],
         [/^#LINK\b.*$/, 'type.link-marker'],
-        [/^(Title|Question|Instruction|Content|Text|Answer|Correct|Options|Items|Pairs|Blanks|Categories|Hint|Explanation|Shuffle|Layout|Left|Right|Steps|Media|Image|Video|Audio|Min|Max|Targets|Columns|Rows|TimeLimit|LinkTo|Ref|ShowHints|ShowExplanations|Multiple|Repeat|Enabled|Group|Placeholder|Keywords|TaskRefs|Cards|Notes|Examples|HiddenRows|HiddenCells|RevealMode|RandomHiddenCount|LessonTopic|GrammarTopic|Focus|Difficulty)\s*:/i, 'variable.field-key'],
+        [/^(Title|Question|Instruction|Content|Text|Answer|Correct|Options|Items|Pairs|Blanks|Categories|Hint|Explanation|Shuffle|Layout|Left|Right|Steps|Media|Image|Video|Audio|Min|Max|Targets|Columns|Rows|TimeLimit|LinkTo|Ref|ShowHints|ShowExplanations|AllowSessionSave|VisibilityPolicy|ShowCheckButton|AllowRetryHomework|EnableGrading|ShowTotalGrade|ShowPerQuestionGrade|DisableBackNavigation|SessionTimeLimitMinutes|AllowRetryLive|ShowCheckButtonLive|LockAfterSubmitLive|HideQuestionContentLive|LiveAutoAdvanceSeconds|LiveAutoAdvancePolicy|LiveAutoAdvanceSubmissionThreshold|LiveQuestionResponseDeadlineSeconds|LiveAutoModeTimeLimitMinutes|ShowLeaderboardEachQuestionLive|LivePaceMode|LiveGroupModeEnabled|LiveGroupCount|LiveCaptainRotationEvery|Multiple|Repeat|Enabled|Group|Placeholder|Keywords|TaskRefs|Cards|Notes|Examples|HiddenRows|HiddenCells|RevealMode|RandomHiddenCount|LessonTopic|GrammarTopic|Focus|Difficulty)\s*:/i, 'variable.field-key'],
         [/=>|->/, 'operator.pair-arrow'],
         [/→/, 'operator.pair-arrow'],
         [/\[\d+\]/, 'string.indexed-blank'],
@@ -172,6 +216,28 @@ function registerDslLanguage(monaco) {
     },
   });
 
+    // --- Hover docs for known field keys ---
+    monaco.languages.registerHoverProvider(DSL_LANGUAGE_ID, {
+      provideHover(model, position) {
+        const line = model.getLineContent(position.lineNumber);
+        const fieldMatch = line.match(/^\s*([A-Za-z][A-Za-z0-9_ ]*)\s*:/);
+        if (!fieldMatch) return null;
+
+        const rawField = fieldMatch[1].trim();
+        const normalized = rawField.toLowerCase().replace(/\s+/g, '');
+        const docs = FIELD_DOCS[normalized];
+        if (!docs) return null;
+
+        return {
+          range: new monaco.Range(position.lineNumber, 1, position.lineNumber, fieldMatch[0].length + 1),
+          contents: [
+            { value: `**${rawField}:**` },
+            { value: docs },
+          ],
+        };
+      },
+    });
+
   // --- Folding ranges for blocks ---
   monaco.languages.registerFoldingRangeProvider(DSL_LANGUAGE_ID, {
     provideFoldingRanges(model) {
@@ -195,54 +261,173 @@ function registerDslLanguage(monaco) {
   });
 }
 
-function classifyWarnings(warnings, lines) {
+function getWorkspaceLintId() {
+  if (typeof window === 'undefined') return 'workspace';
+  const pathname = String(window.location.pathname || '').trim();
+  return pathname || 'workspace';
+}
+
+function loadLintWorkspaceState(workspaceId) {
+  if (typeof window === 'undefined') {
+    return { preset: 'balanced', filters: { error: true, warning: true, info: true }, profiles: {} };
+  }
+
+  try {
+    const all = JSON.parse(localStorage.getItem(LINT_WORKSPACE_STORAGE_KEY) || '{}');
+    const workspace = all?.[workspaceId] || {};
+    return {
+      preset: workspace.preset || 'balanced',
+      filters: {
+        error: workspace?.filters?.error !== false,
+        warning: workspace?.filters?.warning !== false,
+        info: workspace?.filters?.info !== false,
+      },
+      profiles: workspace.profiles && typeof workspace.profiles === 'object' ? workspace.profiles : {},
+    };
+  } catch {
+    return { preset: 'balanced', filters: { error: true, warning: true, info: true }, profiles: {} };
+  }
+}
+
+function saveLintWorkspaceState(workspaceId, value) {
+  if (typeof window === 'undefined') return;
+  try {
+    const all = JSON.parse(localStorage.getItem(LINT_WORKSPACE_STORAGE_KEY) || '{}');
+    all[workspaceId] = value;
+    localStorage.setItem(LINT_WORKSPACE_STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+function normalizeDslSpacing(text) {
+  const source = String(text || '').replace(/\r\n?/g, '\n');
+  const rawLines = source.split('\n').map((line) => line.replace(/\s+$/g, ''));
+  const output = [];
+
+  rawLines.forEach((line, index) => {
+    const trimmed = line.trim();
+    const isMarker = /^#(LESSON|SLIDE|TASK|GROUP|SPLIT_GROUP|LINK)\b/i.test(trimmed);
+
+    if (isMarker && output.length > 0 && output[output.length - 1] !== '') {
+      output.push('');
+    }
+
+    output.push(trimmed === '' ? '' : line);
+
+    if (index === rawLines.length - 1) return;
+  });
+
+  const compact = [];
+  output.forEach((line) => {
+    const isBlank = line.trim() === '';
+    const previousBlank = compact.length > 0 && compact[compact.length - 1].trim() === '';
+    if (isBlank && previousBlank) return;
+    compact.push(isBlank ? '' : line);
+  });
+
+  const normalized = compact.join('\n').trim();
+  return normalized ? `${normalized}\n` : '';
+}
+
+function buildParserTrace(dslText) {
+  const lines = String(dslText || '').split('\n');
+  const markers = [];
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!/^#(LESSON|SLIDE|TASK|GROUP|SPLIT_GROUP|LINK)\b/i.test(trimmed)) return;
+    markers.push({ startLine: index + 1, marker: trimmed });
+  });
+
+  if (markers.length === 0) return [];
+
+  return markers.map((entry, index) => {
+    const endLine = index < markers.length - 1 ? markers[index + 1].startLine - 1 : lines.length;
+    const sectionLines = lines.slice(entry.startLine - 1, endLine);
+    const titleLine = sectionLines.find((line) => /^\s*(Title|Question|Instruction)\s*:/i.test(line.trim())) || '';
+    const label = titleLine ? titleLine.replace(/^\s*([A-Za-z][A-Za-z0-9_ ]*)\s*:\s*/i, '').trim() : '';
+    return {
+      id: `${index}-${entry.startLine}`,
+      marker: entry.marker,
+      startLine: entry.startLine,
+      endLine,
+      label,
+      lineCount: Math.max(1, endLine - entry.startLine + 1),
+    };
+  });
+}
+
+function toLessonModelFromParsed(parsed) {
+  return {
+    title: parsed?.title || 'Untitled Lesson',
+    settings: parsed?.settings || {},
+    blocks: parsed?.blocks || [],
+    lesson: parsed?.lesson || { title: parsed?.title || 'Untitled Lesson', slides: [], tasks: [] },
+  };
+}
+
+function baseSeverityFromMessage(msg) {
+  const lower = String(msg || '').toLowerCase();
+  if (lower.includes('failed to parse') || lower.includes('parse error') || lower.includes('missing required') || lower.includes(' is not in options') || lower.includes(' is not one of the options')) {
+    return 'error';
+  }
+  if (lower.includes('unknown') || lower.includes('ignored') || lower.includes('has no') || lower.includes('auto-repair incomplete')) {
+    return 'warning';
+  }
+  return 'info';
+}
+
+function applyLintPreset(severity, message, preset) {
+  const lower = String(message || '').toLowerCase();
+  if (preset === 'strict') {
+    if (severity === 'info') return 'warning';
+    if (severity === 'warning' && (lower.includes('has no') || lower.includes('missing') || lower.includes('not in options'))) {
+      return 'error';
+    }
+    return severity;
+  }
+  if (preset === 'relaxed') {
+    if (severity === 'error') return 'error';
+    return 'info';
+  }
+  return severity;
+}
+
+function classifyWarnings(warnings, lines, lintPreset = 'balanced') {
   return warnings.map((msg) => {
     let lineNum = 1;
-    // Try to find a task/slide label from the warning, e.g. Task "Q1" or Slide "S1"
     const labelMatch = msg.match(/(?:Task|Slide)\s+"([^"]+)"/);
     if (labelMatch) {
-      const label = labelMatch[1];
+      const label = labelMatch[1].toLowerCase();
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes(label) || lines[i].match(/^\[(Task|Slide)\b/i)) {
-          // Check if the block around this line contains the label
-          const blockLine = lines[i];
-          if (blockLine.toLowerCase().includes(label.toLowerCase())) {
-            lineNum = i + 1;
-            break;
-          }
-        }
-      }
-      // Fallback: search for Question: or Title: containing the label
-      if (lineNum === 1) {
-        for (let i = 0; i < lines.length; i++) {
-          if (/^(question|title|instruction)\s*:/i.test(lines[i].trim()) && lines[i].toLowerCase().includes(label.toLowerCase())) {
-            lineNum = i + 1;
-            break;
-          }
-        }
-      }
-    }
-    // Check for field-specific issues
-    const fieldMatch = msg.match(/has no (\w+)/i);
-    if (fieldMatch && lineNum === 1) {
-      const fieldName = fieldMatch[1].toLowerCase();
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim().toLowerCase().startsWith(fieldName + ':')) {
+        const current = String(lines[i] || '').toLowerCase();
+        if (current.includes(label)) {
           lineNum = i + 1;
           break;
         }
       }
     }
 
-    const sev = msg.includes('error') || msg.includes('Error') ? 'error'
-      : msg.includes('Unknown') || msg.includes('Ignored') ? 'warning' : 'info';
+    const fieldMatch = msg.match(/missing required field:\s*([a-zA-Z0-9_]+)/i) || msg.match(/has no\s+([a-zA-Z0-9_]+)/i);
+    if (fieldMatch && lineNum === 1) {
+      const fieldName = fieldMatch[1].toLowerCase();
+      for (let i = 0; i < lines.length; i++) {
+        if (String(lines[i] || '').trim().toLowerCase().startsWith(`${fieldName}:`)) {
+          lineNum = i + 1;
+          break;
+        }
+      }
+    }
 
+    const base = baseSeverityFromMessage(msg);
+    const sev = applyLintPreset(base, msg, lintPreset);
     return { msg, sev, lineNum };
   });
 }
 
-function mapWarningsToMarkers(warnings, lines, monaco) {
-  return classifyWarnings(warnings, lines).map((item) => {
+function mapWarningsToMarkers(warnings, lines, monaco, lintPreset = 'balanced') {
+  return classifyWarnings(warnings, lines, lintPreset).map((item) => {
     const severity = item.sev === 'error' ? monaco.MarkerSeverity.Error
       : item.sev === 'warning' ? monaco.MarkerSeverity.Warning
       : monaco.MarkerSeverity.Info;
@@ -258,14 +443,152 @@ function mapWarningsToMarkers(warnings, lines, monaco) {
   });
 }
 
+function blockRangeForLine(lines, lineNum) {
+  const safeLines = Array.isArray(lines) ? lines : [];
+  if (safeLines.length === 0) return { start: 0, end: 0 };
+  const lineIndex = Math.max(0, Math.min(safeLines.length - 1, Number(lineNum || 1) - 1));
+
+  let start = 0;
+  for (let i = lineIndex; i >= 0; i--) {
+    if (/^#(LESSON|SLIDE|TASK|GROUP|SPLIT_GROUP|LINK)\b/i.test(String(safeLines[i] || '').trim())) {
+      start = i;
+      break;
+    }
+  }
+
+  let end = safeLines.length - 1;
+  for (let i = start + 1; i < safeLines.length; i++) {
+    if (/^#(LESSON|SLIDE|TASK|GROUP|SPLIT_GROUP|LINK)\b/i.test(String(safeLines[i] || '').trim())) {
+      end = i - 1;
+      break;
+    }
+  }
+
+  return { start, end };
+}
+
+function hasFieldInRange(lines, range, fieldName) {
+  const needle = String(fieldName || '').trim().toLowerCase();
+  if (!needle) return false;
+  for (let i = range.start; i <= range.end; i++) {
+    if (String(lines[i] || '').trim().toLowerCase().startsWith(`${needle}:`)) return true;
+  }
+  return false;
+}
+
+function quickFixLabelForMessage(message) {
+  const msg = String(message || '');
+  if (/missing required field/i.test(msg)) return 'Add required field';
+  if (/has no options/i.test(msg)) return 'Insert options scaffold';
+  if (/has no Question or Instruction/i.test(msg)) return 'Insert question prompt';
+  if (/is not one of the options|is not in options/i.test(msg)) return 'Add missing option';
+  if (/text has no blank markers/i.test(msg)) return 'Add blank marker';
+  if (/Unknown block marker/i.test(msg)) return 'Normalize marker';
+  if (/Ignored text found before the first block marker/i.test(msg)) return 'Insert lesson header';
+  return '';
+}
+
+function applyQuickFixForIssue(dslText, item) {
+  const lines = String(dslText || '').replace(/\r\n?/g, '\n').split('\n');
+  const range = blockRangeForLine(lines, item?.lineNum || 1);
+  const message = String(item?.msg || '');
+  let applied = false;
+
+  if (/Ignored text found before the first block marker/i.test(message)) {
+    lines.unshift('', 'Title: Untitled Lesson', '#LESSON');
+    applied = true;
+  }
+
+  const requiredFieldMatch = message.match(/missing required field:\s*([a-zA-Z0-9_]+)/i);
+  if (requiredFieldMatch) {
+    const field = requiredFieldMatch[1];
+    if (!hasFieldInRange(lines, range, field)) {
+      lines.splice(range.end + 1, 0, `${field.charAt(0).toUpperCase()}${field.slice(1)}: TODO`);
+      applied = true;
+    }
+  }
+
+  if (/has no Question or Instruction/i.test(message) && !hasFieldInRange(lines, range, 'question') && !hasFieldInRange(lines, range, 'instruction')) {
+    lines.splice(range.end + 1, 0, 'Question: Add prompt here');
+    applied = true;
+  }
+
+  if (/has no options/i.test(message) && !hasFieldInRange(lines, range, 'options')) {
+    lines.splice(range.end + 1, 0, 'Options:', 'Option A', 'Option B', 'Option C');
+    applied = true;
+  }
+
+  const missingOptionMatch = message.match(/answer\s+"([^"]+)"\s+is not (?:one of the options|in options)/i);
+  if (missingOptionMatch) {
+    const candidate = missingOptionMatch[1].trim();
+    if (candidate) {
+      if (!hasFieldInRange(lines, range, 'options')) {
+        lines.splice(range.end + 1, 0, 'Options:', candidate);
+        applied = true;
+      } else {
+        const existing = lines.slice(range.start, range.end + 1).map((line) => String(line || '').trim().toLowerCase());
+        if (!existing.includes(candidate.toLowerCase())) {
+          lines.splice(range.end + 1, 0, candidate);
+          applied = true;
+        }
+      }
+    }
+  }
+
+  if (/text has no blank markers/i.test(message)) {
+    for (let i = range.start; i <= range.end; i++) {
+      const trimmed = String(lines[i] || '').trim();
+      if (/^Text\s*:/i.test(trimmed) && !/(\{\}|_{3,}|\[blank\]|\[\d+\])/i.test(trimmed)) {
+        lines[i] = `${lines[i]} ___`;
+        applied = true;
+        break;
+      }
+    }
+  }
+
+  if (/Unknown block marker/i.test(message)) {
+    const lineIndex = Math.max(0, Math.min(lines.length - 1, (item?.lineNum || 1) - 1));
+    lines[lineIndex] = '#SLIDE';
+    applied = true;
+  }
+
+  const nextDsl = normalizeDslSpacing(lines.join('\n'));
+  return {
+    applied,
+    nextDsl,
+  };
+}
+
+function downloadTextFile(content, fileName, mimeType = 'text/plain;charset=utf-8') {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
 export default function DslMonacoEditor({ value, onChange }) {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const timerRef = useRef(null);
+  const workspaceLintId = useMemo(() => getWorkspaceLintId(), []);
+  const lintDefaults = useMemo(() => loadLintWorkspaceState(workspaceLintId), [workspaceLintId]);
   const [warnings, setWarnings] = useState([]);
   const [copied, setCopied] = useState(null);
   const [showPasteFix, setShowPasteFix] = useState(false);
   const [fixDsl, setFixDsl] = useState('');
+  const [lintPreset, setLintPreset] = useState(lintDefaults.preset || 'balanced');
+  const [severityFilters, setSeverityFilters] = useState(lintDefaults.filters || { error: true, warning: true, info: true });
+  const [lintProfiles, setLintProfiles] = useState(lintDefaults.profiles || {});
+  const [selectedProfile, setSelectedProfile] = useState('');
+  const [showParserTrace, setShowParserTrace] = useState(false);
+  const [selectedTraceId, setSelectedTraceId] = useState('');
+  const [showParsedPanel, setShowParsedPanel] = useState(false);
+  const [quickFixNotice, setQuickFixNotice] = useState('');
 
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -274,12 +597,29 @@ export default function DslMonacoEditor({ value, onChange }) {
     });
   };
 
+  const classifiedWarnings = useMemo(() => {
+    const lines = String(value || '').split('\n');
+    return classifyWarnings(warnings, lines, lintPreset);
+  }, [lintPreset, value, warnings]);
+
+  const visibleWarnings = useMemo(() => {
+    return classifiedWarnings.filter((entry) => severityFilters[entry.sev] !== false);
+  }, [classifiedWarnings, severityFilters]);
+
+  const parserTrace = useMemo(() => buildParserTrace(value || ''), [value]);
+
+  const parsedPreview = useMemo(() => {
+    try {
+      return parseLesson(value || '');
+    } catch (error) {
+      return { error: error?.message || 'Failed to parse DSL.' };
+    }
+  }, [value]);
+
   const warningReport = useCallback(() => {
-    const lines = (value || '').split('\n');
-    const classified = classifyWarnings(warnings, lines);
-    if (classified.length === 0) return 'No issues detected.';
-    return classified.map((entry) => `- Line ${entry.lineNum}: ${entry.msg}`).join('\n');
-  }, [value, warnings]);
+    if (classifiedWarnings.length === 0) return 'No issues detected.';
+    return classifiedWarnings.map((entry) => `- Line ${entry.lineNum}: ${entry.msg}`).join('\n');
+  }, [classifiedWarnings]);
 
   const validate = useCallback((text) => {
     const monaco = monacoRef.current;
@@ -289,17 +629,17 @@ export default function DslMonacoEditor({ value, onChange }) {
     try {
       const result = parseLesson(text);
       const lines = text.split('\n');
-      const markers = mapWarningsToMarkers(result.warnings || [], lines, monaco);
+      const markers = mapWarningsToMarkers(result.warnings || [], lines, monaco, lintPreset);
       monaco.editor.setModelMarkers(editor.getModel(), 'dsl-validator', markers);
       setWarnings(result.warnings || []);
     } catch {
       setWarnings(['Parse error — check DSL syntax']);
     }
-  }, []);
+  }, [lintPreset]);
 
   const scheduleValidation = useCallback((text) => {
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => validate(text), 400);
+    timerRef.current = setTimeout(() => validate(text), 350);
   }, [validate]);
 
   const handleMount = (editor, monaco) => {
@@ -317,8 +657,6 @@ export default function DslMonacoEditor({ value, onChange }) {
     scheduleValidation(v);
   };
 
-  useEffect(() => () => clearTimeout(timerRef.current), []);
-
   const goToLine = (lineNum) => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -327,103 +665,296 @@ export default function DslMonacoEditor({ value, onChange }) {
     editor.focus();
   };
 
+  const handleApplyQuickFix = useCallback((item) => {
+    const result = applyQuickFixForIssue(value || '', item);
+    if (!result.applied) {
+      setQuickFixNotice('No safe quick fix available for this issue.');
+      return;
+    }
+    onChange(result.nextDsl);
+    scheduleValidation(result.nextDsl);
+    setQuickFixNotice('Quick fix applied.');
+    setTimeout(() => setQuickFixNotice(''), 1800);
+  }, [onChange, scheduleValidation, value]);
+
+  const handleAutoFormat = () => {
+    const formatted = normalizeDslSpacing(value || '');
+    onChange(formatted);
+    scheduleValidation(formatted);
+  };
+
+  const handleSafeNormalize = () => {
+    const parsed = parseLesson(value || '');
+    const normalized = generateDSL(toLessonModelFromParsed(parsed));
+    onChange(normalized);
+    scheduleValidation(normalized);
+    setQuickFixNotice('Safe normalize completed.');
+    setTimeout(() => setQuickFixNotice(''), 1800);
+  };
+
+  const handleExportWarningsJson = () => {
+    downloadTextFile(JSON.stringify(visibleWarnings, null, 2), 'dsl-warnings.json', 'application/json;charset=utf-8');
+  };
+
+  const handleExportWarningsCsv = () => {
+    const rows = [
+      ['severity', 'line', 'message'],
+      ...visibleWarnings.map((entry) => [entry.sev, String(entry.lineNum), entry.msg]),
+    ];
+    const csv = rows
+      .map((row) => row.map((cell) => `"${String(cell || '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    downloadTextFile(csv, 'dsl-warnings.csv', 'text/csv;charset=utf-8');
+  };
+
+  const saveCurrentLintProfile = () => {
+    const proposedName = typeof window !== 'undefined' ? window.prompt('Profile name for this workspace?', selectedProfile || 'custom-profile') : '';
+    const profileName = String(proposedName || '').trim();
+    if (!profileName) return;
+
+    setLintProfiles((current) => ({
+      ...current,
+      [profileName]: {
+        preset: lintPreset,
+        filters: severityFilters,
+      },
+    }));
+    setSelectedProfile(profileName);
+  };
+
+  const applyLintProfile = (profileName) => {
+    if (!profileName) {
+      setSelectedProfile('');
+      return;
+    }
+    const profile = lintProfiles[profileName];
+    if (!profile) return;
+    setSelectedProfile(profileName);
+    setLintPreset(profile.preset || 'balanced');
+    setSeverityFilters(profile.filters || { error: true, warning: true, info: true });
+  };
+
+  useEffect(() => {
+    saveLintWorkspaceState(workspaceLintId, {
+      preset: lintPreset,
+      filters: severityFilters,
+      profiles: lintProfiles,
+    });
+  }, [lintPreset, lintProfiles, severityFilters, workspaceLintId]);
+
+  useEffect(() => {
+    scheduleValidation(value || '');
+  }, [lintPreset, scheduleValidation, value]);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const sevIcon = { error: '✕', warning: '⚠', info: 'ℹ' };
+  const sevColor = { error: 'text-red-400', warning: 'text-amber-400', info: 'text-blue-400' };
+  const sevBg = { error: 'bg-red-500/20 text-red-400', warning: 'bg-amber-500/20 text-amber-400', info: 'bg-blue-500/20 text-blue-400' };
+  const errorCount = classifiedWarnings.filter((entry) => entry.sev === 'error').length;
+  const warningCount = classifiedWarnings.filter((entry) => entry.sev === 'warning').length;
+  const infoCount = classifiedWarnings.filter((entry) => entry.sev === 'info').length;
+  const selectedTrace = parserTrace.find((entry) => entry.id === selectedTraceId) || parserTrace[0] || null;
+
   return (
     <div className="flex h-full min-h-[60vh] flex-col xl:min-h-0">
-      {/* DSL toolbar */}
-      <div className="flex items-center gap-1.5 border border-b-0 border-zinc-200 bg-zinc-950 px-3 py-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 border border-b-0 border-zinc-200 bg-zinc-950 px-3 py-1.5">
         <button type="button" onClick={() => copyToClipboard(value || '', 'dsl')} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
           {copied === 'dsl' ? '✓ Copied' : 'Copy DSL'}
         </button>
-        <button type="button" onClick={() => {
-          const prompt = `Fix the following Lesson DSL. Return ONLY the corrected DSL, no explanations:\n\n${value || ''}${warnings.length ? `\n\nCurrent issues with line numbers:\n${warningReport()}` : ''}`;
-          copyToClipboard(prompt, 'fix');
-        }} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
-          {copied === 'fix' ? '✓ Copied' : 'Copy DSL + Issues (lines)'}
+        <button
+          type="button"
+          onClick={() => {
+            const prompt = `Fix the following Lesson DSL. Return ONLY the corrected DSL, no explanations:\n\n${value || ''}${warnings.length ? `\n\nCurrent issues with line numbers:\n${warningReport()}` : ''}`;
+            copyToClipboard(prompt, 'fix');
+          }}
+          className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200"
+        >
+          {copied === 'fix' ? '✓ Copied' : 'Copy DSL + Issues'}
         </button>
-        <button type="button" onClick={() => setShowPasteFix((v) => !v)} className={`border px-2 py-1 text-[10px] font-medium transition ${showPasteFix ? 'border-emerald-600 bg-emerald-600/20 text-emerald-400' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>
+        <button type="button" onClick={handleAutoFormat} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Auto Format</button>
+        <button type="button" onClick={handleSafeNormalize} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Safe Normalize</button>
+        <button type="button" onClick={() => setShowParsedPanel((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showParsedPanel ? 'border-blue-600 bg-blue-600/20 text-blue-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>Parsed JSON</button>
+        <button type="button" onClick={() => setShowParserTrace((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showParserTrace ? 'border-violet-600 bg-violet-600/20 text-violet-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>Parser Trace</button>
+        <button type="button" onClick={handleExportWarningsJson} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Warnings JSON</button>
+        <button type="button" onClick={handleExportWarningsCsv} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Warnings CSV</button>
+        <button type="button" onClick={() => setShowPasteFix((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showPasteFix ? 'border-emerald-600 bg-emerald-600/20 text-emerald-400' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>
           {showPasteFix ? 'Cancel Paste' : 'Paste Fix'}
         </button>
-        {warnings.length > 0 && <span className="ml-auto text-[10px] text-zinc-600">{warnings.length} issue{warnings.length !== 1 ? 's' : ''}</span>}
+
+        <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500">
+          Preset
+          <select value={lintPreset} onChange={(event) => setLintPreset(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-1 py-1 text-[10px] text-zinc-300 outline-none">
+            {LINT_PRESETS.map((preset) => (
+              <option key={preset.value} value={preset.value}>{preset.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1 text-[10px] text-zinc-500">
+          Profile
+          <select value={selectedProfile} onChange={(event) => applyLintProfile(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-1 py-1 text-[10px] text-zinc-300 outline-none">
+            <option value="">Current</option>
+            {Object.keys(lintProfiles).sort().map((profileName) => (
+              <option key={profileName} value={profileName}>{profileName}</option>
+            ))}
+          </select>
+        </label>
+        <button type="button" onClick={saveCurrentLintProfile} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Save Profile</button>
       </div>
+
+      {quickFixNotice && <div className="border border-b-0 border-zinc-200 bg-zinc-950 px-3 py-1 text-[10px] text-emerald-400">{quickFixNotice}</div>}
+
       {showPasteFix && (
         <div className="border border-b-0 border-t-0 border-zinc-200 bg-zinc-950 px-3 py-2">
           <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Paste corrected DSL from AI</div>
           <textarea
             value={fixDsl}
-            onChange={(e) => setFixDsl(e.target.value)}
+            onChange={(event) => setFixDsl(event.target.value)}
             rows={6}
             placeholder="Paste the corrected DSL here…"
             className="w-full resize-y border border-zinc-700 bg-zinc-900 px-2 py-1.5 font-mono text-xs text-zinc-300 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
           />
           <div className="mt-1.5 flex items-center gap-2">
-            <button type="button" disabled={!fixDsl.trim()} onClick={() => { onChange(fixDsl.trim()); setFixDsl(''); setShowPasteFix(false); }} className="border border-emerald-600 bg-emerald-600 px-3 py-1 text-[10px] font-medium text-white transition hover:bg-emerald-700 disabled:opacity-40">
+            <button
+              type="button"
+              disabled={!fixDsl.trim()}
+              onClick={() => {
+                onChange(fixDsl.trim());
+                scheduleValidation(fixDsl.trim());
+                setFixDsl('');
+                setShowPasteFix(false);
+              }}
+              className="border border-emerald-600 bg-emerald-600 px-3 py-1 text-[10px] font-medium text-white transition hover:bg-emerald-700 disabled:opacity-40"
+            >
               Apply Fix
             </button>
-            <button type="button" onClick={() => { setFixDsl(''); setShowPasteFix(false); }} className="border border-zinc-700 px-3 py-1 text-[10px] font-medium text-zinc-400 transition hover:text-zinc-200">
-              Cancel
-            </button>
-            {fixDsl.trim() && (() => {
-              const result = parseLesson(fixDsl.trim());
-              const issueCount = (result.warnings || []).length;
-              return issueCount === 0
-                ? <span className="text-[10px] text-emerald-400">✓ No issues in pasted DSL</span>
-                : <span className="text-[10px] text-amber-400">{issueCount} issue{issueCount > 1 ? 's' : ''} in pasted DSL</span>;
-            })()}
+            <button type="button" onClick={() => { setFixDsl(''); setShowPasteFix(false); }} className="border border-zinc-700 px-3 py-1 text-[10px] font-medium text-zinc-400 transition hover:text-zinc-200">Cancel</button>
           </div>
         </div>
       )}
+
       <div className="flex-1 overflow-hidden border border-zinc-200 bg-[#1e1e1e]">
-        <MonacoEditor
-          height="100%"
-          defaultLanguage={DSL_LANGUAGE_ID}
-          language={DSL_LANGUAGE_ID}
-          theme="dsl-dark"
-          value={value}
-          onChange={handleChange}
-          beforeMount={(monaco) => monaco.editor.defineTheme('dsl-dark', DSL_THEME_DEF)}
-          onMount={handleMount}
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            wordWrap: 'on',
-            scrollBeyondLastLine: false,
-            tabSize: 2,
-            lineNumbersMinChars: 3,
-            automaticLayout: true,
-            glyphMargin: true,
-          }}
-        />
-      </div>
-      {warnings.length > 0 && (() => {
-        const lines = (value || '').split('\n');
-        const classified = classifyWarnings(warnings, lines);
-        const errors = classified.filter((c) => c.sev === 'error');
-        const warns = classified.filter((c) => c.sev === 'warning');
-        const infos = classified.filter((c) => c.sev === 'info');
-        const sevIcon = { error: '✕', warning: '⚠', info: 'ℹ' };
-        const sevColor = { error: 'text-red-400', warning: 'text-amber-400', info: 'text-blue-400' };
-        const sevBg = { error: 'bg-red-500/20 text-red-400', warning: 'bg-amber-500/20 text-amber-400', info: 'bg-blue-500/20 text-blue-400' };
-        const renderItem = (item, i) => (
-          <button key={`${item.sev}-${i}`} type="button" onClick={() => goToLine(item.lineNum)} className="flex w-full items-start gap-2 px-3 py-1 text-left text-xs hover:bg-zinc-800">
-            <span className={`mt-0.5 ${sevColor[item.sev]}`}>{sevIcon[item.sev]}</span>
-            <span className="text-zinc-300">{item.msg}</span>
-            {item.lineNum > 1 && <span className="ml-auto shrink-0 text-zinc-600">Ln {item.lineNum}</span>}
-          </button>
-        );
-        return (
-          <div className="max-h-44 overflow-auto border border-t-0 border-zinc-200 bg-zinc-900">
-            <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-1.5">
-              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Problems</span>
-              {errors.length > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.error}`}>{errors.length} error{errors.length > 1 ? 's' : ''}</span>}
-              {warns.length > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.warning}`}>{warns.length}</span>}
-              {infos.length > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.info}`}>{infos.length}</span>}
-            </div>
-            {errors.map(renderItem)}
-            {warns.map(renderItem)}
-            {infos.map(renderItem)}
+        <div className={showParsedPanel ? 'grid h-full grid-cols-1 xl:grid-cols-2' : 'h-full'}>
+          <div className="min-h-0">
+            <MonacoEditor
+              height="100%"
+              defaultLanguage={DSL_LANGUAGE_ID}
+              language={DSL_LANGUAGE_ID}
+              theme="dsl-dark"
+              value={value}
+              onChange={handleChange}
+              beforeMount={(monaco) => monaco.editor.defineTheme('dsl-dark', DSL_THEME_DEF)}
+              onMount={handleMount}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                wordWrap: 'on',
+                scrollBeyondLastLine: false,
+                tabSize: 2,
+                lineNumbersMinChars: 3,
+                automaticLayout: true,
+                glyphMargin: true,
+              }}
+            />
           </div>
-        );
-      })()}
+          {showParsedPanel && (
+            <div className="min-h-0 overflow-auto border-l border-zinc-800 bg-zinc-950 p-3">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500">Parsed JSON Debug</div>
+              <pre className="whitespace-pre-wrap text-[11px] text-zinc-300">{JSON.stringify(parsedPreview, null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showParserTrace && (
+        <div className="max-h-56 overflow-auto border border-t-0 border-zinc-200 bg-zinc-900">
+          <div className="border-b border-zinc-800 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Parser Trace</div>
+          <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="border-r border-zinc-800">
+              {parserTrace.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTraceId(entry.id);
+                    goToLine(entry.startLine);
+                  }}
+                  className={entry.id === selectedTrace?.id ? 'flex w-full items-center justify-between border-b border-zinc-800 bg-zinc-800 px-3 py-1.5 text-left text-xs text-zinc-100' : 'flex w-full items-center justify-between border-b border-zinc-800 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800'}
+                >
+                  <span>{entry.marker}{entry.label ? ` · ${entry.label}` : ''}</span>
+                  <span className="text-zinc-500">Ln {entry.startLine}</span>
+                </button>
+              ))}
+              {parserTrace.length === 0 && <div className="px-3 py-2 text-xs text-zinc-500">No trace data available.</div>}
+            </div>
+            <div className="px-3 py-2 text-xs text-zinc-300">
+              {selectedTrace ? (
+                <div className="space-y-1">
+                  <div><span className="text-zinc-500">Marker:</span> {selectedTrace.marker}</div>
+                  <div><span className="text-zinc-500">Lines:</span> {selectedTrace.startLine} - {selectedTrace.endLine}</div>
+                  <div><span className="text-zinc-500">Length:</span> {selectedTrace.lineCount} lines</div>
+                  <div><span className="text-zinc-500">Label:</span> {selectedTrace.label || 'No title/question line found'}</div>
+                </div>
+              ) : (
+                <div className="text-zinc-500">Select a block from trace list.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {classifiedWarnings.length > 0 && (
+        <div className="max-h-52 overflow-auto border border-t-0 border-zinc-200 bg-zinc-900">
+          <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Problems</span>
+            {errorCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.error}`}>{errorCount}</span>}
+            {warningCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.warning}`}>{warningCount}</span>}
+            {infoCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.info}`}>{infoCount}</span>}
+            <div className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500">
+              <label className="inline-flex items-center gap-1"><input type="checkbox" checked={severityFilters.error} onChange={(event) => setSeverityFilters((current) => ({ ...current, error: event.target.checked }))} />Errors</label>
+              <label className="inline-flex items-center gap-1"><input type="checkbox" checked={severityFilters.warning} onChange={(event) => setSeverityFilters((current) => ({ ...current, warning: event.target.checked }))} />Warnings</label>
+              <label className="inline-flex items-center gap-1"><input type="checkbox" checked={severityFilters.info} onChange={(event) => setSeverityFilters((current) => ({ ...current, info: event.target.checked }))} />Info</label>
+            </div>
+          </div>
+          {visibleWarnings.map((item, index) => {
+            const quickFix = quickFixLabelForMessage(item.msg);
+            return (
+              <div
+                key={`${item.sev}-${index}-${item.lineNum}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => goToLine(item.lineNum)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    goToLine(item.lineNum);
+                  }
+                }}
+                className="flex w-full items-start gap-2 border-b border-zinc-800 px-3 py-1.5 text-left text-xs hover:bg-zinc-800"
+              >
+                <span className={`mt-0.5 ${sevColor[item.sev]}`}>{sevIcon[item.sev]}</span>
+                <span className="text-zinc-300">{item.msg}</span>
+                {quickFix && (
+                  <span className="ml-auto mr-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleApplyQuickFix(item);
+                      }}
+                      className="border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                    >
+                      {quickFix}
+                    </button>
+                  </span>
+                )}
+                <span className="shrink-0 text-zinc-600">Ln {item.lineNum}</span>
+              </div>
+            );
+          })}
+          {visibleWarnings.length === 0 && <div className="px-3 py-2 text-xs text-zinc-500">All issues are hidden by severity filters.</div>}
+        </div>
+      )}
     </div>
   );
 }

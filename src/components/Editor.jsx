@@ -249,6 +249,107 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
               <input type="checkbox" checked={settings.showPerQuestionGrade !== false} onChange={(event) => patchSettings({ showPerQuestionGrade: event.target.checked })} />
               Show per-question grade
             </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.disableBackNavigation === true} onChange={(event) => patchSettings({ disableBackNavigation: event.target.checked })} />
+              Disable back button in player
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.allowRetryLive === true} onChange={(event) => patchSettings({ allowRetryLive: event.target.checked })} />
+              Live default: allow retries
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.showCheckButtonLive === true} onChange={(event) => patchSettings({ showCheckButtonLive: event.target.checked })} />
+              Live default: show check button
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.lockAfterSubmitLive !== false} onChange={(event) => patchSettings({ lockAfterSubmitLive: event.target.checked })} />
+              Live default: one attempt per task
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.hideQuestionContentLive === true} onChange={(event) => patchSettings({ hideQuestionContentLive: event.target.checked })} />
+              Live default: hide question text
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+              <input type="checkbox" checked={settings.showLeaderboardEachQuestionLive === true} onChange={(event) => patchSettings({ showLeaderboardEachQuestionLive: event.target.checked })} />
+              Live default: show leaderboard each question
+            </label>
+          </div>
+
+          <div className="grid gap-4 px-6 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Session time limit (minutes)</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={settings.sessionTimeLimitMinutes || ''}
+                onChange={(event) => patchSettings({ sessionTimeLimitMinutes: event.target.value ? Number(event.target.value) : null })}
+                placeholder="No limit"
+                className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Live auto-advance (seconds)</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={settings.liveAutoAdvanceSeconds || ''}
+                onChange={(event) => patchSettings({ liveAutoAdvanceSeconds: event.target.value ? Number(event.target.value) : null })}
+                placeholder="Manual next"
+                className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Live auto-advance policy</span>
+              <select
+                value={settings.liveAutoAdvancePolicy || 'timer'}
+                onChange={(event) => patchSettings({ liveAutoAdvancePolicy: event.target.value })}
+                className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+              >
+                <option value="timer">Timer (seconds)</option>
+                <option value="all_submitted">Advance when all submit</option>
+                <option value="submission_threshold">Advance at submission threshold</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Live submission threshold (%)</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                value={settings.liveAutoAdvanceSubmissionThreshold || ''}
+                onChange={(event) => patchSettings({ liveAutoAdvanceSubmissionThreshold: event.target.value ? Number(event.target.value) : null })}
+                disabled={(settings.liveAutoAdvancePolicy || 'timer') !== 'submission_threshold'}
+                placeholder="70"
+                className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Live auto mode limit (minutes)</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={settings.liveAutoModeTimeLimitMinutes || ''}
+                onChange={(event) => patchSettings({ liveAutoModeTimeLimitMinutes: event.target.value ? Number(event.target.value) : null })}
+                placeholder="No limit"
+                className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Live question deadline (seconds)</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={settings.liveQuestionResponseDeadlineSeconds || ''}
+                onChange={(event) => patchSettings({ liveQuestionResponseDeadlineSeconds: event.target.value ? Number(event.target.value) : null })}
+                placeholder="No deadline"
+                className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+              />
+            </label>
           </div>
 
           <div className="px-6 pt-4">

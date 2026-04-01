@@ -104,6 +104,13 @@ const KNOWN_KEYS = new Set([
   'min', 'max', 'timelimit', 'placeholder', 'multiple', 'lessontopic', 'grammartopic',
   'focus', 'difficulty', 'showhints', 'showexplanations', 'revealmode', 'randomhiddencount',
   'flexibleorder', 'layout', 'tasktype', 'type', 'points',
+  'allowsessionsave', 'allowretryhomework', 'showcheckbutton', 'enablegrading',
+  'showtotalgrade', 'showperquestiongrade', 'visibilitypolicy', 'disablebacknavigation',
+  'sessiontimelimitminutes', 'liveautoadvanceseconds', 'showleaderboardeachquestionlive',
+  'liveautomodetimelimitminutes', 'livequestionresponsedeadlineseconds',
+  'liveautoadvancepolicy', 'liveautoadvancesubmissionthreshold',
+  'allowretrylive', 'showcheckbuttonlive', 'lockaftersubmitlive', 'hidequestioncontentlive',
+  'livepacemode', 'livegroupmodeenabled', 'livegroupcount', 'livecaptainrotationevery',
 ]);
 
 function detectBlock(line) {
@@ -140,6 +147,84 @@ function toBoolean(value, fallback = false) {
 function toNumber(value, fallback = null) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toPositiveNumber(value, fallback = null) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function toPositiveInteger(value, fallback = null) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.round(parsed);
+}
+
+function normalizeComparableText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function dedupeListByNormalized(items = []) {
+  const seen = new Set();
+  const deduped = [];
+  items.forEach((item) => {
+    const normalized = normalizeComparableText(item);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    deduped.push(String(item).trim());
+  });
+  return deduped;
+}
+
+function splitDelimitedValues(value, { allowComma = false } = {}) {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => splitDelimitedValues(entry, { allowComma }));
+  }
+
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+
+  if (raw.includes('|')) {
+    const parts = raw.split('|').map((item) => item.trim()).filter(Boolean);
+    if (parts.length > 1) return parts;
+  }
+
+  if (raw.includes(';')) {
+    const parts = raw.split(';').map((item) => item.trim()).filter(Boolean);
+    if (parts.length > 1) return parts;
+  }
+
+  if (allowComma && raw.includes(',')) {
+    const parts = raw.split(',').map((item) => item.trim()).filter(Boolean);
+    if (parts.length > 1) return parts;
+  }
+
+  return [raw];
+}
+
+function normalizeVisibilityPolicy(policy) {
+  const value = String(policy || '').trim();
+  if (!value) return 'student_answers_only';
+  if (value === 'full_answers') return 'full_feedback';
+  return value;
+}
+
+function normalizeLiveAutoAdvancePolicy(policy) {
+  const value = String(policy || '').trim().toLowerCase();
+  if (value === 'all_submitted' || value === 'submission_threshold' || value === 'timer') return value;
+  return 'timer';
+}
+
+function normalizeLivePaceMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (value === 'student_paced' || value === 'hybrid' || value === 'teacher_led') return value;
+  return 'teacher_led';
+}
+
+function toPercentage(value, fallback = null) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(100, Math.round(parsed)));
 }
 
 function parsePairs(items = []) {
@@ -755,6 +840,51 @@ function buildBlock(definition, rawData, index, warnings) {
     block.randomHiddenCount = toNumber(rawData.randomhiddencount, null);
     block.flexibleOrder = toBoolean(rawData.flexibleorder, false);
 
+    if (['multiple_choice', 'multi_select', 'true_false', 'yes_no', 'either_or', 'opinion_survey'].includes(block.taskType)) {
+      const originalCount = block.options.length;
+      if (originalCount <= 1 && block.options[0]) {
+        const expanded = splitDelimitedValues(block.options[0], { allowComma: true });
+        if (expanded.length > 1) {
+          block.options = expanded;
+          warnings.push(`Auto-fixed "${baseLabel}": split compact option list into ${expanded.length} options.`);
+        }
+      }
+
+      const dedupedOptions = dedupeListByNormalized(block.options);
+      if (dedupedOptions.length < block.options.length) {
+        warnings.push(`Auto-fixed "${baseLabel}": removed ${block.options.length - dedupedOptions.length} duplicate option(s).`);
+      }
+      block.options = dedupedOptions;
+    }
+
+    if (block.taskType === 'multi_select') {
+      const candidateAnswers = splitDelimitedValues(block.answer || block.correct, { allowComma: true });
+      const dedupedAnswers = dedupeListByNormalized(candidateAnswers);
+      if (dedupedAnswers.length > 0) {
+        block.answer = dedupedAnswers;
+        block.correct = dedupedAnswers;
+      }
+    }
+
+    if (['multiple_choice', 'true_false', 'yes_no', 'either_or'].includes(block.taskType)) {
+      const rawAnswer = Array.isArray(block.answer)
+        ? block.answer.join(' | ')
+        : (block.answer || block.correct || '');
+      const answerCandidates = splitDelimitedValues(rawAnswer, { allowComma: true });
+      const optionSet = new Set((block.options || []).map((option) => normalizeComparableText(option)));
+      const matched = answerCandidates.find((candidate) => optionSet.has(normalizeComparableText(candidate)));
+      const resolvedAnswer = matched || answerCandidates[0] || '';
+
+      if (answerCandidates.length > 1) {
+        warnings.push(`Auto-fixed "${baseLabel}": normalized single-answer field from multiple candidates.`);
+      }
+
+      if (resolvedAnswer) {
+        block.answer = resolvedAnswer;
+        block.correct = resolvedAnswer;
+      }
+    }
+
     // --- Categorize: extract pairs from items with "item => category" or "item -> category" syntax ---
     if (['categorize', 'categorize_grammar', 'matching_pairs_categories'].includes(block.taskType)) {
       const arrowItems = block.items.filter((item) => item.includes('=>') || item.includes('->'));
@@ -1006,6 +1136,28 @@ export function parseLesson(dsl, existingBlocks) {
         fontFamily: rawData.fontfamily || '',
         fontSize: rawData.fontsize || '',
         lineHeight: rawData.lineheight || '',
+        visibilityPolicy: normalizeVisibilityPolicy(rawData.visibilitypolicy || 'student_answers_only'),
+        showCheckButton: toBoolean(rawData.showcheckbutton, false),
+        allowRetryHomework: toBoolean(rawData.allowretryhomework, false),
+        enableGrading: rawData.enablegrading === undefined ? true : toBoolean(rawData.enablegrading, true),
+        showTotalGrade: rawData.showtotalgrade === undefined ? true : toBoolean(rawData.showtotalgrade, true),
+        showPerQuestionGrade: rawData.showperquestiongrade === undefined ? true : toBoolean(rawData.showperquestiongrade, true),
+        disableBackNavigation: toBoolean(rawData.disablebacknavigation, false),
+        sessionTimeLimitMinutes: toPositiveNumber(rawData.sessiontimelimitminutes, null),
+        liveAutoAdvanceSeconds: toPositiveNumber(rawData.liveautoadvanceseconds, null),
+        liveAutoAdvancePolicy: normalizeLiveAutoAdvancePolicy(rawData.liveautoadvancepolicy),
+        liveAutoAdvanceSubmissionThreshold: toPercentage(rawData.liveautoadvancesubmissionthreshold, 70),
+        liveQuestionResponseDeadlineSeconds: toPositiveNumber(rawData.livequestionresponsedeadlineseconds, null),
+        liveAutoModeTimeLimitMinutes: toPositiveNumber(rawData.liveautomodetimelimitminutes, null),
+        showLeaderboardEachQuestionLive: toBoolean(rawData.showleaderboardeachquestionlive, false),
+        livePaceMode: normalizeLivePaceMode(rawData.livepacemode),
+        liveGroupModeEnabled: toBoolean(rawData.livegroupmodeenabled, false),
+        liveGroupCount: Math.max(2, Math.min(8, toPositiveInteger(rawData.livegroupcount, 2))),
+        liveCaptainRotationEvery: Math.max(1, Math.min(10, toPositiveInteger(rawData.livecaptainrotationevery, 1))),
+        allowRetryLive: toBoolean(rawData.allowretrylive, false),
+        showCheckButtonLive: toBoolean(rawData.showcheckbuttonlive, false),
+        lockAfterSubmitLive: rawData.lockaftersubmitlive === undefined ? true : toBoolean(rawData.lockaftersubmitlive, true),
+        hideQuestionContentLive: toBoolean(rawData.hidequestioncontentlive, false),
       };
     } else {
       try {
@@ -1077,6 +1229,37 @@ export function generateDSL(lesson) {
   if (lesson.settings?.showHints === false) lines.push('ShowHints: false');
   if (lesson.settings?.showExplanations === false) lines.push('ShowExplanations: false');
   if (lesson.settings?.allowSessionSave === false) lines.push('AllowSessionSave: false');
+  if (lesson.settings?.visibilityPolicy && lesson.settings.visibilityPolicy !== 'student_answers_only') lines.push(`VisibilityPolicy: ${lesson.settings.visibilityPolicy}`);
+  if (lesson.settings?.showCheckButton) lines.push('ShowCheckButton: true');
+  if (lesson.settings?.allowRetryHomework) lines.push('AllowRetryHomework: true');
+  if (lesson.settings?.enableGrading === false) lines.push('EnableGrading: false');
+  if (lesson.settings?.showTotalGrade === false) lines.push('ShowTotalGrade: false');
+  if (lesson.settings?.showPerQuestionGrade === false) lines.push('ShowPerQuestionGrade: false');
+  if (lesson.settings?.disableBackNavigation) lines.push('DisableBackNavigation: true');
+  if (toPositiveNumber(lesson.settings?.sessionTimeLimitMinutes, null)) lines.push(`SessionTimeLimitMinutes: ${toPositiveNumber(lesson.settings?.sessionTimeLimitMinutes, null)}`);
+  if (toPositiveNumber(lesson.settings?.liveAutoAdvanceSeconds, null)) lines.push(`LiveAutoAdvanceSeconds: ${toPositiveNumber(lesson.settings?.liveAutoAdvanceSeconds, null)}`);
+  const liveAutoAdvancePolicy = normalizeLiveAutoAdvancePolicy(lesson.settings?.liveAutoAdvancePolicy);
+  if (liveAutoAdvancePolicy !== 'timer') lines.push(`LiveAutoAdvancePolicy: ${liveAutoAdvancePolicy}`);
+  const liveAutoAdvanceSubmissionThreshold = toPercentage(lesson.settings?.liveAutoAdvanceSubmissionThreshold, null);
+  if (liveAutoAdvanceSubmissionThreshold && (liveAutoAdvancePolicy === 'submission_threshold' || liveAutoAdvanceSubmissionThreshold !== 70)) {
+    lines.push(`LiveAutoAdvanceSubmissionThreshold: ${liveAutoAdvanceSubmissionThreshold}`);
+  }
+  if (toPositiveNumber(lesson.settings?.liveQuestionResponseDeadlineSeconds, null)) {
+    lines.push(`LiveQuestionResponseDeadlineSeconds: ${toPositiveNumber(lesson.settings?.liveQuestionResponseDeadlineSeconds, null)}`);
+  }
+  if (toPositiveNumber(lesson.settings?.liveAutoModeTimeLimitMinutes, null)) lines.push(`LiveAutoModeTimeLimitMinutes: ${toPositiveNumber(lesson.settings?.liveAutoModeTimeLimitMinutes, null)}`);
+  if (lesson.settings?.showLeaderboardEachQuestionLive) lines.push('ShowLeaderboardEachQuestionLive: true');
+  const livePaceMode = normalizeLivePaceMode(lesson.settings?.livePaceMode);
+  if (livePaceMode !== 'teacher_led') lines.push(`LivePaceMode: ${livePaceMode}`);
+  if (lesson.settings?.liveGroupModeEnabled) lines.push('LiveGroupModeEnabled: true');
+  const liveGroupCount = Math.max(2, Math.min(8, toPositiveInteger(lesson.settings?.liveGroupCount, 2)));
+  if (lesson.settings?.liveGroupModeEnabled && liveGroupCount !== 2) lines.push(`LiveGroupCount: ${liveGroupCount}`);
+  const liveCaptainRotationEvery = Math.max(1, Math.min(10, toPositiveInteger(lesson.settings?.liveCaptainRotationEvery, 1)));
+  if (lesson.settings?.liveGroupModeEnabled && liveCaptainRotationEvery !== 1) lines.push(`LiveCaptainRotationEvery: ${liveCaptainRotationEvery}`);
+  if (lesson.settings?.allowRetryLive) lines.push('AllowRetryLive: true');
+  if (lesson.settings?.showCheckButtonLive) lines.push('ShowCheckButtonLive: true');
+  if (lesson.settings?.lockAfterSubmitLive === false) lines.push('LockAfterSubmitLive: false');
+  if (lesson.settings?.hideQuestionContentLive) lines.push('HideQuestionContentLive: true');
   if (lesson.settings?.fontFamily) lines.push(`FontFamily: ${lesson.settings.fontFamily}`);
   if (lesson.settings?.fontSize) lines.push(`FontSize: ${lesson.settings.fontSize}`);
   if (lesson.settings?.lineHeight) lines.push(`LineHeight: ${lesson.settings.lineHeight}`);

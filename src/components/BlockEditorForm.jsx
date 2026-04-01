@@ -58,6 +58,150 @@ function detectMediaType(value = '') {
   return 'unknown';
 }
 
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb >= 100 ? 0 : 1)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
+  const gb = mb / 1024;
+  return `${gb.toFixed(gb >= 100 ? 0 : 1)} GB`;
+}
+
+function estimateDataUrlBytes(value = '') {
+  const match = String(value || '').match(/^data:([^;,]+)?(;base64)?,(.*)$/i);
+  if (!match) return null;
+  const isBase64 = Boolean(match[2]);
+  const body = match[3] || '';
+  if (!body) return 0;
+  if (isBase64) {
+    const padding = (body.match(/=+$/) || [''])[0].length;
+    return Math.max(0, Math.floor((body.length * 3) / 4) - padding);
+  }
+  try {
+    return decodeURIComponent(body).length;
+  } catch {
+    return body.length;
+  }
+}
+
+function extractMediaMetadata(value = '') {
+  const source = String(value || '').trim();
+  if (!source) return null;
+
+  if (source.startsWith('data:')) {
+    const mimeMatch = source.match(/^data:([^;,]+)?/i);
+    const mimeType = mimeMatch?.[1] || 'application/octet-stream';
+    const estimatedBytes = estimateDataUrlBytes(source);
+    return {
+      sourceType: 'inline',
+      mimeType,
+      host: 'embedded',
+      extension: mimeType.split('/')[1] || 'inline',
+      bytes: estimatedBytes,
+      sizeLabel: estimatedBytes === null ? '' : formatBytes(estimatedBytes),
+    };
+  }
+
+  try {
+    const parsed = new URL(source);
+    const pathname = parsed.pathname || '';
+    const fileName = pathname.split('/').filter(Boolean).at(-1) || '';
+    const extension = fileName.includes('.') ? fileName.split('.').at(-1).toLowerCase() : '';
+    return {
+      sourceType: 'url',
+      mimeType: '',
+      host: parsed.host || '',
+      extension,
+      bytes: null,
+      sizeLabel: '',
+    };
+  } catch {
+    return {
+      sourceType: 'text',
+      mimeType: '',
+      host: '',
+      extension: '',
+      bytes: null,
+      sizeLabel: '',
+    };
+  }
+}
+
+function parseDelimitedRows(raw = '') {
+  const rows = [];
+  let currentRow = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+
+    if (char === '"') {
+      if (inQuotes && raw[index + 1] === '"') {
+        currentCell += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && (char === ',' || char === ';' || char === '\t')) {
+      currentRow.push(currentCell.trim());
+      currentCell = '';
+      continue;
+    }
+
+    if (!inQuotes && (char === '\n' || char === '\r')) {
+      if (char === '\r' && raw[index + 1] === '\n') index += 1;
+      currentRow.push(currentCell.trim());
+      currentCell = '';
+      if (currentRow.some((cell) => cell.length > 0)) rows.push(currentRow);
+      currentRow = [];
+      continue;
+    }
+
+    currentCell += char;
+  }
+
+  currentRow.push(currentCell.trim());
+  if (currentRow.some((cell) => cell.length > 0)) rows.push(currentRow);
+  return rows;
+}
+
+function parseBulkValues(raw = '') {
+  return parseDelimitedRows(raw)
+    .flatMap((row) => row)
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean);
+}
+
+function parseBulkPairs(raw = '') {
+  const rows = parseDelimitedRows(raw);
+  const pairs = [];
+
+  rows.forEach((row) => {
+    if (row.length >= 2) {
+      pairs.push({ left: String(row[0] || '').trim(), right: String(row[1] || '').trim() });
+      return;
+    }
+
+    const value = String(row[0] || '').trim();
+    if (!value) return;
+    const split = value.includes('=>')
+      ? value.split(/\s*=>\s*/)
+      : value.split(/\s*\|\s*/);
+    if (split.length >= 2) {
+      pairs.push({ left: String(split[0] || '').trim(), right: String(split[1] || '').trim() });
+    }
+  });
+
+  return pairs.filter((pair) => pair.left || pair.right);
+}
+
 function loadMediaLibrary() {
   try {
     const raw = localStorage.getItem(MEDIA_LIBRARY_KEY);
@@ -200,6 +344,8 @@ function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
     onClose();
   };
 
+  const urlMeta = extractMediaMetadata(urlValue);
+
   const openSearch = (provider) => {
     const q = encodeURIComponent((searchQuery || urlValue || '').trim() || 'education gif');
     const map = {
@@ -252,6 +398,14 @@ function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
                 <input value={urlValue} onChange={(e) => setUrlValue(e.target.value)} placeholder="https://..." className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
                 <button type="button" onClick={submitUrl} className="border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white">Use</button>
               </div>
+              {urlValue.trim() && urlMeta && (
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-zinc-500 sm:grid-cols-4">
+                  <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Type: {detectMediaType(urlValue)}</div>
+                  <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Host: {urlMeta.host || 'unknown'}</div>
+                  <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Format: {urlMeta.extension || urlMeta.mimeType || 'unknown'}</div>
+                  <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Size: {urlMeta.sizeLabel || 'n/a'}</div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -272,14 +426,23 @@ function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
             <div className="border border-zinc-200 p-3">
               <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reusable Media Library</div>
               <div className="grid max-h-56 grid-cols-2 gap-2 overflow-auto">
-                {library.map((entry) => (
-                  <button key={entry.id} type="button" onClick={() => { onSelect(entry.url); onClose(); }} className="border border-zinc-200 p-1 text-left hover:border-zinc-900">
-                    {detectMediaType(entry.url) === 'image' || detectMediaType(entry.url) === 'gif'
-                      ? <img src={entry.url} alt="" loading="lazy" decoding="async" className="h-20 w-full object-cover" />
-                      : <div className="flex h-20 items-center justify-center bg-zinc-50 text-[10px] uppercase text-zinc-500">{detectMediaType(entry.url)}</div>}
-                    <div className="mt-1 truncate text-[10px] text-zinc-500">{new Date(entry.createdAt).toLocaleDateString()}</div>
-                  </button>
-                ))}
+                {library.map((entry) => {
+                  const entryType = detectMediaType(entry.url);
+                  const entryMeta = extractMediaMetadata(entry.url);
+                  return (
+                    <button key={entry.id} type="button" onClick={() => { onSelect(entry.url); onClose(); }} className="border border-zinc-200 p-1 text-left hover:border-zinc-900">
+                      {entryType === 'image' || entryType === 'gif'
+                        ? <img src={entry.url} alt="" loading="lazy" decoding="async" className="h-20 w-full object-cover" />
+                        : <div className="flex h-20 items-center justify-center bg-zinc-50 text-[10px] uppercase text-zinc-500">{entryType}</div>}
+                      <div className="mt-1 truncate text-[10px] text-zinc-500">{new Date(entry.createdAt).toLocaleDateString()}</div>
+                      <div className="mt-1 flex flex-wrap gap-1 text-[9px] uppercase tracking-[0.08em] text-zinc-400">
+                        <span>{entryMeta?.extension || entryMeta?.mimeType || 'media'}</span>
+                        {entryMeta?.sizeLabel && <span>· {entryMeta.sizeLabel}</span>}
+                        {entryMeta?.host && entryMeta.host !== 'embedded' && <span>· {entryMeta.host}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
                 {library.length === 0 && <div className="col-span-2 border border-dashed border-zinc-200 px-3 py-5 text-center text-[11px] text-zinc-500">No saved assets yet.</div>}
               </div>
             </div>
@@ -295,6 +458,7 @@ function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
 function MediaInput({ value, onChange }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const mediaType = detectMediaType(value || '');
+  const mediaMeta = extractMediaMetadata(value || '');
 
   return (
     <div className="space-y-3">
@@ -314,6 +478,14 @@ function MediaInput({ value, onChange }) {
         {mediaType === 'video' && <video src={value} controls autoPlay loop muted className="max-h-56 w-full" />}
         {mediaType === 'unknown' && value && (
           <div className="border border-zinc-200 px-3 py-4 text-center text-xs text-zinc-500">Preview unavailable. You can still use this link.</div>
+        )}
+        {value && mediaMeta && (
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-zinc-500 sm:grid-cols-4">
+            <div className="border border-zinc-200 bg-white px-2 py-1">Type: {mediaType}</div>
+            <div className="border border-zinc-200 bg-white px-2 py-1">Host: {mediaMeta.host || 'unknown'}</div>
+            <div className="border border-zinc-200 bg-white px-2 py-1">Format: {mediaMeta.extension || mediaMeta.mimeType || 'unknown'}</div>
+            <div className="border border-zinc-200 bg-white px-2 py-1">Size: {mediaMeta.sizeLabel || 'n/a'}</div>
+          </div>
         )}
       </div>
       <MediaPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} onSelect={onChange} currentValue={value || ''} />
@@ -347,6 +519,8 @@ function apply(onChange, block, field, value) {
 }
 
 function OptionListEditor({ block, onChange, multiple = false, allowCorrect = true }) {
+  const [bulkInput, setBulkInput] = useState('');
+  const [bulkError, setBulkError] = useState('');
   const options = (block.options || []).map((option) => String(option));
   const safeOptions = options.length > 0 ? options : [''];
   const currentAnswers = (block.answer || '').split('|').map((a) => a.trim()).filter(Boolean);
@@ -368,6 +542,20 @@ function OptionListEditor({ block, onChange, multiple = false, allowCorrect = tr
   };
 
   const addOption = () => updateOptions([...safeOptions, '']);
+
+  const importBulkOptions = () => {
+    const parsed = parseBulkValues(bulkInput);
+    if (parsed.length === 0) {
+      setBulkError('No valid options found. Use one option per row or CSV cells.');
+      return;
+    }
+    const merged = [...safeOptions, ...parsed].map((entry) => entry.trim()).filter(Boolean);
+    const unique = [...new Set(merged.map((entry) => entry.toLowerCase()))]
+      .map((lowered) => merged.find((entry) => entry.toLowerCase() === lowered) || lowered);
+    updateOptions(unique);
+    setBulkInput('');
+    setBulkError('');
+  };
 
   const removeOption = (index) => {
     if (safeOptions.length <= 1) {
@@ -421,6 +609,23 @@ function OptionListEditor({ block, onChange, multiple = false, allowCorrect = tr
           );
         })}
       </div>
+      <details className="border border-zinc-200 bg-zinc-50 px-3 py-2">
+        <summary className="cursor-pointer text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Bulk import CSV</summary>
+        <div className="mt-2 space-y-2">
+          <textarea
+            value={bulkInput}
+            onChange={(event) => setBulkInput(event.target.value)}
+            rows={4}
+            placeholder={'Option A\nOption B\nOption C\n\nOr CSV: Option A,Option B,Option C'}
+            className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
+          />
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={importBulkOptions} className="border border-zinc-900 bg-zinc-900 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white">Import</button>
+            <button type="button" onClick={() => { setBulkInput(''); setBulkError(''); }} className="border border-zinc-200 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-600">Clear</button>
+          </div>
+          {bulkError && <div className="text-[10px] text-red-600">{bulkError}</div>}
+        </div>
+      </details>
       {allowCorrect && currentAnswers.length === 0 && <div className="text-[10px] text-amber-600">No correct answer selected yet.</div>}
     </div>
   );
@@ -624,10 +829,23 @@ function InlineBlanksEditor({ block, onChange }) {
 
 function ItemListEditor({ block, onChange, label = 'Items', field = 'items' }) {
   const [dragIndex, setDragIndex] = useState(null);
+  const [bulkInput, setBulkInput] = useState('');
+  const [bulkError, setBulkError] = useState('');
   const items = block[field] || [];
   const update = (next) => onChange({ ...block, [field]: next });
   const updateItem = (idx, value) => update(items.map((item, i) => i === idx ? value : item));
   const addItem = () => update([...items, '']);
+  const importBulkItems = () => {
+    const parsed = parseBulkValues(bulkInput);
+    if (parsed.length === 0) {
+      setBulkError('No valid items found in this CSV text.');
+      return;
+    }
+    const merged = [...items, ...parsed].map((entry) => String(entry || '').trim()).filter(Boolean);
+    update(merged);
+    setBulkInput('');
+    setBulkError('');
+  };
   const removeItem = (idx) => update(items.filter((_, i) => i !== idx));
   const moveItem = (idx, dir) => {
     const t = idx + dir;
@@ -672,6 +890,23 @@ function ItemListEditor({ block, onChange, label = 'Items', field = 'items' }) {
         </div>
       ))}
       <button type="button" onClick={addItem} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-400">+ Add Item</button>
+      <details className="border border-zinc-200 bg-zinc-50 px-3 py-2">
+        <summary className="cursor-pointer text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Bulk import CSV</summary>
+        <div className="mt-2 space-y-2">
+          <textarea
+            value={bulkInput}
+            onChange={(event) => setBulkInput(event.target.value)}
+            rows={4}
+            placeholder={'Item 1\nItem 2\nItem 3\n\nOr CSV: Item 1,Item 2,Item 3'}
+            className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
+          />
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={importBulkItems} className="border border-zinc-900 bg-zinc-900 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white">Import</button>
+            <button type="button" onClick={() => { setBulkInput(''); setBulkError(''); }} className="border border-zinc-200 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-600">Clear</button>
+          </div>
+          {bulkError && <div className="text-[10px] text-red-600">{bulkError}</div>}
+        </div>
+      </details>
     </div>
   );
 }
@@ -815,10 +1050,22 @@ function HighlightEditor({ block, onChange }) {
 }
 
 function PairsEditor({ block, onChange, label = 'Pairs', leftLabel = 'Left', rightLabel = 'Right' }) {
+  const [bulkInput, setBulkInput] = useState('');
+  const [bulkError, setBulkError] = useState('');
   const pairs = block.pairs || [];
   const update = (next) => onChange({ ...block, pairs: next });
   const updatePair = (idx, side, value) => update(pairs.map((p, i) => (i === idx ? { ...p, [side]: value } : p)));
   const addPair = () => update([...pairs, { left: '', right: '' }]);
+  const importBulkPairs = () => {
+    const parsed = parseBulkPairs(bulkInput);
+    if (parsed.length === 0) {
+      setBulkError('No valid pairs found. Use two columns (left,right) or left => right.');
+      return;
+    }
+    update([...pairs, ...parsed]);
+    setBulkInput('');
+    setBulkError('');
+  };
   const removePair = (idx) => update(pairs.filter((_, i) => i !== idx));
   const movePair = (idx, dir) => {
     const t = idx + dir;
@@ -845,6 +1092,23 @@ function PairsEditor({ block, onChange, label = 'Pairs', leftLabel = 'Left', rig
         </div>
       ))}
       <button type="button" onClick={addPair} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-400">+ Add Pair</button>
+      <details className="border border-zinc-200 bg-zinc-50 px-3 py-2">
+        <summary className="cursor-pointer text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Bulk import CSV</summary>
+        <div className="mt-2 space-y-2">
+          <textarea
+            value={bulkInput}
+            onChange={(event) => setBulkInput(event.target.value)}
+            rows={4}
+            placeholder={'left,right\ncat,gato\ndog,perro\n\nOr left => right'}
+            className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-900"
+          />
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={importBulkPairs} className="border border-zinc-900 bg-zinc-900 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white">Import</button>
+            <button type="button" onClick={() => { setBulkInput(''); setBulkError(''); }} className="border border-zinc-200 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-600">Clear</button>
+          </div>
+          {bulkError && <div className="text-[10px] text-red-600">{bulkError}</div>}
+        </div>
+      </details>
     </div>
   );
 }
