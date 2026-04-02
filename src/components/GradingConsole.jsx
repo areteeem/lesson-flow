@@ -1651,12 +1651,12 @@ export default function GradingConsole({
             </label>
           </div>
 
-          <div className="mt-4 inline-flex border border-zinc-200 bg-white p-0.5">
-            <button type="button" onClick={() => setView('students')} className={view === 'students' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Students</button>
-            <button type="button" onClick={() => setView('questions')} className={view === 'questions' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Questions</button>
-            <button type="button" onClick={() => setView('moderation')} className={view === 'moderation' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Moderation</button>
-            <button type="button" onClick={() => setView('analytics')} className={view === 'analytics' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Analytics</button>
-            <button type="button" onClick={() => setView('board')} className={view === 'board' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Published board</button>
+          <div className="mt-4 inline-flex border border-zinc-200 bg-white p-0.5" role="tablist" aria-label="Grading views">
+            <button type="button" role="tab" aria-selected={view === 'students'} onClick={() => setView('students')} className={view === 'students' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Students</button>
+            <button type="button" role="tab" aria-selected={view === 'questions'} onClick={() => setView('questions')} className={view === 'questions' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Questions</button>
+            <button type="button" role="tab" aria-selected={view === 'moderation'} onClick={() => setView('moderation')} className={view === 'moderation' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Moderation</button>
+            <button type="button" role="tab" aria-selected={view === 'analytics'} onClick={() => setView('analytics')} className={view === 'analytics' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Analytics</button>
+            <button type="button" role="tab" aria-selected={view === 'board'} onClick={() => setView('board')} className={view === 'board' ? 'bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-white' : 'px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-600 hover:bg-zinc-50'}>Published board</button>
           </div>
         </section>
 
@@ -2286,14 +2286,15 @@ export default function GradingConsole({
               <div className="border border-dashed border-zinc-200 px-4 py-5 text-sm text-zinc-500">No published board rows for current filters.</div>
             ) : (
               <div className="overflow-auto border border-zinc-200">
-                <table className="min-w-full border-collapse text-sm">
+                <table className="min-w-full border-collapse text-sm" role="table">
+                  <caption className="sr-only">Student results board — {board.rows.length} students, {board.columns.length} questions</caption>
                   <thead>
                     <tr className="bg-zinc-50 text-left text-[11px] uppercase tracking-[0.12em] text-zinc-500">
-                      <th className="sticky left-0 z-10 border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2">Rank</th>
-                      <th className="sticky left-[58px] z-10 border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2">Student</th>
-                      <th className="border-b border-r border-zinc-200 px-3 py-2">Score</th>
+                      <th scope="col" className="sticky left-0 z-10 border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2">Rank</th>
+                      <th scope="col" className="sticky left-[58px] z-10 border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2">Student</th>
+                      <th scope="col" className="border-b border-r border-zinc-200 px-3 py-2">Score</th>
                       {board.columns.map((column) => (
-                        <th key={column.id} className="min-w-[120px] border-b border-r border-zinc-200 px-3 py-2">
+                        <th scope="col" key={column.id} className="min-w-[120px] border-b border-r border-zinc-200 px-3 py-2">
                           <div className="text-zinc-700" title={column.label}>{column.shortLabel || column.label}</div>
                         </th>
                       ))}
@@ -2303,23 +2304,31 @@ export default function GradingConsole({
                     {board.rows.map((row) => (
                       <tr key={row.sessionId} className="border-t border-zinc-200 align-top">
                         <td className="sticky left-0 z-10 border-r border-zinc-200 bg-white px-3 py-2 font-semibold text-zinc-900">#{row.rank}</td>
-                        <td className="sticky left-[58px] z-10 border-r border-zinc-200 bg-white px-3 py-2 font-medium text-zinc-900">
+                        <th scope="row" className="sticky left-[58px] z-10 border-r border-zinc-200 bg-white px-3 py-2 font-medium text-zinc-900 text-left">
                           <div className="flex flex-wrap items-center gap-1">
                             <span>{displayStudentName(row.studentName)}</span>
                             {row.isLateSubmission && <span className="border border-red-200 bg-red-50 px-1 py-0.5 text-[10px] uppercase tracking-[0.1em] text-red-700">Late</span>}
                           </div>
-                        </td>
+                        </th>
                         <td className="border-r border-zinc-200 px-3 py-2 text-zinc-700">{row.score}%</td>
                         {board.columns.map((column) => {
                           const cell = row.cellMap.get(column.id);
-                          const tone = cell?.correct === true
+                          const correct = cell?.correct === true;
+                          const wrong = cell?.correct === false;
+                          const tone = correct
                             ? 'bg-emerald-50 text-emerald-700'
-                            : cell?.correct === false
+                            : wrong
                               ? 'bg-red-50 text-red-700'
                               : 'bg-zinc-50 text-zinc-500';
                           return (
                             <td key={`${row.sessionId}-${column.id}`} className={`border-r border-zinc-200 px-3 py-2 text-center text-xs ${tone}`}>
-                              {cell ? `${cell.score}%` : '-'}
+                              {cell ? (
+                                <>
+                                  {correct && <span className="sr-only">Correct: </span>}
+                                  {wrong && <span className="sr-only">Incorrect: </span>}
+                                  {`${cell.score}%`}
+                                </>
+                              ) : '-'}
                             </td>
                           );
                         })}

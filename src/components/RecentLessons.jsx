@@ -532,9 +532,9 @@ function FolderNode({ folder, depth, selectedFolder, onSelectFolder, onAdd, onRe
   const isSelected = selectedFolder === folder.id;
 
   return (
-    <div>
+    <li role="treeitem" aria-expanded={hasChildren ? expanded : undefined} aria-selected={isSelected}>
       <div className={`group flex items-center gap-0.5 ${isSelected ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-50'}`} style={{ paddingLeft: `${depth * 14}px` }}>
-        <button type="button" onClick={() => hasChildren && setExpanded(!expanded)} className="shrink-0 p-0.5">
+        <button type="button" onClick={() => hasChildren && setExpanded(!expanded)} className="shrink-0 p-0.5" aria-label={hasChildren ? (expanded ? 'Collapse folder' : 'Expand folder') : undefined} tabIndex={hasChildren ? 0 : -1}>
           {hasChildren ? (expanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />) : <span className="inline-block w-3" />}
         </button>
         {editing ? (
@@ -545,13 +545,17 @@ function FolderNode({ folder, depth, selectedFolder, onSelectFolder, onAdd, onRe
           </button>
         )}
         <span className="shrink-0 pr-1 text-[9px] opacity-60">{count}</span>
-        <button type="button" onClick={() => onAdd(folder.id)} className="shrink-0 p-0.5 opacity-0 group-hover:opacity-100" title="Add subfolder"><PlusIcon size={10} /></button>
-        <button type="button" onClick={() => onRemove(folder.id)} className="shrink-0 p-0.5 text-red-500 opacity-0 group-hover:opacity-100" title="Delete folder">×</button>
+        <button type="button" onClick={() => onAdd(folder.id)} className="shrink-0 p-0.5 opacity-0 group-hover:opacity-100" title="Add subfolder" aria-label={`Add subfolder to ${folder.name}`}><PlusIcon size={10} /></button>
+        <button type="button" onClick={() => onRemove(folder.id)} className="shrink-0 p-0.5 text-red-500 opacity-0 group-hover:opacity-100" title="Delete folder" aria-label={`Delete folder ${folder.name}`}>×</button>
       </div>
-      {expanded && hasChildren && folder.children.map((child) => (
-        <FolderNode key={child.id} folder={child} depth={depth + 1} selectedFolder={selectedFolder} onSelectFolder={onSelectFolder} onAdd={onAdd} onRename={onRename} onRemove={onRemove} lessonCounts={lessonCounts} />
-      ))}
-    </div>
+      {expanded && hasChildren && (
+        <ul role="group">
+          {folder.children.map((child) => (
+            <FolderNode key={child.id} folder={child} depth={depth + 1} selectedFolder={selectedFolder} onSelectFolder={onSelectFolder} onAdd={onAdd} onRename={onRename} onRemove={onRemove} lessonCounts={lessonCounts} />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -944,9 +948,11 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
               <button type="button" onClick={() => setSelectedFolder(null)} className={selectedFolder === null ? 'w-full bg-zinc-900 px-3 py-1.5 text-left text-xs font-medium text-white' : 'w-full px-3 py-1.5 text-left text-xs text-zinc-600 hover:bg-zinc-50'}>
                 All Lessons
               </button>
-              {folders.map((f) => (
-                <FolderNode key={f.id} folder={f} depth={0} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onAdd={handleAddFolder} onRename={handleRenameFolder} onRemove={handleRemoveFolder} lessonCounts={lessonCounts} />
-              ))}
+              <ul role="tree" aria-label="Lesson folders">
+                {folders.map((f) => (
+                  <FolderNode key={f.id} folder={f} depth={0} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onAdd={handleAddFolder} onRename={handleRenameFolder} onRemove={handleRemoveFolder} lessonCounts={lessonCounts} />
+                ))}
+              </ul>
             </div>
           </div>
         </aside>
@@ -973,7 +979,7 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
             />
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{renderedLessons.map((lesson) => (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{renderedLessons.map((lesson) => (
             <div key={lesson.id} className="group relative flex flex-col border border-zinc-200 bg-white transition hover:border-zinc-900">
               <button
                 type="button"

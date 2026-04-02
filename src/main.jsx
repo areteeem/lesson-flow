@@ -6,6 +6,7 @@ import { AppProvider } from './context/AppContext'
 import './index.css'
 import App from './App.jsx'
 import { initMobileDragDropSupport } from './utils/dragDropSupport'
+import { cleanupExpiredResponses } from './utils/sessionCleanup'
 
 // Must be configured before the DslMonacoEditor lazy chunk loads and Monaco initialises
 self.MonacoEnvironment = {
@@ -15,6 +16,7 @@ self.MonacoEnvironment = {
 };
 
 void initMobileDragDropSupport();
+cleanupExpiredResponses();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

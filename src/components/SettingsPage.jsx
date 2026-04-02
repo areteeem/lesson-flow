@@ -4,6 +4,7 @@ import { getCloudSyncAvailability, readCloudSyncStatus, testCloudSyncConnection 
 import { getThemePreference, setThemePreference } from '../utils/theme';
 import { getSessionUser, signInWithEmail, signOut, signUpWithEmail, upgradeToEmailAccount } from '../utils/accountAuth';
 import { getAccountSyncAvailability, pullAccountSnapshotFromCloud, pushAccountSnapshotToCloud, readAccountSyncStatus, syncAccountDataBidirectional } from '../utils/accountCloudSync';
+import AutoCleanupDashboard from './AutoCleanupDashboard';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FOCUS_OPTIONS = ['vocabulary', 'reading', 'speaking', 'listening', 'writing', 'grammar', 'mixed'];
@@ -176,9 +177,9 @@ export default function SettingsPage({ onBack }) {
       </header>
 
       {/* Tab bar — visible on mobile, hidden on md+ where all sections show */}
-      <div className="scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-4 py-2 md:hidden">
+      <div className="scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-4 py-2 md:hidden" role="tablist" aria-label="Settings sections">
         {TABS.map((tab) => (
-          <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`shrink-0 px-4 py-2 text-xs font-medium whitespace-nowrap ${activeTab === tab.id ? 'border border-zinc-900 bg-zinc-900 text-white' : 'border border-zinc-200 text-zinc-600'}`}>
+          <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`settings-panel-${tab.id}`} onClick={() => setActiveTab(tab.id)} className={`shrink-0 px-4 py-2 text-xs font-medium whitespace-nowrap ${activeTab === tab.id ? 'border border-zinc-900 bg-zinc-900 text-white' : 'border border-zinc-200 text-zinc-600'}`}>
             {tab.label}
           </button>
         ))}
@@ -187,7 +188,7 @@ export default function SettingsPage({ onBack }) {
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <div className="mx-auto max-w-2xl space-y-6">
           {/* Defaults */}
-          <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'defaults' ? 'hidden md:block' : ''}`}>
+          <section id="settings-panel-defaults" role="tabpanel" aria-label="Lesson Defaults" className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'defaults' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Lesson Defaults</div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
@@ -219,7 +220,7 @@ export default function SettingsPage({ onBack }) {
           </section>
 
           {/* AI */}
-          <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'ai' ? 'hidden md:block' : ''}`}>
+          <section id="settings-panel-ai" role="tabpanel" aria-label="AI Preferences" className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'ai' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">AI Preferences</div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
@@ -236,7 +237,7 @@ export default function SettingsPage({ onBack }) {
           </section>
 
           {/* Display */}
-          <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'display' ? 'hidden md:block' : ''}`}>
+          <section id="settings-panel-display" role="tabpanel" aria-label="Display & Behavior" className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'display' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Display & Behavior</div>
             <div className="space-y-3">
               <div className="border border-zinc-200 bg-zinc-50 p-3">
@@ -397,8 +398,14 @@ export default function SettingsPage({ onBack }) {
             </div>
           </section>
 
+          {/* Device Storage */}
+          <section className="border border-zinc-200 bg-white p-5">
+            <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Device Storage</div>
+            <AutoCleanupDashboard />
+          </section>
+
           {/* Sections defaults for Quick Generate */}
-          <section className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'generate' ? 'hidden md:block' : ''}`}>
+          <section id="settings-panel-generate" role="tabpanel" aria-label="Quick Generate Sections" className={`border border-zinc-200 bg-white p-5 ${activeTab !== 'generate' ? 'hidden md:block' : ''}`}>
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Quick Generate Sections</div>
             <div className="space-y-3">
               {['Warm-up', 'Main Activity', 'Practice', 'Review'].map((section) => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import LessonStage from './LessonStage';
 import { normalizeVisibleBlocks } from '../utils/lesson';
 import { recordDebugEvent } from '../utils/debug';
@@ -6,6 +6,8 @@ import { getLiveSessionIdFromSearch, getLiveTransportLabel, supportsConfiguredLi
 import { createLiveChannel } from '../utils/liveChannel';
 import { ensureSession } from '../utils/accountAuth';
 import { fetchStudentResponses } from '../utils/liveSupabaseData';
+import { generateNickname } from '../utils/nicknames';
+import PrivacyDot from './PrivacyDot';
 
 const PHASE = { WAITING: 'waiting', RUNNING: 'running', FINISHED: 'finished' };
 const LIVE_PACE_MODE = {
@@ -37,7 +39,7 @@ function loadLocalResponses(sessionId, playerId) {
 
 function saveLocalResponses(sessionId, playerId, responses) {
   try {
-    localStorage.setItem(getLocalResponseKey(sessionId, playerId), JSON.stringify(responses || {}));
+    localStorage.setItem(getLocalResponseKey(sessionId, playerId), JSON.stringify({ ...responses, _timestamp: Date.now() }));
   } catch {
     // Ignore storage failures.
   }
@@ -62,7 +64,12 @@ export default function LiveJoin({ onExit }) {
     return id;
   }, []);
   const [pin, setPin] = useState(initialSessionId);
-  const [name, setName] = useState('');
+  const [pinDigits, setPinDigits] = useState(() => {
+    const id = initialSessionId || '';
+    return [id[0] || '', id[1] || '', id[2] || '', id[3] || ''];
+  });
+  const pinInputRefs = useRef([]);
+  const [name, setName] = useState(() => generateNickname());
   const [joined, setJoined] = useState(false);
   const [phase, setPhase] = useState(PHASE.WAITING);
   const [session, setSession] = useState(null);
@@ -393,15 +400,77 @@ export default function LiveJoin({ onExit }) {
   };
 
   if (!joined) {
+    const handlePinDigit = (index, value) => {
+      const digit = value.replace(/\D/g, '').slice(-1);
+      const next = [...pinDigits];
+      next[index] = digit;
+      setPinDigits(next);
+      setPin(next.join(''));
+      if (digit && index < 3) {
+        pinInputRefs.current[index + 1]?.focus();
+      }
+    };
+    const handlePinKeyDown = (index, e) => {
+      if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
+        pinInputRefs.current[index - 1]?.focus();
+      }
+      if (e.key === 'Enter' && pin.length >= 4 && name.trim()) {
+        handleJoin();
+      }
+    };
+    const handlePinPaste = (e) => {
+      const pasted = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 4);
+      if (pasted.length >= 1) {
+        e.preventDefault();
+        const next = [pasted[0] || '', pasted[1] || '', pasted[2] || '', pasted[3] || ''];
+        setPinDigits(next);
+        setPin(next.join(''));
+        if (pasted.length >= 4) {
+          pinInputRefs.current[3]?.blur();
+        } else {
+          pinInputRefs.current[Math.min(pasted.length, 3)]?.focus();
+        }
+      }
+    };
+
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 p-6 text-white">
         <div className="w-full max-w-xs">
-          <div className="mb-6 text-center text-xl font-bold">Join Quiz</div>
-          <input value={pin} onChange={(e) => setPin(e.target.value.trim().slice(0, 20))} placeholder="Session code" className="mb-3 w-full border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-2xl font-bold tracking-widest outline-none focus:border-white" maxLength={20} autoFocus />
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="mb-4 w-full border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-sm outline-none focus:border-white" onKeyDown={(e) => e.key === 'Enter' && handleJoin()} />
+          <div className="mb-6 text-center text-xl font-bold">Join a live session</div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">Session PIN</div>
+          <div className="mb-4 flex items-center justify-center gap-2" onPaste={handlePinPaste}>
+            {[0, 1, 2, 3].map((i) => (
+              <input
+                key={i}
+                ref={(el) => { pinInputRefs.current[i] = el; }}
+                value={pinDigits[i]}
+                onChange={(e) => handlePinDigit(i, e.target.value)}
+                onKeyDown={(e) => handlePinKeyDown(i, e)}
+                className="pin-digit-input"
+                inputMode="numeric"
+                maxLength={1}
+                aria-label={`PIN digit ${i + 1}`}
+                autoFocus={i === 0 && !initialSessionId}
+              />
+            ))}
+          </div>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">Your name</span>
+            <button type="button" onClick={() => setName(generateNickname())} className="text-[10px] text-zinc-500 hover:text-zinc-300" aria-label="Generate new random nickname">🔄 New name</button>
+          </div>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your name"
+            aria-label="Your name for this session"
+            className="mb-1 w-full border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-sm outline-none focus:border-white"
+            onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+            autoFocus={!!initialSessionId}
+          />
+          <div className="mb-4 text-center text-[10px] text-zinc-500">Your teacher will see this name on the results board.</div>
           {error && <div className="mb-4 border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">{error}</div>}
-          <button type="button" onClick={handleJoin} disabled={pin.length < 4 || !name.trim()} className="w-full border border-white bg-white px-4 py-3 text-sm font-bold text-zinc-900 disabled:opacity-30">
-            Join
+          <button type="button" onClick={handleJoin} disabled={pin.length < 4 || !name.trim()} className="action-primary w-full px-4 py-3 text-sm font-bold disabled:opacity-30">
+            Join Session
           </button>
           <button type="button" onClick={onExit} className="mt-3 w-full text-center text-xs text-zinc-500 hover:text-zinc-300">Cancel</button>
         </div>
@@ -414,13 +483,9 @@ export default function LiveJoin({ onExit }) {
       <header className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold">{name}</span>
-          <span className="border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{transportMode}</span>
-          <span className="border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{status}</span>
-          <span className="border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{Number(session?.participantCount) || 0} participant{Number(session?.participantCount) === 1 ? '' : 's'}</span>
-          <span className="border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{paceMode.replace('_', '-')}</span>
+          <PrivacyDot state="shared" />
           {myTeam && <span className="border border-sky-700 bg-sky-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-300">{myTeam}</span>}
           {isTeamCaptain && <span className="border border-amber-600 bg-amber-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-300">Captain</span>}
-          {offlineQueuedUpdates.length > 0 && <span className="border border-amber-700 bg-amber-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-300">Queue {offlineQueuedUpdates.length}</span>}
         </div>
         <button type="button" onClick={onExit} className="text-xs text-zinc-500 hover:text-white">Leave</button>
       </header>

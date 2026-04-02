@@ -81,6 +81,7 @@ const DEFAULT_STUDENT_EXPERIENCE = {
   vibrationCue: true,
   showProgressTimeline: false,
   textZoomPreset: 100,
+  zenMode: false,
 };
 
 function clampZoomPreset(value, fallback = 100) {
@@ -115,6 +116,8 @@ const PLAYER_SHORTCUTS = [
   { key: 'M', description: 'Open lesson map drawer' },
   { key: 'F', description: 'Toggle fullscreen' },
   { key: 'H', description: 'Toggle high-contrast mode' },
+  { key: 'Z', description: 'Toggle Zen mode (minimal UI)' },
+  { key: 'Esc', description: 'Close any open panel' },
   { key: '?', description: 'Open keyboard shortcut help' },
 ];
 
@@ -140,6 +143,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
   const [showFontPanel, setShowFontPanel] = useState(false);
   const [showPlayerHotkeys, setShowPlayerHotkeys] = useState(false);
   const [showAccessibilityPanel, setShowAccessibilityPanel] = useState(false);
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [studentExperience, setStudentExperience] = useState(loadStudentExperience);
   const [interactionLog, setInteractionLog] = useState(() => ({
     startedAt: Date.now(),
@@ -521,6 +525,17 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
         event.preventDefault();
         updateStudentExperience({ highContrastMode: !studentExperience.highContrastMode });
       }
+      if (event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        updateStudentExperience({ zenMode: !studentExperience.zenMode });
+      }
+      if (event.key === 'Escape') {
+        setShowOverflowMenu(false);
+        setShowFontPanel(false);
+        setShowAccessibilityPanel(false);
+        setShowPlayerHotkeys(false);
+        setSidebarOpen(false);
+      }
       if (event.key === '?' || (event.key === '/' && (event.ctrlKey || event.metaKey))) {
         event.preventDefault();
         setShowPlayerHotkeys(true);
@@ -570,7 +585,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
           score: typeof result?.score === 'number' ? result.score : null,
           confidence,
         },
-      ],
+      ].slice(-200),
     }));
     setResults((currentResults) => ({
       ...currentResults,
@@ -716,6 +731,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
         studentExperience.highContrastMode ? 'player-high-contrast' : '',
         studentExperience.dyslexiaMode ? 'player-dyslexia-mode' : '',
         studentExperience.reducedMotionMode ? 'player-reduced-motion' : '',
+        studentExperience.zenMode ? 'zen-mode' : '',
       ].join(' ')}
       style={playerShellStyle}
     >
@@ -760,103 +776,63 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
         </div>
       )}
       <div className="flex min-h-screen w-full flex-col">
+        <a href="#main-content" className="skip-nav">Skip to content</a>
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4 md:px-5">
           <div className="player-frame mx-auto flex items-center gap-2 md:gap-3">
-            <button type="button" onClick={() => setSidebarOpen(true)} className="player-nav-button border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50" title="Lesson map"><HamburgerIcon /></button>
+            {!modeConfig.disableBackNavigation && (
+              <button type="button" onClick={goPrev} disabled={!canGoBack} className="player-nav-button border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50 disabled:opacity-30" aria-label="Previous block">←</button>
+            )}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="truncate text-sm font-semibold text-zinc-900 md:text-base">{lesson.title}</span>
-                <span className="shrink-0 text-xs text-zinc-400">{currentIndex + 1}/{blocks.length}</span>
-              </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden bg-zinc-100">
-                <div className="h-full bg-zinc-900 transition-all duration-500" style={{ width: progressWidth }} />
+                <span className="shrink-0 text-xs text-zinc-400">{currentIndex + 1} of {blocks.length}</span>
               </div>
               {modeConfig.requireRequiredTasks && requiredTasks.length > 0 && (
                 <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-zinc-400">
-                  Required complete: {requiredCompleted}/{requiredTasks.length}
-                </div>
-              )}
-              {(modeConfig.disableBackNavigation || timeRemainingSeconds !== null) && (
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-zinc-500">
-                  {modeConfig.disableBackNavigation && <span className="border border-zinc-200 bg-zinc-50 px-1.5 py-0.5">Back disabled</span>}
-                  {timeRemainingSeconds !== null && (
-                    <span className={[
-                      'border px-1.5 py-0.5',
-                      timeRemainingSeconds <= 60 ? 'border-red-300 bg-red-50 text-red-700' : 'border-zinc-200 bg-zinc-50',
-                    ].join(' ')}>
-                      Time left {formatCountdown(timeRemainingSeconds)}
-                    </span>
-                  )}
-                </div>
-              )}
-              {studentExperience.showProgressTimeline && (
-                <div className="mt-2 overflow-x-auto pb-1">
-                  <div className="flex min-w-max items-center gap-1.5">
-                    {progressTimelineEntries.map((entry) => (
-                      <button
-                        key={`timeline-${entry.id}`}
-                        type="button"
-                        onClick={() => {
-                          if (modeConfig.disableBackNavigation && entry.index < currentIndex) return;
-                          setCurrentIndex(entry.index);
-                        }}
-                        disabled={modeConfig.disableBackNavigation && entry.index < currentIndex}
-                        className={[
-                          'border px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition',
-                          entry.isCurrent ? 'border-zinc-900 bg-zinc-900 text-white' : entry.completed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-zinc-200 bg-zinc-50 text-zinc-500',
-                          modeConfig.disableBackNavigation && entry.index < currentIndex ? 'cursor-not-allowed opacity-40' : '',
-                        ].join(' ')}
-                        title={`${entry.label}${entry.confidence ? ` • confidence ${entry.confidence}/5` : ''}`}
-                      >
-                        {entry.index + 1}
-                        {entry.confidence ? ` · C${entry.confidence}` : ''}
-                      </button>
-                    ))}
-                  </div>
+                  Required: {requiredCompleted}/{requiredTasks.length}
                 </div>
               )}
             </div>
+            {timeRemainingSeconds !== null && (
+              <span className={[
+                'shrink-0 text-sm font-medium',
+                timeRemainingSeconds <= 10 ? 'timer-urgent timer-urgent-pulse' : timeRemainingSeconds <= 30 ? 'timer-warning' : 'timer-calm',
+              ].join(' ')} aria-live="polite" aria-label={`Time remaining: ${formatCountdown(timeRemainingSeconds)}`}>
+                {formatCountdown(timeRemainingSeconds)}
+              </span>
+            )}
             <div className="flex shrink-0 items-center gap-1.5">
               <div className="relative">
-                <button type="button" onClick={() => setShowFontPanel(v => !v)} className="border border-zinc-200 px-2.5 py-2 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50" title="Font settings">Aa</button>
-                {showFontPanel && <FontSettingsPanel settings={fontSettings} onChange={setFontSettings} onClose={() => setShowFontPanel(false)} />}
-              </div>
-              <div className="relative">
-                <button type="button" onClick={() => setShowAccessibilityPanel((value) => !value)} className="border border-zinc-200 px-2.5 py-2 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50" title="Accessibility settings">A11y</button>
-                {showAccessibilityPanel && (
-                  <div className="absolute right-0 top-full z-40 mt-1 w-72 border border-zinc-200 bg-white p-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                    <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Student Experience</div>
-                    <div className="space-y-2 text-xs text-zinc-700">
-                      <label className="flex items-center justify-between gap-2"><span>High contrast</span><input type="checkbox" checked={studentExperience.highContrastMode} onChange={(event) => updateStudentExperience({ highContrastMode: event.target.checked })} /></label>
-                      <label className="flex items-center justify-between gap-2"><span>Dyslexia reading mode</span><input type="checkbox" checked={studentExperience.dyslexiaMode} onChange={(event) => updateStudentExperience({ dyslexiaMode: event.target.checked })} /></label>
-                      <label className="flex items-center justify-between gap-2"><span>Reduced motion</span><input type="checkbox" checked={studentExperience.reducedMotionMode} onChange={(event) => updateStudentExperience({ reducedMotionMode: event.target.checked })} /></label>
-                      <label className="flex items-center justify-between gap-2"><span>Vibration cue on submit</span><input type="checkbox" checked={studentExperience.vibrationCue} onChange={(event) => updateStudentExperience({ vibrationCue: event.target.checked })} /></label>
-                      <label className="flex items-center justify-between gap-2"><span>Progress timeline</span><input type="checkbox" checked={studentExperience.showProgressTimeline} onChange={(event) => updateStudentExperience({ showProgressTimeline: event.target.checked })} /></label>
+                <button type="button" onClick={() => setShowOverflowMenu(v => !v)} className="overflow-menu-btn border border-zinc-200 px-2.5 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50" aria-label="More options" aria-expanded={showOverflowMenu}>⋮</button>
+                {showOverflowMenu && (
+                  <>
+                    <button type="button" onClick={() => setShowOverflowMenu(false)} className="fixed inset-0 z-30" aria-label="Close menu" />
+                    <div className="absolute right-0 top-full z-40 mt-1 w-56 border border-zinc-200 bg-white shadow-lg depth-2" role="menu">
+                      <button type="button" role="menuitem" onClick={() => { setSidebarOpen(true); setShowOverflowMenu(false); }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-zinc-700 hover:bg-zinc-50">
+                        <HamburgerIcon /> Lesson Map
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => { setShowFontPanel(v => !v); setShowOverflowMenu(false); }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-zinc-700 hover:bg-zinc-50">
+                        <span className="text-xs font-bold">Aa</span> Font Settings
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => { setShowAccessibilityPanel(v => !v); setShowOverflowMenu(false); }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-zinc-700 hover:bg-zinc-50">
+                        <span className="text-xs font-medium">A11y</span> Accessibility
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => { setShowPlayerHotkeys(true); setShowOverflowMenu(false); }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-zinc-700 hover:bg-zinc-50">
+                        <span className="text-xs font-medium">?</span> Keyboard Shortcuts
+                      </button>
+                      <div className="border-t border-zinc-100" />
+                      <button type="button" role="menuitem" onClick={() => { handleExit(); setShowOverflowMenu(false); }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-zinc-500 hover:bg-zinc-50">
+                        Exit Lesson
+                      </button>
                     </div>
-                    <div className="mt-3">
-                      <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Text zoom</div>
-                      <div className="flex gap-1">
-                        {[90, 100, 115, 130].map((zoom) => (
-                          <button
-                            key={`zoom-${zoom}`}
-                            type="button"
-                            onClick={() => updateStudentExperience({ textZoomPreset: zoom })}
-                            className={studentExperience.textZoomPreset === zoom ? 'flex-1 border border-zinc-900 bg-zinc-900 px-1.5 py-1 text-[10px] text-white' : 'flex-1 border border-zinc-200 px-1.5 py-1 text-[10px] text-zinc-600'}
-                          >
-                            {zoom}%
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                  </>
                 )}
               </div>
-              <button type="button" onClick={() => setShowPlayerHotkeys(true)} className="border border-zinc-200 px-2.5 py-2 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50" title="Keyboard shortcuts">?</button>
-              <button type="button" onClick={toggleFullscreen} className="hidden border border-zinc-200 px-2.5 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50 sm:block" title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>{isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}</button>
-              <button type="button" onClick={handleExit} className="player-nav-button border border-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50">Exit</button>
+              <button type="button" onClick={toggleFullscreen} className="hidden border border-zinc-200 px-2.5 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50 sm:block" title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>{isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}</button>
             </div>
           </div>
         </header>
+        <div className="horizon-line" />
 
         {showResumePrompt && (
           <div className="border-b border-zinc-200 bg-amber-50 px-3 py-3 sm:px-4 md:px-5">
@@ -879,31 +855,63 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
           </div>
         )}
 
-        {current && (
-          <div className="border-b border-zinc-100 bg-white px-3 py-2 sm:px-4 md:px-5">
-            <div className="player-frame mx-auto">
-              <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-400">{current.taskType || current.type}</span>
-              {current.type === 'task' && !results[current.id] && (
-                <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full dot-round bg-amber-400" title="Not answered yet" />
-              )}
+        {showFontPanel && (
+          <div className="absolute right-3 top-14 z-50 sm:right-4 md:right-5">
+            <FontSettingsPanel settings={fontSettings} onChange={setFontSettings} onClose={() => setShowFontPanel(false)} />
+          </div>
+        )}
+        {showAccessibilityPanel && (
+          <div className="absolute right-3 top-14 z-50 sm:right-4 md:right-5">
+            <div className="w-72 border border-zinc-200 bg-white p-3 shadow-lg depth-2">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Student Experience</div>
+                <button type="button" onClick={() => setShowAccessibilityPanel(false)} className="text-xs text-zinc-400 hover:text-zinc-700">✕</button>
+              </div>
+              <div className="space-y-2 text-xs text-zinc-700">
+                <label className="flex items-center justify-between gap-2"><span>High contrast</span><input type="checkbox" checked={studentExperience.highContrastMode} onChange={(event) => updateStudentExperience({ highContrastMode: event.target.checked })} /></label>
+                <label className="flex items-center justify-between gap-2"><span>Dyslexia reading mode</span><input type="checkbox" checked={studentExperience.dyslexiaMode} onChange={(event) => updateStudentExperience({ dyslexiaMode: event.target.checked })} /></label>
+                <label className="flex items-center justify-between gap-2"><span>Reduced motion</span><input type="checkbox" checked={studentExperience.reducedMotionMode} onChange={(event) => updateStudentExperience({ reducedMotionMode: event.target.checked })} /></label>
+                <label className="flex items-center justify-between gap-2"><span>Vibration cue on submit</span><input type="checkbox" checked={studentExperience.vibrationCue} onChange={(event) => updateStudentExperience({ vibrationCue: event.target.checked })} /></label>
+                <label className="flex items-center justify-between gap-2"><span>Zen mode (minimal UI)</span><input type="checkbox" checked={studentExperience.zenMode} onChange={(event) => updateStudentExperience({ zenMode: event.target.checked })} /></label>
+                <label className="flex items-center justify-between gap-2"><span>Progress timeline</span><input type="checkbox" checked={studentExperience.showProgressTimeline} onChange={(event) => updateStudentExperience({ showProgressTimeline: event.target.checked })} /></label>
+              </div>
+              <div className="mt-3">
+                <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Text zoom</div>
+                <div className="flex gap-1">
+                  {[90, 100, 115, 130].map((zoom) => (
+                    <button
+                      key={`zoom-${zoom}`}
+                      type="button"
+                      onClick={() => updateStudentExperience({ textZoomPreset: zoom })}
+                      className={studentExperience.textZoomPreset === zoom ? 'flex-1 border border-zinc-900 bg-zinc-900 px-1.5 py-1 text-[10px] text-white' : 'flex-1 border border-zinc-200 px-1.5 py-1 text-[10px] text-zinc-600'}
+                    >
+                      {zoom}%
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        <main className="flex-1 px-3 py-4 sm:px-4 sm:py-5 md:px-5 md:py-7 lg:px-6 lg:py-8 xl:py-10" {...swipeHandlers}>
-          <div key={currentIndex} className={studentExperience.reducedMotionMode ? 'player-frame mx-auto' : 'player-frame mx-auto animate-soft-rise'}>
+        <main id="main-content" className="flex-1 px-3 py-4 sm:px-4 sm:py-5 md:px-5 md:py-7 lg:px-6 lg:py-8 xl:py-10" {...swipeHandlers}>
+          <div key={currentIndex} className={`content-island ${studentExperience.reducedMotionMode ? 'player-frame mx-auto' : 'player-frame mx-auto slide-enter'}`}>
+            {current?.type === 'task' && results[current.id] && (
+              <div className="ghost-watermark relative" data-ghost="Previously answered" aria-hidden="true" />
+            )}
             <LessonStage blocks={blocks} currentIndex={currentIndex} results={results} onCompleteBlock={saveResult} taskOptions={{ allowRetry: modeConfig.allowRetry, showCheckButton: modeConfig.showCheckButton }} emptyMessage="This lesson ended safely because the current block is missing." />
           </div>
         </main>
 
         <footer className="sticky bottom-0 z-20 border-t border-zinc-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4 md:px-5 [padding-bottom:calc(env(safe-area-inset-bottom)+0.75rem)]">
-          {current?.type === 'task' && (
-            <div className="player-frame mx-auto mb-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+          {current?.type === 'task' && results[current.id] && (
+            <div className="player-frame mx-auto mb-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 animate-soft-rise">
               <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Confidence</span>
               {[1, 2, 3, 4, 5].map((value) => (
                 <button
                   key={`confidence-${value}`}
                   type="button"
+                  aria-label={`Confidence: ${value} of 5`}
                   onClick={() => {
                     if (!current?.id) return;
                     setConfidenceByBlock((currentMap) => ({ ...currentMap, [current.id]: value }));
@@ -917,7 +925,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
                           blockId: current.id,
                           confidence: value,
                         },
-                      ],
+                      ].slice(-200),
                     }));
                   }}
                   className={currentConfidence === value ? 'border border-zinc-900 bg-zinc-900 px-2 py-1 text-[10px] font-medium text-white' : 'border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:border-zinc-900'}
@@ -925,24 +933,15 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
                   {value}
                 </button>
               ))}
-              <span className="ml-auto text-[10px] text-zinc-500">1 = unsure, 5 = very confident</span>
             </div>
           )}
-          <div className="player-frame mx-auto flex items-center justify-between gap-3 md:gap-4">
-            <button type="button" onClick={goPrev} disabled={!canGoBack} className="player-nav-button border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-30">← Back</button>
-            <div className="hidden items-center gap-1.5 lg:flex">
-              {blocks.map((block, index) => (
-                <button key={block.id} type="button" onClick={() => {
-                  if (modeConfig.disableBackNavigation && index < currentIndex) return;
-                  setCurrentIndex(index);
-                }} disabled={modeConfig.disableBackNavigation && index < currentIndex} title={getBlockLabel(block, index)} className={[
-                  'h-2 transition-all',
-                  index === currentIndex ? 'w-6 bg-zinc-900' : isComplete(block) ? 'w-2 bg-zinc-500' : 'w-2 bg-zinc-200 hover:bg-zinc-300',
-                  modeConfig.disableBackNavigation && index < currentIndex ? 'cursor-not-allowed opacity-40 hover:bg-zinc-200' : '',
-                ].join(' ')} />
-              ))}
+          <div className="player-frame mx-auto flex items-center justify-center gap-3 md:gap-4">
+            <button type="button" onClick={goNext} disabled={!canAdvanceCurrent} className="action-primary player-nav-button px-6 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40">{currentIndex === blocks.length - 1 ? 'Finish ✓' : 'Next →'}</button>
+          </div>
+          <div className="player-frame mx-auto mt-2">
+            <div className="progress-bar-track">
+              <div className="progress-bar-fill" style={{ width: progressWidth }} />
             </div>
-            <button type="button" onClick={goNext} disabled={!canAdvanceCurrent} className="player-nav-button border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">{currentIndex === blocks.length - 1 ? 'Finish ✓' : 'Next →'}</button>
           </div>
           {(currentRequiredBlocked || modeConfig.disableBackNavigation) && (
             <div className="player-frame mx-auto mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">

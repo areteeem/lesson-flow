@@ -1,5 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LessonStage from './LessonStage';
+import QuickPulse from './QuickPulse';
+import SessionWarmth from './SessionWarmth';
 import { getBlockLabel, getTaskBlocks, getTaskPoints, isGradableTask, validateLessonStructure } from '../utils/lesson';
 import { recordDebugEvent } from '../utils/debug';
 import { normalizeScore } from '../utils/grading';
@@ -141,6 +143,11 @@ export default function LiveHost({ lesson, onExit }) {
   const [reopenAuditTrail, setReopenAuditTrail] = useState([]);
   const [spotlightAuditTrail, setSpotlightAuditTrail] = useState([]);
   const [spotlight, setSpotlight] = useState(null);
+  const [showBasicSettings, setShowBasicSettings] = useState(true);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [showRunningOverflow, setShowRunningOverflow] = useState(false);
+  const [showQuickPulse, setShowQuickPulse] = useState(false);
+  const [pulseVotes, setPulseVotes] = useState({});
 
   const lessonPayload = useMemo(() => ({
     id: lesson?.id || 'live-lesson',
@@ -1373,153 +1380,165 @@ export default function LiveHost({ lesson, onExit }) {
               <div className="mt-2">{blocks.length} live blocks ready. Slides, media, split views, and all task types are broadcast from one source of truth.</div>
             </div>
             <div className="mt-4 border border-zinc-800 bg-zinc-900 px-4 py-3 text-left text-sm text-zinc-300">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Student live controls</div>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.allowRetry} onChange={(event) => setLiveSettings((current) => ({ ...current, allowRetry: event.target.checked }))} />Allow retries (try again)</label>
-                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showCheckButton} onChange={(event) => setLiveSettings((current) => ({ ...current, showCheckButton: event.target.checked }))} />Show check button</label>
-                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.lockAfterSubmit} onChange={(event) => setLiveSettings((current) => ({ ...current, lockAfterSubmit: event.target.checked }))} />One attempt per task</label>
-                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.hideQuestionContent} onChange={(event) => setLiveSettings((current) => ({ ...current, hideQuestionContent: event.target.checked }))} />Hide question text for students</label>
-                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showLeaderboardEachQuestion} onChange={(event) => setLiveSettings((current) => ({ ...current, showLeaderboardEachQuestion: event.target.checked }))} />Show leaderboard each question</label>
-                <label className="space-y-1 text-xs text-zinc-300">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Class pace mode</span>
-                  <select
-                    value={liveSettings.paceMode}
-                    onChange={(event) => setLiveSettings((current) => ({
-                      ...current,
-                      paceMode: normalizeLivePaceMode(event.target.value),
-                    }))}
-                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
-                  >
-                    <option value={LIVE_PACE_MODE.TEACHER_LED}>Teacher-led</option>
-                    <option value={LIVE_PACE_MODE.HYBRID}>Hybrid (students up to host)</option>
-                    <option value={LIVE_PACE_MODE.STUDENT_PACED}>Student-paced</option>
-                  </select>
-                </label>
-                <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.groupModeEnabled === true} onChange={(event) => setLiveSettings((current) => ({ ...current, groupModeEnabled: event.target.checked }))} />Enable teammate/group mode</label>
-                <label className="space-y-1 text-xs text-zinc-300">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Team count</span>
-                  <input
-                    type="number"
-                    min={2}
-                    max={8}
-                    step={1}
-                    value={liveSettings.groupCount ?? 2}
-                    onChange={(event) => setLiveSettings((current) => ({
-                      ...current,
-                      groupCount: clampGroupCount(event.target.value, 2),
-                    }))}
-                    disabled={liveSettings.groupModeEnabled !== true}
-                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white disabled:opacity-50"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-zinc-300">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Captain rotation (blocks)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    step={1}
-                    value={liveSettings.captainRotationEvery ?? 1}
-                    onChange={(event) => setLiveSettings((current) => ({
-                      ...current,
-                      captainRotationEvery: clampCaptainRotation(event.target.value, 1),
-                    }))}
-                    disabled={liveSettings.groupModeEnabled !== true}
-                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white disabled:opacity-50"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-zinc-300">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto-advance policy</span>
-                  <select
-                    value={liveSettings.autoAdvancePolicy}
-                    onChange={(event) => setLiveSettings((current) => ({
-                      ...current,
-                      autoAdvancePolicy: normalizeAutoAdvancePolicy(event.target.value),
-                    }))}
-                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
-                  >
-                    <option value={AUTO_ADVANCE_POLICY.TIMER}>Timer (seconds)</option>
-                    <option value={AUTO_ADVANCE_POLICY.ALL_SUBMITTED}>All submitted</option>
-                    <option value={AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD}>Submission threshold</option>
-                  </select>
-                </label>
-                <label className="space-y-1 text-xs text-zinc-300">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto-advance (seconds)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={liveSettings.autoAdvanceSeconds ?? ''}
-                    onChange={(event) => setLiveSettings((current) => ({
-                      ...current,
-                      autoAdvanceSeconds: event.target.value ? Number(event.target.value) : null,
-                    }))}
-                    placeholder="Manual"
-                    disabled={liveSettings.autoAdvancePolicy !== AUTO_ADVANCE_POLICY.TIMER}
-                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-zinc-300">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Submission threshold (%)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    step={1}
-                    value={liveSettings.autoAdvanceSubmissionThreshold ?? ''}
-                    onChange={(event) => setLiveSettings((current) => ({
-                      ...current,
-                      autoAdvanceSubmissionThreshold: clampSubmissionPercent(event.target.value, 70),
-                    }))}
-                    placeholder="70"
-                    disabled={liveSettings.autoAdvancePolicy !== AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD}
-                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-zinc-300">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto mode limit (minutes)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={liveSettings.autoModeTimeLimitMinutes ?? ''}
-                    onChange={(event) => setLiveSettings((current) => ({
-                      ...current,
-                      autoModeTimeLimitMinutes: event.target.value ? Number(event.target.value) : null,
-                    }))}
-                    placeholder="No limit"
-                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-zinc-300">
-                  <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Question response deadline (seconds)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={liveSettings.questionResponseDeadlineSeconds ?? ''}
-                    onChange={(event) => setLiveSettings((current) => ({
-                      ...current,
-                      questionResponseDeadlineSeconds: event.target.value ? toPositiveInt(event.target.value, null) : null,
-                    }))}
-                    placeholder="No deadline"
-                    className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
-                  />
-                </label>
-              </div>
-              <div className="mt-2 text-[11px] text-zinc-500">
-                Timer policy follows seconds. Submission policies use task submissions and skip non-task blocks.
-              </div>
-              {paceMode !== LIVE_PACE_MODE.TEACHER_LED && (
+              <button type="button" className="collapsible-header w-full text-zinc-400" onClick={() => setShowBasicSettings?.((v) => !v) ?? void 0} aria-expanded={showBasicSettings !== false}>
+                <span className="collapsible-chevron" data-open={showBasicSettings !== false ? 'true' : 'false'}>▸</span>
+                Session Rules
+              </button>
+              {showBasicSettings !== false && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.allowRetry} onChange={(event) => setLiveSettings((current) => ({ ...current, allowRetry: event.target.checked }))} />Allow retries (try again)</label>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showCheckButton} onChange={(event) => setLiveSettings((current) => ({ ...current, showCheckButton: event.target.checked }))} />Show check button</label>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.lockAfterSubmit} onChange={(event) => setLiveSettings((current) => ({ ...current, lockAfterSubmit: event.target.checked }))} />One attempt per task</label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Class pace mode</span>
+                    <select
+                      value={liveSettings.paceMode}
+                      onChange={(event) => setLiveSettings((current) => ({
+                        ...current,
+                        paceMode: normalizeLivePaceMode(event.target.value),
+                      }))}
+                      className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                    >
+                      <option value={LIVE_PACE_MODE.TEACHER_LED}>Teacher-led</option>
+                      <option value={LIVE_PACE_MODE.HYBRID}>Hybrid (students up to host)</option>
+                      <option value={LIVE_PACE_MODE.STUDENT_PACED}>Student-paced</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 border border-zinc-800 bg-zinc-900 px-4 py-3 text-left text-sm text-zinc-300">
+              <button type="button" className="collapsible-header w-full text-zinc-400" onClick={() => setShowAdvancedSettings?.((v) => !v) ?? void 0} aria-expanded={showAdvancedSettings === true}>
+                <span className="collapsible-chevron" data-open={showAdvancedSettings ? 'true' : 'false'}>▸</span>
+                Advanced Settings
+              </button>
+              {showAdvancedSettings && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.hideQuestionContent} onChange={(event) => setLiveSettings((current) => ({ ...current, hideQuestionContent: event.target.checked }))} />Hide question text for students</label>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showLeaderboardEachQuestion} onChange={(event) => setLiveSettings((current) => ({ ...current, showLeaderboardEachQuestion: event.target.checked }))} />Show leaderboard each question</label>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.groupModeEnabled === true} onChange={(event) => setLiveSettings((current) => ({ ...current, groupModeEnabled: event.target.checked }))} />Enable teammate/group mode</label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Team count</span>
+                    <input
+                      type="number"
+                      min={2}
+                      max={8}
+                      step={1}
+                      value={liveSettings.groupCount ?? 2}
+                      onChange={(event) => setLiveSettings((current) => ({
+                        ...current,
+                        groupCount: clampGroupCount(event.target.value, 2),
+                      }))}
+                      disabled={liveSettings.groupModeEnabled !== true}
+                      className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white disabled:opacity-50"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Captain rotation (blocks)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={liveSettings.captainRotationEvery ?? 1}
+                      onChange={(event) => setLiveSettings((current) => ({
+                        ...current,
+                        captainRotationEvery: clampCaptainRotation(event.target.value, 1),
+                      }))}
+                      disabled={liveSettings.groupModeEnabled !== true}
+                      className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white disabled:opacity-50"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto-advance policy</span>
+                    <select
+                      value={liveSettings.autoAdvancePolicy}
+                      onChange={(event) => setLiveSettings((current) => ({
+                        ...current,
+                        autoAdvancePolicy: normalizeAutoAdvancePolicy(event.target.value),
+                      }))}
+                      className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                    >
+                      <option value={AUTO_ADVANCE_POLICY.TIMER}>Timer (seconds)</option>
+                      <option value={AUTO_ADVANCE_POLICY.ALL_SUBMITTED}>All submitted</option>
+                      <option value={AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD}>Submission threshold</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto-advance (seconds)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={liveSettings.autoAdvanceSeconds ?? ''}
+                      onChange={(event) => setLiveSettings((current) => ({
+                        ...current,
+                        autoAdvanceSeconds: event.target.value ? Number(event.target.value) : null,
+                      }))}
+                      placeholder="Manual"
+                      disabled={liveSettings.autoAdvancePolicy !== AUTO_ADVANCE_POLICY.TIMER}
+                      className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Submission threshold (%)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={liveSettings.autoAdvanceSubmissionThreshold ?? ''}
+                      onChange={(event) => setLiveSettings((current) => ({
+                        ...current,
+                        autoAdvanceSubmissionThreshold: clampSubmissionPercent(event.target.value, 70),
+                      }))}
+                      placeholder="70"
+                      disabled={liveSettings.autoAdvancePolicy !== AUTO_ADVANCE_POLICY.SUBMISSION_THRESHOLD}
+                      className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Auto mode limit (minutes)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={liveSettings.autoModeTimeLimitMinutes ?? ''}
+                      onChange={(event) => setLiveSettings((current) => ({
+                        ...current,
+                        autoModeTimeLimitMinutes: event.target.value ? Number(event.target.value) : null,
+                      }))}
+                      placeholder="No limit"
+                      className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Question response deadline (seconds)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={liveSettings.questionResponseDeadlineSeconds ?? ''}
+                      onChange={(event) => setLiveSettings((current) => ({
+                        ...current,
+                        questionResponseDeadlineSeconds: event.target.value ? toPositiveInt(event.target.value, null) : null,
+                      }))}
+                      placeholder="No deadline"
+                      className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white"
+                    />
+                  </label>
+                </div>
+              )}
+              {paceMode !== LIVE_PACE_MODE.TEACHER_LED && showAdvancedSettings && (
                 <div className="mt-2 text-[11px] text-zinc-500">
                   Teacher auto timers and per-question deadlines are paused in {paceMode.replace('_', '-')} mode.
                 </div>
               )}
-              {liveSettings.showLeaderboardEachQuestion && playerCount <= 1 && (
+              {liveSettings.showLeaderboardEachQuestion && playerCount <= 1 && showAdvancedSettings && (
                 <div className="mt-2 text-[11px] text-zinc-500">Leaderboard cards appear after each question when at least two students are connected.</div>
               )}
             </div>
-            <button type="button" onClick={startSession} disabled={playerCount === 0} className="mt-8 border border-white bg-white px-8 py-3 text-sm font-bold text-zinc-900 disabled:opacity-30">
+            <button type="button" onClick={startSession} disabled={playerCount === 0} className="action-primary mt-8 px-8 py-3 text-sm font-bold disabled:opacity-30">
               Start live lesson
             </button>
           </div>
@@ -1532,6 +1551,9 @@ export default function LiveHost({ lesson, onExit }) {
                 <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Teacher Control</div>
                 <div className="mt-1 text-sm text-zinc-300">Block {currentIndex + 1} of {blocks.length}: {currentBlock ? getBlockLabel(currentBlock, currentIndex) : 'Unavailable block'}</div>
                 <div className="mt-1 text-xs text-zinc-500">Participants: {playerCount}</div>
+                {currentBlockStats && playerCount > 0 && (
+                  <div className="mt-1"><SessionWarmth responded={currentBlockStats.submitted} total={playerCount} /></div>
+                )}
                 <div className="mt-1 text-xs text-zinc-500">Pace: {paceMode.replace('_', '-')}</div>
                 {autoAdvanceRemaining !== null && (
                   <div className="mt-1 text-xs text-zinc-400">Auto-advancing in {autoAdvanceRemaining}s</div>
@@ -1555,24 +1577,37 @@ export default function LiveHost({ lesson, onExit }) {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {hostFlowControlsEnabled && (
-                  <button type="button" onClick={() => setAutoAdvancePaused((current) => !current)} className="border border-zinc-700 px-4 py-2 text-sm text-zinc-200">
-                    {autoAdvancePaused ? 'Resume Auto' : 'Pause Auto'}
-                  </button>
-                )}
-                <button type="button" onClick={skipCurrentQuestion} className="border border-amber-600 bg-amber-50/10 px-4 py-2 text-sm text-amber-200 hover:bg-amber-100/10">
-                  Skip Question
-                </button>
-                <button type="button" onClick={reopenPreviousQuestion} disabled={currentIndex === 0} className="border border-sky-700 bg-sky-50/10 px-4 py-2 text-sm text-sky-200 hover:bg-sky-100/10 disabled:opacity-30">
-                  Re-open Previous
-                </button>
-                {spotlight && (
-                  <button type="button" onClick={clearSpotlight} className="border border-violet-700 bg-violet-50/10 px-4 py-2 text-sm text-violet-200 hover:bg-violet-100/10">
-                    Clear Spotlight
-                  </button>
-                )}
-                <button type="button" onClick={goPrev} disabled={currentIndex === 0} className="border border-zinc-700 px-4 py-2 text-sm text-zinc-200 disabled:opacity-30">← Back</button>
-                <button type="button" onClick={goNext} className="border border-white bg-white px-4 py-2 text-sm font-bold text-zinc-900">{currentIndex === blocks.length - 1 ? 'Finish →' : 'Next →'}</button>
+                <button type="button" onClick={goPrev} disabled={currentIndex === 0} className="border border-zinc-700 px-4 py-2 text-sm text-zinc-200 disabled:opacity-30" aria-label="Previous question">← Back</button>
+                <button type="button" onClick={goNext} className="action-primary px-4 py-2 text-sm font-bold">{currentIndex === blocks.length - 1 ? 'Finish →' : 'Next →'}</button>
+                <div className="relative">
+                  <button type="button" onClick={() => setShowRunningOverflow(v => !v)} className="overflow-menu-btn border border-zinc-700 px-2.5 py-2 text-sm text-zinc-400" aria-label="More actions" aria-expanded={showRunningOverflow}>⋮</button>
+                  {showRunningOverflow && (
+                    <>
+                      <button type="button" onClick={() => setShowRunningOverflow(false)} className="fixed inset-0 z-30" aria-label="Close menu" />
+                      <div className="absolute right-0 top-full z-40 mt-1 w-52 border border-zinc-700 bg-zinc-900 shadow-lg" role="menu">
+                        {hostFlowControlsEnabled && (
+                          <button type="button" role="menuitem" onClick={() => { setAutoAdvancePaused((current) => !current); setShowRunningOverflow(false); }} className="w-full px-3 py-2.5 text-left text-sm text-zinc-300 hover:bg-zinc-800">
+                            {autoAdvancePaused ? 'Resume Auto' : 'Pause Auto'}
+                          </button>
+                        )}
+                        <button type="button" role="menuitem" onClick={() => { skipCurrentQuestion(); setShowRunningOverflow(false); }} className="w-full px-3 py-2.5 text-left text-sm text-zinc-300 hover:bg-zinc-800">
+                          Skip Question
+                        </button>
+                        <button type="button" role="menuitem" onClick={() => { reopenPreviousQuestion(); setShowRunningOverflow(false); }} disabled={currentIndex === 0} className="w-full px-3 py-2.5 text-left text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-30">
+                          Re-open Previous
+                        </button>
+                        {spotlight && (
+                          <button type="button" role="menuitem" onClick={() => { clearSpotlight(); setShowRunningOverflow(false); }} className="w-full px-3 py-2.5 text-left text-sm text-zinc-300 hover:bg-zinc-800">
+                            Clear Spotlight
+                          </button>
+                        )}
+                        <button type="button" role="menuitem" onClick={() => { setShowQuickPulse(true); setPulseVotes({}); setShowRunningOverflow(false); }} className="w-full px-3 py-2.5 text-left text-sm text-zinc-300 hover:bg-zinc-800">
+                          Quick Pulse
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
             {showPerQuestionLeaderboard && (
@@ -1580,7 +1615,7 @@ export default function LiveHost({ lesson, onExit }) {
                 <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top 3 Leaderboard</div>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {topLeaders.map((leader, index) => (
-                    <div key={leader.id} className="border border-zinc-800 bg-zinc-950/40 px-3 py-2">
+                    <div key={leader.id} className="leaderboard-row border border-zinc-800 bg-zinc-950/40 px-3 py-2">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">#{index + 1}</div>
                       <div className="mt-1 text-sm font-semibold text-zinc-100">{leader.name}</div>
                       <div className="text-xs text-zinc-400">{leader.pct}% • {leader.completed} answered</div>
@@ -1655,6 +1690,9 @@ export default function LiveHost({ lesson, onExit }) {
                   ))}
                 </div>
               </div>
+            )}
+            {showQuickPulse && (
+              <QuickPulse mode="host" votes={pulseVotes} totalVoters={playerCount} onDismiss={() => setShowQuickPulse(false)} />
             )}
             <LessonStage
               blocks={blocks}

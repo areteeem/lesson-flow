@@ -1,321 +1,220 @@
-# lesson-flow
+<p align="center">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React 19" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4" />
+  <img src="https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white" alt="Vite 8" />
+  <img src="https://img.shields.io/badge/Supabase-Realtime-3FCF8E?logo=supabase&logoColor=white" alt="Supabase" />
+  <img src="https://img.shields.io/badge/Monaco_Editor-Integrated-0078D4?logo=visualstudiocode&logoColor=white" alt="Monaco" />
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License" />
+</p>
 
-lesson-flow is a lesson builder and lesson player for teachers who want to create interactive lessons without hand-coding every screen.
+# Lesson Flow
 
-The app combines three things in one place:
+**A full-stack interactive lesson builder, player, and live classroom platform — built for teachers who need more than slides.**
 
-1. A visual builder for slides, tasks, media blocks, grouped activities, and linked layouts.
-2. A DSL editor for people who want a faster, text-based way to author lessons.
-3. A student-facing player and a lightweight live teaching mode.
+Lesson Flow replaces fragmented classroom tools with a single authoring + delivery system. Teachers create rich, interactive lessons combining content slides, task activities, media blocks, and live synchronization — then deliver them to students in real time or as self-paced assignments.
 
-The goal is practical classroom use. It is made for teachers, tutors, curriculum designers, and anyone building guided learning flows with a mix of explanation, practice, and interaction.
+---
 
-## What the app is for
+## Why Lesson Flow?
 
-lesson-flow is designed for lessons where content and interaction need to sit together, not in separate tools.
+| Problem | Lesson Flow's Answer |
+|---|---|
+| Teachers juggle 4+ tools to build one lesson | One unified builder with visual + code editing modes |
+| Live class tools are separate from content tools | Built-in real-time sync with teacher-led, student-paced, and hybrid modes |
+| Existing platforms lack task variety | 15+ interactive task types (drag-drop, matching, dialogue, matrix, highlight, and more) |
+| Accessibility is an afterthought | WCAG-aligned ARIA roles, keyboard navigation, Zen mode, high-contrast, and dyslexia-friendly options |
+| No instant feedback loop | Real-time grading, engagement gauges, and per-question analytics during live sessions |
 
-Typical use cases:
+---
 
-1. English lessons with reading, grammar, vocabulary, listening, and dialogue practice.
-2. Teacher-led classroom sessions where the teacher advances content and students follow in real time.
-3. Self-paced practice where students complete slides and tasks in play mode.
-4. Rapid prototyping of lesson content through the DSL editor.
+## Key Features
 
-## Main features
+### Lesson Builder
+Build lessons visually with drag-and-drop block arrangement, or switch to the Monaco-powered DSL editor for rapid text-based authoring with syntax highlighting, validation, and snippets.
 
-### Builder
+- **Block types**: Content slides, rich text, structure diagrams, tables, split views, grouped activities, media blocks
+- **15+ task types**: Multiple choice, text entry, drag-and-drop ordering, matching pairs, dialogue completion, matrix selection, word highlight, vocabulary builders, and more
+- **Dual editing modes**: Visual builder with instant preview, or code-first DSL with real-time validation
+- **Template library**: Start from curated templates or blank canvas
 
-The builder supports a wide range of block types, including:
+### Student Player
+A polished, mobile-responsive lesson player with:
 
-1. Content slides
-2. Rich text slides
-3. Structure and table slides
-4. Split and grouped task blocks
-5. Media-enhanced activities
-6. A large task library for choice, text entry, drag/drop, matching, dialogue, matrix, highlight, and vocabulary interactions
+- **Zen Mode**: Minimalist UI that hides chrome so students focus on content
+- **Ghost Mode**: Revisiting completed tasks shows previous answers as faded watermarks
+- **Accessibility panel**: High contrast, dyslexia-friendly fonts, reduced motion, text zoom (85–150%), vibration cues
+- **Session persistence**: Progress auto-saves to sessionStorage; resume prompts on return
+- **Keyboard-first navigation**: Arrow keys, shortcuts for fullscreen, sidebar, accessibility, and hotkey reference
 
-### DSL editor
+### Live Classroom Mode
+Real-time teacher-to-student synchronization powered by Supabase Realtime:
 
-The DSL editor is a Monaco-based editor with:
+- **Three pace modes**: Teacher-led, student-paced, and hybrid
+- **Auto-advance policies**: Timer-based, all-submitted, or submission threshold triggers
+- **Quick Pulse**: One-tap engagement polls (👍 Got it / 👎 Lost / 😕 Confused) with live results visualization
+- **Session Warmth gauge**: Real-time response rate indicator (Cold → Warming → Hot)
+- **Team mode**: Auto-assigned groups with rotating captains and team leaderboards
+- **Spotlight answers**: Surface individual student responses during class discussion
+- **Per-question leaderboards**: Top 3 rankings after each task question
+- **Question deadlines**: Optional countdown timers per question
 
-1. Syntax highlighting
-2. Snippets
-3. Validation feedback
-4. Problem list display
-5. Local worker-based Monaco setup, so it does not depend on a CDN
+### Grading & Analytics
+- **Auto-grading** with manual override support
+- **Results board**: Student × question matrix with accessibility-compliant screen reader support
+- **Multiple views**: Student summary, question breakdown, moderation, analytics dashboard
+- **Cloud sync**: Session grades sync to Supabase for cross-device access
 
-### Play mode
+### Assignments & Sharing
+- **Assignment center**: Create homework with deadlines, time limits, randomization, and anti-cheat policies
+- **Lesson sharing**: Generate shareable links with compressed lesson payloads
+- **Result sharing**: Students can share graded results with unique URLs
 
-Play mode is the student-facing lesson player. It supports:
+### Device Storage Management
+- **Auto-cleanup dashboard**: Monitor localStorage usage, clear session data while preserving preferences
+- **Smart preservation**: Theme, accessibility settings, and favorites are never cleared
 
-1. Full lesson navigation
-2. Linked block split views
-3. Grouped activities
-4. Session result tracking
-5. End-of-lesson grading and summary
-6. Safer fallback handling when lesson data is incomplete or empty
+---
 
-### Live mode
+## Architecture
 
-Live mode is teacher-controlled. The teacher advances through a lesson, and student clients receive the same current block.
+```
+┌─────────────────────────────────────────────────┐
+│                  React 19 SPA                    │
+│  ┌───────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │  Builder   │  │  Player  │  │  Live Host   │  │
+│  │  (Visual + │  │          │  │  + Student   │  │
+│  │   DSL)     │  │          │  │   Join       │  │
+│  └─────┬─────┘  └────┬─────┘  └──────┬───────┘  │
+│        │              │               │          │
+│  ┌─────┴──────────────┴───────────────┴───────┐  │
+│  │          Shared Block Model (DSL)          │  │
+│  │  slides · tasks · groups · splits · media  │  │
+│  └────────────────────┬───────────────────────┘  │
+│                       │                          │
+│  ┌────────────────────┴───────────────────────┐  │
+│  │         LessonStage Renderer               │  │
+│  │  (unified across builder, player, live)    │  │
+│  └────────────────────────────────────────────┘  │
+└───────────────────────┬─────────────────────────┘
+                        │
+          ┌─────────────┼─────────────┐
+          │             │             │
+   localStorage    Supabase     sessionStorage
+   (lessons,     (live sync,   (session state,
+    settings)    cloud grades)  play progress)
+```
 
-The current implementation supports Supabase-backed live sync with local fallback:
+**Unified rendering core**: Builder preview, student player, and live mode all share the same `LessonStage` component. A block that works in one mode works in all modes — zero drift.
 
-1. `supabase` transport for cross-device live sessions and persisted event history.
-2. `broadcast-local` fallback for same-browser / same-origin simulation.
-3. Transport mode can be forced via `VITE_LIVE_TRANSPORT`.
+---
 
-The live session now supports the same visible lesson blocks as play mode, including slides and task rendering, instead of being restricted to quiz-only multiple-choice content.
+## Tech Stack
 
-## Stability work included
+| Layer | Technology |
+|---|---|
+| **UI Framework** | React 19 with functional components and hooks |
+| **Styling** | Tailwind CSS 4 (config-less) + CSS custom properties design tokens |
+| **Build Tool** | Vite 8 with HMR |
+| **Code Editor** | Monaco Editor (local worker setup, no CDN dependency) |
+| **Backend** | Supabase (Realtime channels, PostgreSQL with RLS, auth) |
+| **Markdown** | react-markdown + remark-gfm + rehype-raw |
+| **Sanitization** | DOMPurify for safe HTML rendering |
+| **Compression** | pako (zlib) for lesson payload sharing |
+| **Touch Support** | mobile-drag-drop polyfill for cross-device drag interactions |
 
-This codebase now includes several stability-focused protections:
+---
 
-1. Shared lesson-stage rendering between play mode and live mode
-2. Live-mode preflight validation before a session starts
-3. Safer empty-state handling when a lesson has no visible blocks
-4. Safer grading summary behavior when there are no gradable tasks
-5. Better error capture through an error boundary and global error logging
-6. A debug mode panel for recent app events and captured errors
+## Quick Start
 
-## Quick start
+### Prerequisites
 
-### Requirements
+- Node.js 18+
+- npm 9+
 
-1. Node.js 18+ recommended
-2. npm 9+ recommended
-
-### Install
+### Install & Run
 
 ```bash
 npm install
-```
-
-### Run in development
-
-```bash
 npm run dev
 ```
 
-Then open the local Vite URL shown in the terminal.
+Open the local URL printed in the terminal. No backend needed for local authoring and play mode.
 
-### Create a production build
+### Production Build
 
 ```bash
 npm run build
-```
-
-### Preview the production build
-
-```bash
 npm run preview
 ```
 
-### Configure backend live sync (Supabase)
-
-```bash
-npm install
-```
+### Enable Live Mode (Supabase)
 
 Create `.env.local`:
 
-```bash
+```env
 VITE_LIVE_TRANSPORT=supabase
-VITE_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
-VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
 ```
 
-Then apply the schema from `supabase/schema.sql` in Supabase SQL Editor.
-For account sync and grading analytics tables, also apply `supabase/migrations/20260330_account_grading.sql`.
-For tightened authenticated access policies and owner-scoped lesson drafts, apply `supabase/migrations/20260330_security_hardening.sql`.
-
-For a step-by-step cloud/live setup checklist and cross-device sync notes, see `LIVE_MODE_SETUP.md`.
-
-Required tables created by the schema:
-
-1. `live_users`
-2. `live_sessions`
-3. `live_participants`
-4. `live_events`
-5. `live_responses`
-6. `live_manual_scores`
-
-The app uses Supabase Realtime on `live_events` and stores durable session/response state in these tables.
-
-If `VITE_LIVE_TRANSPORT` is not set (or set to `auto`), the app tries Supabase first and falls back to local BroadcastChannel transport.
-
-## Debug mode
-
-There is a built-in debug panel intended for crash investigation and state tracing.
-
-Enable it in either of these ways:
-
-1. Add `?debug=1` to the URL
-2. Set `localStorage.setItem('lf_debug_mode', '1')` in the browser console
-
-When debug mode is enabled, the app records recent errors and important lifecycle events to a local session log and shows them in a floating debug panel.
-
-## How lesson data works
-
-Lessons are stored client-side and are passed between views through session storage and the app context.
-
-Important pieces:
-
-1. Builder output becomes normalized lesson blocks.
-2. The DSL parser turns text into the same internal block shape used by the builder.
-3. Play mode and live mode both render from the same block model.
-
-This shared model is important for feature parity. If a block works in the builder but not in playback, that is a bug, not a separate feature request.
-
-## Live mode architecture notes
-
-### Current approach
-
-The app now supports two live transports through one shared channel adapter:
-
-1. `supabase` transport (backend-supported, cross-device + persistent)
-2. `broadcast-local` transport (local same-browser / same-origin fallback)
-
-Why it exists:
-
-1. Very fast local iteration
-2. Optional backend support for real cross-device classes
-3. Easy to debug in both local tabs and backend-backed sessions
-
-Current limitations:
-
-1. Demo policies in `supabase/schema.sql` are permissive and should be tightened for production.
-2. Session IDs are short and should be protected with stronger access controls for production.
-3. Event retention cleanup should be scheduled to avoid unbounded `live_events` growth.
-
-### Backend event contract (current)
-
-Client to backend:
-
-1. `client_hello`
-2. `join`
-3. `leave`
-4. `request_sync`
-5. `sync` (host authoritative snapshot)
-6. `heartbeat` / `student_heartbeat`
-7. `response_update`
-8. `host-exit`
-
-Backend to client:
-
-1. `join_ack`
-2. `join` (student join notice to host)
-3. `sync` (latest snapshot)
-4. `heartbeat`
-5. `response_update`
-6. `leave`
-7. `host-exit`
-
-### Recommended production architecture
-
-For production deployments:
-
-1. Keep host snapshot state authoritative in `live_sessions`.
-2. Use Realtime subscriptions for low-latency event fanout.
-3. Persist participant activity and responses in database tables.
-4. Add stricter RLS policies, membership checks, and retention jobs.
-
-### Reconnect / latency / packet loss strategy
-
-If this app moves to a backend-backed live mode, the recommended pattern is:
-
-1. Every session message carries a monotonic revision number
-2. Clients request a snapshot when they reconnect or detect drift
-3. The server keeps the current lesson snapshot and current block pointer as the source of truth
-4. Student task responses are idempotent and keyed by session, user, block, and attempt
-5. Heartbeats detect disconnected clients
-6. The host UI shows sync health, reconnects, and stale clients explicitly
-
-### Live protocol smoke checks
-
-Run a local protocol smoke harness (no browser required):
+Apply the database schema:
 
 ```bash
-npm run live:smoke
+# In Supabase SQL Editor, run:
+supabase/schema.sql
+supabase/migrations/20260330_account_grading.sql
+supabase/migrations/20260330_security_hardening.sql
 ```
 
-This verifies three critical paths on the local channel adapter:
+See [LIVE_MODE_SETUP.md](LIVE_MODE_SETUP.md) for the full setup checklist.
 
-1. Student join receives `join_ack` and initial `sync`
-2. Reconnect path receives latest requested snapshot
-3. Late join receives host's current snapshot state
-
-## Feature summary
-
-Short version of what is in the app:
-
-1. Lesson builder
-2. Monaco DSL editor
-3. Play mode with grading
-4. Live teacher/student mode
-5. Media blocks
-6. Drag and touch-friendly interaction patterns in several task types
-7. Recent lessons and local session saving
-8. Settings and student profile views
-
-## Testing guidance
-
-If you are validating stability, these are the first scenarios to run:
-
-1. Finish a lesson with only slides
-2. Finish a lesson with only tasks
-3. Finish a lesson with grouped and split blocks
-4. Start live mode with a valid lesson
-5. Start live mode with an empty or broken lesson
-6. Join live mode from another tab
-7. Advance quickly through blocks in live mode
-8. Run drag/drop tasks on both mouse and touch devices
-9. Test lessons with missing optional fields
-10. Test very small and very large lessons
-
-### Release checks
-
-Use the consolidated CI parity command before release:
+### CI Checks
 
 ```bash
 npm run ci:check
+# Runs: build → DSL validation → live protocol smoke tests
 ```
 
-This runs:
+---
 
-1. Production build (`npm run build`)
-2. DSL fixture validation (`npm run dsl:validate`)
-3. Live protocol smoke coverage (`npm run live:smoke`)
+## Who Is This For?
 
-## Known architectural direction
+- **Teachers** building interactive lessons with embedded practice activities
+- **Tutors** running structured live sessions with real-time feedback
+- **Curriculum designers** prototyping activity flows with the DSL editor
+- **Education startups** extending a proven lesson platform
+- **Hackathon teams** looking for a polished, feature-complete education tool to build on
 
-The app is moving toward one shared rendering core across:
+---
 
-1. Builder preview
-2. Play mode
-3. Live mode
+## Project Structure
 
-That is the right long-term direction because it reduces drift, avoids mode-specific bugs, and makes task parity easier to maintain.
+```
+src/
+├── components/          # UI components (Builder, Player, Live, Grading, etc.)
+│   └── tasks/           # 15+ interactive task type implementations
+├── config/              # DSL schema, task registry, slide registry, templates
+├── context/             # React context (AppContext)
+├── hooks/               # Shared hooks (favorites, shuffle seed)
+└── utils/               # Core utilities
+    ├── lesson.js         # Block validation and transformation
+    ├── grading.js        # Score normalization and grading logic
+    ├── liveChannel.js    # Live session channel adapter
+    ├── liveTransport.js  # Transport layer (Supabase / BroadcastChannel)
+    ├── cloudSync.js      # Cloud lesson sync
+    └── theme.js          # Dark mode and theme management
 
-## Project structure overview
+supabase/
+├── schema.sql           # Core database schema
+└── migrations/          # Incremental schema updates
 
-Some useful folders:
+scripts/
+├── live-flow-smoke.mjs  # Live protocol smoke tests
+└── validate-dsl.mjs     # DSL fixture validation
+```
 
-1. `src/components` for core UI and mode screens
-2. `src/components/tasks` for task implementations
-3. `src/config` for DSL schema, registries, and prompt templates
-4. `src/utils` for lesson shaping, grading, logging, storage helpers, and builders
-5. `src/hooks` for shared React hooks
+---
 
-## Who should use this
+## License
 
-This project is for:
-
-1. Teachers building interactive lessons
-2. Tutors running structured live practice
-3. Education teams prototyping activity flows quickly
-4. Developers extending a lesson authoring system without starting from scratch
-
-## Final note
-
-This is not a generic template anymore. It is a purpose-built lesson authoring and delivery tool focused on practical classroom workflows, interactive practice, and stable playback.
+MIT

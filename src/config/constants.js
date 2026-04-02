@@ -1,14 +1,14 @@
-// Shared color palettes used across task components and editor forms
+// Shared color palettes — muted earth tones ("Quiet Luxe")
 
 export const SPEAKER_COLORS = [
-  { bg: 'bg-blue-100', text: 'text-blue-900', border: 'border-blue-200', avatar: 'bg-blue-600' },
-  { bg: 'bg-zinc-100', text: 'text-zinc-900', border: 'border-zinc-200', avatar: 'bg-zinc-600' },
-  { bg: 'bg-emerald-100', text: 'text-emerald-900', border: 'border-emerald-200', avatar: 'bg-emerald-600' },
-  { bg: 'bg-purple-100', text: 'text-purple-900', border: 'border-purple-200', avatar: 'bg-purple-600' },
-  { bg: 'bg-amber-100', text: 'text-amber-900', border: 'border-amber-200', avatar: 'bg-amber-600' },
-  { bg: 'bg-rose-100', text: 'text-rose-900', border: 'border-rose-200', avatar: 'bg-rose-600' },
-  { bg: 'bg-cyan-100', text: 'text-cyan-900', border: 'border-cyan-200', avatar: 'bg-cyan-600' },
-  { bg: 'bg-indigo-100', text: 'text-indigo-900', border: 'border-indigo-200', avatar: 'bg-indigo-600' },
+  { bg: 'bg-blue-50',    text: 'text-blue-900',    border: 'border-blue-200',    avatar: 'bg-blue-600' },
+  { bg: 'bg-zinc-100',   text: 'text-zinc-900',    border: 'border-zinc-200',    avatar: 'bg-zinc-600' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', avatar: 'bg-emerald-600' },
+  { bg: 'bg-violet-50',  text: 'text-violet-800',  border: 'border-violet-200',  avatar: 'bg-violet-600' },
+  { bg: 'bg-amber-50',   text: 'text-amber-800',   border: 'border-amber-200',   avatar: 'bg-amber-600' },
+  { bg: 'bg-rose-50',    text: 'text-rose-800',     border: 'border-rose-200',    avatar: 'bg-rose-500' },
+  { bg: 'bg-cyan-50',    text: 'text-cyan-800',    border: 'border-cyan-200',    avatar: 'bg-cyan-600' },
+  { bg: 'bg-orange-50',  text: 'text-orange-800',  border: 'border-orange-200',  avatar: 'bg-orange-600' },
 ];
 
 export const PALETTE_COLORS = [

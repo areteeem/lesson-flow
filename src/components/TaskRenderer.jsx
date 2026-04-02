@@ -130,9 +130,10 @@ export default function TaskRenderer({ block, onComplete, onProgress, existingRe
   return (
     <div className="task-shell relative">
       {feedback && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center" style={{ animation: 'pop 0.4s ease-out' }}>
-          <div className={feedback === 'correct' ? 'flex h-20 w-20 items-center justify-center border-4 border-emerald-500 bg-emerald-50 text-3xl text-emerald-600' : 'flex h-20 w-20 items-center justify-center border-4 border-red-500 bg-red-50 text-3xl text-red-600'}>
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center animate-soft-pop" role="status" aria-live="assertive">
+          <div className={feedback === 'correct' ? 'flex h-20 w-20 items-center justify-center border-4 border-emerald-500 bg-emerald-50 text-3xl text-emerald-600 feedback-crossfade' : 'flex h-20 w-20 items-center justify-center border-4 border-red-500 bg-red-50 text-3xl text-red-600 feedback-crossfade'}>
             {feedback === 'correct' ? '✓' : '✗'}
+            <span className="sr-only">{feedback === 'correct' ? 'Correct' : 'Try again'}</span>
           </div>
         </div>
       )}
@@ -161,12 +162,13 @@ export default function TaskRenderer({ block, onComplete, onProgress, existingRe
               onClick={() => setHintsShown((h) => Math.min(h + 1, hints.length))}
               disabled={hintsShown >= hints.length}
               className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-100 disabled:opacity-40"
+              aria-label={`Show hint${hintsShown > 0 ? ` (${hintsShown} of ${hints.length} shown)` : ''}`}
             >
               💡 Hint {hintsShown > 0 ? `(${hintsShown}/${hints.length})` : ''}
             </button>
           )}
           {allowRetry && lastResult?.submitted && !lastResult?.correct && (
-            <button type="button" onClick={retry} className="ml-auto border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:border-zinc-900 hover:text-zinc-900">↻ Try Again</button>
+            <button type="button" onClick={retry} className="ml-auto border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:border-zinc-900 hover:text-zinc-900" aria-label="Try this task again">↻ Try Again</button>
           )}
         </div>
       )}

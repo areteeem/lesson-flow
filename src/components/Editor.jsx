@@ -85,19 +85,18 @@ function formatSaveTime(timestamp) {
 }
 
 function SaveStatusTag({ saveState }) {
-  const tone = saveState.status === 'cloud_error'
-    ? 'border-red-200 bg-red-50 text-red-700'
+  const dotColor = saveState.status === 'cloud_error'
+    ? 'bg-red-500'
     : saveState.status === 'synced'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      ? 'bg-emerald-500'
       : saveState.status === 'saving_local' || saveState.status === 'syncing_cloud'
-        ? 'border-amber-200 bg-amber-50 text-amber-700'
-        : 'border-zinc-200 bg-zinc-50 text-zinc-600';
+        ? 'bg-amber-500'
+        : 'bg-zinc-400';
 
   return (
-    <div className={`inline-flex items-center gap-2 border px-2 py-0.5 text-[10px] ${tone}`}>
-      <span className={saveState.status === 'synced' ? 'dot-round h-1.5 w-1.5 bg-emerald-600 animate-sync-check' : saveState.status === 'cloud_error' ? 'dot-round h-1.5 w-1.5 bg-red-600' : 'dot-round h-1.5 w-1.5 bg-zinc-400'} aria-hidden="true" />
+    <div className="group relative inline-flex items-center gap-1.5 px-1.5 py-1 text-[10px] text-zinc-500 cursor-default" title={`${saveState.label} ${saveState.detail || ''}`}>
+      <span className={`dot-round h-1.5 w-1.5 ${dotColor} ${saveState.status === 'synced' ? 'animate-sync-check' : ''}`} aria-hidden="true" />
       <span className="font-medium uppercase tracking-[0.12em]">{saveState.label}</span>
-      <span className="normal-case tracking-normal">{saveState.detail}</span>
     </div>
   );
 }
@@ -502,7 +501,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   // Build current payload for auto-save
   const payloadRef = useRef(null);
 
-  const buildPayload = () => ({
+  const buildPayload = useCallback(() => ({
     ...(lesson || {}),
     id: lesson?.id || crypto.randomUUID(),
     title: parsed.title,
@@ -511,7 +510,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     lesson: parsed.lesson,
     warnings: parsed.warnings,
     dsl,
-  });
+  }), [lesson, parsed.title, parsed.settings, parsed.blocks, parsed.lesson, parsed.warnings, dsl]);
 
   // Keep payloadRef in sync
   useEffect(() => {
@@ -806,7 +805,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     syncFromModel({ ...parsed, blocks: nextBlocks });
   };
 
-  const payload = buildPayload();
+  const payload = useMemo(() => buildPayload(), [buildPayload]);
   const editorSessions = useMemo(() => {
     const lessonId = lesson?.id || null;
     const lessonTitle = parsed.title || '';
@@ -921,9 +920,9 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
           {/* Right: Actions */}
           <div className="flex shrink-0 items-center gap-1 md:gap-1.5">
             {/* Mode switcher */}
-            <div className="hidden border border-zinc-200 sm:flex">
+            <div className="hidden border border-zinc-200 sm:flex" role="tablist" aria-label="Editor mode">
               {['dsl', 'builder', 'preview', 'grading'].map((entry) => (
-                <button key={entry} type="button" onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : entry === 'preview' ? 'Preview' : 'Grading'}</button>
+                <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : entry === 'preview' ? 'Preview' : 'Grading'}</button>
               ))}
             </div>
 
@@ -1074,14 +1073,14 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
 
       {/* Mobile bottom tab bar */}
       {!focusMode && (
-        <nav className="shrink-0 border-t border-zinc-200 bg-white sm:hidden [padding-bottom:env(safe-area-inset-bottom)]">
-          <div className="flex">
-            <button type="button" onClick={onBack} className="flex flex-1 flex-col items-center gap-0.5 py-2 text-zinc-500">
+        <nav className="shrink-0 border-t border-zinc-200 bg-white sm:hidden [padding-bottom:env(safe-area-inset-bottom)]" aria-label="Editor navigation">
+          <div className="flex" role="tablist" aria-label="Editor mode (mobile)">
+            <button type="button" onClick={onBack} className="flex flex-1 flex-col items-center gap-0.5 py-2 text-zinc-500" aria-label="Back to lessons">
               <BackIcon />
               <span className="text-[10px]">Back</span>
             </button>
             {['dsl', 'builder', 'preview', 'grading'].map((entry) => (
-              <button key={entry} type="button" onClick={() => setMode(entry)} className={`flex flex-1 flex-col items-center gap-0.5 py-2 ${mode === entry ? 'text-zinc-900' : 'text-zinc-400'}`}>
+              <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setMode(entry)} className={`flex flex-1 flex-col items-center gap-0.5 py-2 ${mode === entry ? 'text-zinc-900' : 'text-zinc-400'}`}>
                 {entry === 'dsl' && <DslIcon />}
                 {entry === 'builder' && <BuilderIcon />}
                 {entry === 'preview' && <PreviewIcon />}
