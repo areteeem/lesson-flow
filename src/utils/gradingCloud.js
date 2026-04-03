@@ -143,11 +143,47 @@ export async function syncSessionGradeToCloud(session) {
   };
 
   try {
-    const { data, error } = await client
+    let data = null;
+    let error = null;
+
+    // Try upsert first (preferred for idempotent saves)
+    const upsertResult = await client
       .from('grade_sessions')
       .upsert(baseRow, { onConflict: 'user_id,local_session_id' })
       .select('id')
       .single();
+
+    data = upsertResult.data;
+    error = upsertResult.error;
+
+    // If upsert fails due to missing constraint, fall back to plain insert
+    if (error && (
+      (error.message || '').toLowerCase().includes('on conflict')
+      || (error.message || '').toLowerCase().includes('constraint')
+      || error.code === '42P10'
+    )) {
+      const insertResult = await client
+        .from('grade_sessions')
+        .insert(baseRow)
+        .select('id')
+        .single();
+      data = insertResult.data;
+      error = insertResult.error;
+
+      // If duplicate, try to fetch existing
+      if (error && (error.code === '23505' || (error.message || '').toLowerCase().includes('duplicate'))) {
+        const fetchResult = await client
+          .from('grade_sessions')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('local_session_id', baseRow.local_session_id)
+          .maybeSingle();
+        if (fetchResult.data?.id) {
+          data = fetchResult.data;
+          error = null;
+        }
+      }
+    }
 
     if (error || !data?.id) {
       const failed = {

@@ -374,13 +374,52 @@ function buildReviewedSession(session, draftMap) {
   };
 }
 
+function formatStructuredResponse(response) {
+  if (!response || typeof response !== 'object') return null;
+  const keys = Object.keys(response);
+  if (keys.length > 0 && keys.every((k) => Array.isArray(response[k]))) {
+    return keys.map((cat) => {
+      const items = response[cat].map((item) => typeof item === 'object' ? (item.text || item.label || JSON.stringify(item)) : String(item));
+      return `${cat}: ${items.length > 0 ? items.join(', ') : '(empty)'}`;
+    }).join('\n');
+  }
+  if (keys.length > 0 && keys.every((k) => typeof response[k] === 'string')) {
+    const grouped = {};
+    for (const [item, cat] of Object.entries(response)) {
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(item);
+    }
+    return Object.entries(grouped).map(([cat, items]) => `${cat}: ${items.join(', ')}`).join('\n');
+  }
+  return null;
+}
+
+function tryParseAndFormat(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return formatStructuredResponse(parsed);
+    }
+  } catch { /* not valid JSON */ }
+  return null;
+}
+
 function formatAnswer(result) {
   const response = result?.response;
   if (response === null || response === undefined) return 'No answer submitted';
-  if (typeof response === 'string') return response;
+  if (typeof response === 'string') {
+    const parsed = tryParseAndFormat(response);
+    if (parsed) return parsed;
+    return response;
+  }
   if (typeof response === 'number' || typeof response === 'boolean') return String(response);
   if (Array.isArray(response)) return response.join(' | ');
   if (typeof response === 'object') {
+    const formatted = formatStructuredResponse(response);
+    if (formatted) return formatted;
     try {
       return JSON.stringify(response);
     } catch {
@@ -393,10 +432,16 @@ function formatAnswer(result) {
 function formatCorrectAnswer(result) {
   const response = result?.correctAnswer ?? result?.correct_answer ?? result?.expected ?? null;
   if (response === null || response === undefined || response === '') return '';
-  if (typeof response === 'string') return response;
+  if (typeof response === 'string') {
+    const parsed = tryParseAndFormat(response);
+    if (parsed) return parsed;
+    return response;
+  }
   if (typeof response === 'number' || typeof response === 'boolean') return String(response);
   if (Array.isArray(response)) return response.join(' | ');
   if (typeof response === 'object') {
+    const formatted = formatStructuredResponse(response);
+    if (formatted) return formatted;
     try {
       return JSON.stringify(response);
     } catch {
@@ -2290,11 +2335,11 @@ export default function GradingConsole({
                   <caption className="sr-only">Student results board — {board.rows.length} students, {board.columns.length} questions</caption>
                   <thead>
                     <tr className="bg-zinc-50 text-left text-[11px] uppercase tracking-[0.12em] text-zinc-500">
-                      <th scope="col" className="sticky left-0 z-10 border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2">Rank</th>
-                      <th scope="col" className="sticky left-[58px] z-10 border-b border-r border-zinc-200 bg-zinc-50 px-3 py-2">Student</th>
-                      <th scope="col" className="border-b border-r border-zinc-200 px-3 py-2">Score</th>
+                      <th scope="col" className="sticky left-0 z-10 border-b border-r border-zinc-200 bg-zinc-50 px-4 py-2.5">Rank</th>
+                      <th scope="col" className="sticky left-[58px] z-10 border-b border-r border-zinc-200 bg-zinc-50 px-4 py-2.5">Student</th>
+                      <th scope="col" className="border-b border-r border-zinc-200 px-4 py-2.5">Score</th>
                       {board.columns.map((column) => (
-                        <th scope="col" key={column.id} className="min-w-[120px] border-b border-r border-zinc-200 px-3 py-2">
+                        <th scope="col" key={column.id} className="min-w-[120px] border-b border-r border-zinc-200 px-4 py-2.5">
                           <div className="text-zinc-700" title={column.label}>{column.shortLabel || column.label}</div>
                         </th>
                       ))}
@@ -2303,14 +2348,14 @@ export default function GradingConsole({
                   <tbody>
                     {board.rows.map((row) => (
                       <tr key={row.sessionId} className="border-t border-zinc-200 align-top">
-                        <td className="sticky left-0 z-10 border-r border-zinc-200 bg-white px-3 py-2 font-semibold text-zinc-900">#{row.rank}</td>
-                        <th scope="row" className="sticky left-[58px] z-10 border-r border-zinc-200 bg-white px-3 py-2 font-medium text-zinc-900 text-left">
+                        <td className="sticky left-0 z-10 border-r border-zinc-200 bg-white px-4 py-2.5 font-semibold text-zinc-900">#{row.rank}</td>
+                        <th scope="row" className="sticky left-[58px] z-10 border-r border-zinc-200 bg-white px-4 py-2.5 font-medium text-zinc-900 text-left">
                           <div className="flex flex-wrap items-center gap-1">
                             <span>{displayStudentName(row.studentName)}</span>
                             {row.isLateSubmission && <span className="border border-red-200 bg-red-50 px-1 py-0.5 text-[10px] uppercase tracking-[0.1em] text-red-700">Late</span>}
                           </div>
                         </th>
-                        <td className="border-r border-zinc-200 px-3 py-2 text-zinc-700">{row.score}%</td>
+                        <td className="border-r border-zinc-200 px-4 py-2.5 text-zinc-700">{row.score}%</td>
                         {board.columns.map((column) => {
                           const cell = row.cellMap.get(column.id);
                           const correct = cell?.correct === true;
@@ -2321,7 +2366,7 @@ export default function GradingConsole({
                               ? 'bg-red-50 text-red-700'
                               : 'bg-zinc-50 text-zinc-500';
                           return (
-                            <td key={`${row.sessionId}-${column.id}`} className={`border-r border-zinc-200 px-3 py-2 text-center text-xs ${tone}`}>
+                            <td key={`${row.sessionId}-${column.id}`} className={`border-r border-zinc-200 px-4 py-2.5 text-center text-xs ${tone}`}>
                               {cell ? (
                                 <>
                                   {correct && <span className="sr-only">Correct: </span>}

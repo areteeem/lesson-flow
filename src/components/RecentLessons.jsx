@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { exportLesson, exportSession, importLesson, printSessionReport } from '../storage';
 import { generateDSL } from '../parser';
-import { DotsVerticalIcon, ChevronRightIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, PlusIcon, CopyIcon, EditIcon, RefreshIcon } from './Icons';
+import { AlertTriangleIcon, CalendarIcon, CheckIcon, ChevronRightIcon, ChevronDownIcon, ClockIcon, CopyIcon, DotsVerticalIcon, EditIcon, ExportIcon, FolderIcon, FolderOpenIcon, InfoCircleIcon, PersonIcon, PlusIcon, PreviewIcon, PrintIcon, RefreshIcon, TrashIcon } from './Icons';
 import PromptModal from './PromptModal';
 import { createLessonShareLink } from '../utils/lessonSharing';
 import { createAssignmentLink, fetchAssignmentsForOwner, fetchAssignmentSubmissionsForOwner } from '../utils/lessonAssignments';
@@ -119,40 +119,59 @@ function previewText(lesson) {
 function SessionPreviewModal({ session, onClose, onDelete }) {
   if (!session) return null;
   return (
-    <div className="fixed inset-0 z-40 bg-black/30 p-4">
-      <button type="button" onClick={onClose} className="absolute inset-0" />
-      <div className="relative mx-auto max-w-2xl border border-zinc-200 bg-white p-5">
-        <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-40 bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Recent session preview">
+      <button type="button" onClick={onClose} className="absolute inset-0" aria-label="Close recent session preview" />
+      <div className="relative mx-auto max-w-3xl border border-zinc-200 bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+        <div className="flex items-start justify-between gap-4 border-b border-zinc-200 pb-4">
           <div>
-            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Recent Session</div>
+            <div className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500"><ClockIcon size={14} />Recent Session</div>
             <div className="mt-1 text-xl font-semibold text-zinc-950">{session.lessonTitle}</div>
-            <div className="mt-2 text-sm text-zinc-600">{session.studentName || 'Unknown student'} | {new Date(session.timestamp).toLocaleString()} | {session.score}%</div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-600">
+              <span className="inline-flex items-center gap-1.5"><PersonIcon size={14} />{session.studentName || 'Unknown student'}</span>
+              <span className="inline-flex items-center gap-1.5"><CalendarIcon size={14} />{new Date(session.timestamp).toLocaleDateString()}</span>
+              <span className="inline-flex items-center gap-1.5"><ClockIcon size={14} />{new Date(session.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-2 text-xs text-zinc-700">Close</button>
-        </div>
-        <div className="mt-4 grid grid-cols-4 gap-2 text-center">
-          <div className="border border-zinc-200 bg-zinc-50 px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Score</div>
-            <div className="mt-1 text-lg font-semibold text-zinc-950">{session.score}%</div>
-          </div>
-          <div className="border border-zinc-200 bg-zinc-50 px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Correct</div>
-            <div className="mt-1 text-lg font-semibold text-zinc-950">{session.correctCount ?? '-'}</div>
-          </div>
-          <div className="border border-zinc-200 bg-zinc-50 px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reviewed</div>
-            <div className="mt-1 text-lg font-semibold text-zinc-950">{session.completedCount ?? '-'}</div>
-          </div>
-          <div className="border border-zinc-200 bg-zinc-50 px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Graded</div>
-            <div className="mt-1 text-lg font-semibold text-zinc-950">{session.total ?? '-'}</div>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex min-h-10 items-center border border-zinc-900 bg-zinc-900 px-4 text-sm font-semibold text-white">{session.score}%</div>
+            <button type="button" onClick={onClose} className="border border-zinc-200 px-3 py-2 text-xs text-zinc-700">Close</button>
           </div>
         </div>
-        <div className="mt-5 border border-zinc-200 bg-zinc-50 p-4 text-sm leading-7 text-zinc-700 whitespace-pre-wrap">{session.lessonPreview || 'No saved lesson preview for this session.'}</div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" onClick={() => exportSession(session)} className="border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700">Export JSON</button>
-          <button type="button" onClick={() => printSessionReport(session)} className="border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700">Print Report</button>
-          {onDelete && <button type="button" onClick={() => { onDelete(session.id); onClose(); }} className="border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50">Delete Session</button>}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-center">
+          <div className="border border-zinc-200 bg-zinc-50 px-4 py-4">
+            <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500"><CheckIcon size={13} />Score</div>
+            <div className="mt-2 text-xl font-semibold text-zinc-950">{session.score}%</div>
+          </div>
+          <div className="border border-zinc-200 bg-zinc-50 px-4 py-4">
+            <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500"><CheckIcon size={13} />Correct</div>
+            <div className="mt-2 text-xl font-semibold text-zinc-950">{session.correctCount ?? '-'}</div>
+          </div>
+          <div className="border border-zinc-200 bg-zinc-50 px-4 py-4">
+            <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500"><InfoCircleIcon size={13} />Reviewed</div>
+            <div className="mt-2 text-xl font-semibold text-zinc-950">{session.completedCount ?? '-'}</div>
+          </div>
+          <div className="border border-zinc-200 bg-zinc-50 px-4 py-4">
+            <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500"><AlertTriangleIcon size={13} />Graded</div>
+            <div className="mt-2 text-xl font-semibold text-zinc-950">{session.total ?? '-'}</div>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(17rem,0.9fr)]">
+          <div className="border border-zinc-200 bg-zinc-50 p-4">
+            <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500"><PreviewIcon size={14} />Lesson preview snapshot</div>
+            <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-zinc-700">{session.lessonPreview || 'No saved lesson preview for this session.'}</div>
+          </div>
+          <div className="border border-zinc-200 bg-white p-4">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Session actions</div>
+            <div className="mt-3 grid gap-2">
+              <button type="button" onClick={() => exportSession(session)} className="inline-flex items-center gap-2 border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 hover:border-zinc-900">
+                <ExportIcon size={14} />Export JSON
+              </button>
+              <button type="button" onClick={() => printSessionReport(session)} className="inline-flex items-center gap-2 border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 hover:border-zinc-900">
+                <PrintIcon size={14} />Print Report
+              </button>
+              {onDelete && <button type="button" onClick={() => { onDelete(session.id); onClose(); }} className="inline-flex items-center gap-2 border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"><TrashIcon size={14} />Delete Session</button>}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -891,7 +910,8 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
       {/* Top bar */}
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-zinc-200 bg-white px-6 py-3">
         <div>
-          <div className="text-lg font-semibold tracking-tight text-zinc-950">Lesson Flow</div>
+          <div className="text-lg font-semibold tracking-tight text-zinc-950">Lexor</div>
+          <div className="mt-0.5 text-[11px] uppercase tracking-[0.18em] text-zinc-500">Interactive Lesson Studio</div>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => void openAssignmentCenter()} className="border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:border-zinc-900">Assignments</button>
@@ -1033,22 +1053,37 @@ export default function RecentLessons({ lessons, sessions, onCreate, onSelect, o
         {sessions.length > 0 && (
           <aside className="hidden w-[300px] shrink-0 border-l border-zinc-200 bg-white xl:block">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-              <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Recent Sessions</div>
-              <button type="button" onClick={() => setRecentSidebarOpen((value) => !value)} className="border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:border-zinc-900">{recentSidebarOpen ? 'Collapse' : 'Expand'}</button>
+              <div>
+                <div className="inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500"><ClockIcon size={14} />Recent Sessions</div>
+                <div className="mt-1 text-[11px] text-zinc-500">{sessions.length} saved reviews and submissions</div>
+              </div>
+              <button type="button" onClick={() => setRecentSidebarOpen((value) => !value)} className="inline-flex items-center gap-1 border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:border-zinc-900">{recentSidebarOpen ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}{recentSidebarOpen ? 'Collapse' : 'Expand'}</button>
             </div>
             {recentSidebarOpen && (
               <div className="max-h-[calc(100vh-8rem)] overflow-auto p-3">
                 <div className="space-y-2">
                   {sessions.map((session) => (
-                    <div key={session.id} className="group border border-zinc-200 bg-white">
+                    <div key={session.id} className="group border border-zinc-200 bg-white transition hover:border-zinc-900 hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)]">
                       <button type="button" onClick={() => setActiveSessionId(session.id)} className="w-full px-3 py-3 text-left">
-                        <div className="text-xs font-medium text-zinc-900">{session.lessonTitle}</div>
-                        <div className="mt-1 text-[10px] text-zinc-500">{session.studentName || 'Unknown'} · {new Date(session.timestamp).toLocaleDateString()}</div>
-                        <div className="mt-1 text-[10px] text-zinc-500">Score {session.score}% · {session.correctCount ?? '-'} / {session.total ?? '-'}</div>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-semibold text-zinc-900">{session.lessonTitle}</div>
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-zinc-500">
+                              <span className="inline-flex items-center gap-1"><PersonIcon size={12} />{session.studentName || 'Unknown'}</span>
+                              <span className="inline-flex items-center gap-1"><CalendarIcon size={12} />{new Date(session.timestamp).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 border border-zinc-900 bg-zinc-900 px-2 py-1 text-[10px] font-semibold text-white">{session.score}%</div>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-500">
+                          <span className="inline-flex items-center gap-1"><CheckIcon size={12} />{session.correctCount ?? '-'} / {session.total ?? '-'}</span>
+                          <span className="inline-flex items-center gap-1"><PreviewIcon size={12} />Open preview</span>
+                        </div>
                       </button>
                       {onDeleteSession && (
-                        <div className="border-t border-zinc-100 px-3 py-2 text-right">
-                          <button type="button" onClick={() => onDeleteSession(session.id)} className="text-[10px] text-zinc-400 transition hover:text-red-600">Delete</button>
+                        <div className="flex items-center justify-between border-t border-zinc-100 px-3 py-2">
+                          <span className="inline-flex items-center gap-1 text-[10px] text-zinc-400"><ClockIcon size={12} />{new Date(session.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <button type="button" onClick={() => onDeleteSession(session.id)} className="inline-flex items-center gap-1 text-[10px] text-zinc-400 transition hover:text-red-600"><TrashIcon size={12} />Delete</button>
                         </div>
                       )}
                     </div>

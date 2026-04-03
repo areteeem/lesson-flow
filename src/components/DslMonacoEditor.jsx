@@ -4,6 +4,7 @@ import * as monacoInstance from 'monaco-editor';
 import { generateDSL, parseLesson } from '../parser';
 import { TASK_REGISTRY } from '../config/taskRegistry';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
+import { AlertTriangleIcon, CheckIcon, CircleXIcon, CopyIcon, DslIcon, ExportIcon, GridIcon, InfoCircleIcon, RefreshIcon, SaveIcon, SearchIcon, SparkIcon } from './Icons';
 
 // Use locally installed monaco-editor instead of CDN (CDN is blocked by CSP)
 loader.config({ monaco: monacoInstance });
@@ -571,6 +572,49 @@ function downloadTextFile(content, fileName, mimeType = 'text/plain;charset=utf-
   URL.revokeObjectURL(url);
 }
 
+function ToolbarButton({ label, hint, icon, active = false, tone = 'neutral', className = '', ...props }) {
+  const toneClass = active
+    ? tone === 'warning'
+      ? 'border-amber-500/70 bg-amber-500/15 text-amber-200'
+      : tone === 'success'
+        ? 'border-emerald-500/70 bg-emerald-500/15 text-emerald-200'
+        : tone === 'accent'
+          ? 'border-blue-500/70 bg-blue-500/15 text-blue-200'
+          : 'border-violet-500/70 bg-violet-500/15 text-violet-200'
+    : 'border-zinc-700/90 text-zinc-300 hover:border-zinc-500 hover:text-white';
+
+  return (
+    <button
+      type="button"
+      title={hint}
+      aria-label={hint}
+      className={`inline-flex min-h-9 items-center gap-2 border px-3 py-2 text-[11px] font-medium transition ${toneClass} ${className}`}
+      {...props}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function StatusChip({ icon, label, value, tone = 'neutral' }) {
+  const toneClass = tone === 'danger'
+    ? 'border-red-500/25 bg-red-500/10 text-red-200'
+    : tone === 'warning'
+      ? 'border-amber-500/25 bg-amber-500/10 text-amber-200'
+      : tone === 'success'
+        ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+        : 'border-zinc-700 bg-zinc-900/70 text-zinc-300';
+
+  return (
+    <div className={`inline-flex min-h-9 items-center gap-2 border px-3 py-2 text-[11px] ${toneClass}`}>
+      {icon}
+      <span className="uppercase tracking-[0.14em] opacity-70">{label}</span>
+      <span className="font-semibold text-white">{value}</span>
+    </div>
+  );
+}
+
 export default function DslMonacoEditor({ value, onChange }) {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
@@ -749,74 +793,102 @@ export default function DslMonacoEditor({ value, onChange }) {
 
   useEffect(() => () => clearTimeout(timerRef.current), []);
 
-  const sevIcon = { error: '✕', warning: '⚠', info: 'ℹ' };
   const sevColor = { error: 'text-red-400', warning: 'text-amber-400', info: 'text-blue-400' };
   const sevBg = { error: 'bg-red-500/20 text-red-400', warning: 'bg-amber-500/20 text-amber-400', info: 'bg-blue-500/20 text-blue-400' };
   const errorCount = classifiedWarnings.filter((entry) => entry.sev === 'error').length;
   const warningCount = classifiedWarnings.filter((entry) => entry.sev === 'warning').length;
   const infoCount = classifiedWarnings.filter((entry) => entry.sev === 'info').length;
   const selectedTrace = parserTrace.find((entry) => entry.id === selectedTraceId) || parserTrace[0] || null;
+  const lineCount = useMemo(() => String(value || '').split('\n').length, [value]);
+  const blockCount = parserTrace.length;
+  const visibleIssueCount = visibleWarnings.length;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="scrollbar-none flex items-center gap-1.5 overflow-x-auto whitespace-nowrap border border-b-0 border-zinc-200 bg-zinc-950 px-3 py-1.5">
-        <button type="button" onClick={() => copyToClipboard(value || '', 'dsl')} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
-          {copied === 'dsl' ? '✓ Copied' : 'Copy DSL'}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const prompt = `Fix the following Lesson DSL. Return ONLY the corrected DSL, no explanations:\n\n${value || ''}${warnings.length ? `\n\nCurrent issues with line numbers:\n${warningReport()}` : ''}`;
-            copyToClipboard(prompt, 'fix');
-          }}
-          className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200"
-        >
-          {copied === 'fix' ? '✓ Copied' : 'Copy DSL + Issues'}
-        </button>
-        <button type="button" onClick={handleAutoFormat} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Auto Format</button>
-        <button type="button" onClick={handleSafeNormalize} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Safe Normalize</button>
-        <button type="button" onClick={() => setShowParsedPanel((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showParsedPanel ? 'border-blue-600 bg-blue-600/20 text-blue-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>Parsed JSON</button>
-        <button type="button" onClick={() => setShowParserTrace((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showParserTrace ? 'border-violet-600 bg-violet-600/20 text-violet-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>Parser Trace</button>
-        <button type="button" onClick={handleExportWarningsJson} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Warnings JSON</button>
-        <button type="button" onClick={handleExportWarningsCsv} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Warnings CSV</button>
-        <button type="button" onClick={() => setShowProblemsPanel((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showProblemsPanel ? 'border-amber-600 bg-amber-600/20 text-amber-300' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>
-          {showProblemsPanel ? 'Hide Problems' : `Problems (${classifiedWarnings.length})`}
-        </button>
-        <button type="button" onClick={() => setShowPasteFix((current) => !current)} className={`border px-2 py-1 text-[10px] font-medium transition ${showPasteFix ? 'border-emerald-600 bg-emerald-600/20 text-emerald-400' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}>
-          {showPasteFix ? 'Cancel Paste' : 'Paste Fix'}
-        </button>
+    <div className="flex h-full min-h-[34rem] flex-col bg-zinc-950" role="region" aria-label="Lexor DSL editor workspace">
+      <div className="border border-b-0 border-zinc-800 bg-[linear-gradient(180deg,#151515_0%,#101010_100%)] px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-zinc-100">
+              <span className="inline-flex h-8 w-8 items-center justify-center border border-zinc-700 bg-zinc-900">
+                <DslIcon size={16} />
+              </span>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">Lexor DSL workspace</div>
+                <div className="mt-1 text-[11px] text-zinc-500">Write lesson blocks directly, inspect the parser, and export fixes without leaving the editor.</div>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusChip icon={<CircleXIcon size={14} />} label="Errors" value={errorCount} tone={errorCount > 0 ? 'danger' : 'neutral'} />
+            <StatusChip icon={<AlertTriangleIcon size={14} />} label="Warnings" value={warningCount} tone={warningCount > 0 ? 'warning' : 'neutral'} />
+            <StatusChip icon={<InfoCircleIcon size={14} />} label="Info" value={infoCount} />
+            <StatusChip icon={<SearchIcon size={14} />} label="Blocks" value={blockCount} tone={blockCount > 0 ? 'success' : 'neutral'} />
+            <StatusChip icon={<CheckIcon size={14} />} label="Lines" value={lineCount} />
+          </div>
+        </div>
 
-        <label className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500">
-          Preset
-          <select value={lintPreset} onChange={(event) => setLintPreset(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-1 py-1 text-[10px] text-zinc-300 outline-none">
-            {LINT_PRESETS.map((preset) => (
-              <option key={preset.value} value={preset.value}>{preset.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1 text-[10px] text-zinc-500">
-          Profile
-          <select value={selectedProfile} onChange={(event) => applyLintProfile(event.target.value)} className="border border-zinc-700 bg-zinc-950 px-1 py-1 text-[10px] text-zinc-300 outline-none">
-            <option value="">Current</option>
-            {Object.keys(lintProfiles).sort().map((profileName) => (
-              <option key={profileName} value={profileName}>{profileName}</option>
-            ))}
-          </select>
-        </label>
-        <button type="button" onClick={saveCurrentLintProfile} className="border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">Save Profile</button>
+        <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="DSL editor actions">
+          <ToolbarButton
+            onClick={() => copyToClipboard(value || '', 'dsl')}
+            label={copied === 'dsl' ? 'Copied DSL' : 'Copy DSL'}
+            hint="Copy the current DSL to the clipboard."
+            icon={<CopyIcon size={14} />}
+          />
+          <ToolbarButton
+            onClick={() => {
+              const prompt = `Fix the following Lesson DSL. Return ONLY the corrected DSL, no explanations:\n\n${value || ''}${warnings.length ? `\n\nCurrent issues with line numbers:\n${warningReport()}` : ''}`;
+              copyToClipboard(prompt, 'fix');
+            }}
+            label={copied === 'fix' ? 'Copied Prompt' : 'Copy Fix Prompt'}
+            hint="Copy the DSL together with current issues for external AI repair."
+            icon={<ExportIcon size={14} />}
+          />
+          <ToolbarButton onClick={handleAutoFormat} label="Auto Format" hint="Normalize spacing and layout in the current DSL." icon={<RefreshIcon size={14} />} />
+          <ToolbarButton onClick={handleSafeNormalize} label="Safe Normalize" hint="Rebuild the DSL from the parsed lesson model." icon={<SparkIcon size={14} />} />
+          <ToolbarButton onClick={() => setShowParsedPanel((current) => !current)} label="Parsed JSON" hint="Show or hide the parsed lesson structure." icon={<GridIcon size={14} />} active={showParsedPanel} tone="accent" />
+          <ToolbarButton onClick={() => setShowParserTrace((current) => !current)} label="Parser Trace" hint="Inspect how the DSL parser segmented the document into blocks." icon={<SearchIcon size={14} />} active={showParserTrace} />
+          <ToolbarButton onClick={() => setShowProblemsPanel((current) => !current)} label={showProblemsPanel ? 'Hide Problems' : `Problems (${visibleIssueCount})`} hint="Open the problems list and jump to issues by line." icon={<AlertTriangleIcon size={14} />} active={showProblemsPanel} tone="warning" />
+          <ToolbarButton onClick={() => setShowPasteFix((current) => !current)} label={showPasteFix ? 'Cancel Paste' : 'Paste Fix'} hint="Paste a corrected DSL version and apply it safely." icon={<SparkIcon size={14} />} active={showPasteFix} tone="success" />
+          <ToolbarButton onClick={handleExportWarningsJson} label="Warnings JSON" hint="Export visible warnings as a JSON file." icon={<ExportIcon size={14} />} />
+          <ToolbarButton onClick={handleExportWarningsCsv} label="Warnings CSV" hint="Export visible warnings as a CSV file." icon={<ExportIcon size={14} className="rotate-90" />} />
+
+          <label className="ml-auto inline-flex min-h-9 items-center gap-2 border border-zinc-700 px-3 py-2 text-[11px] text-zinc-400" title="Choose how strict the DSL validator should be.">
+            <span className="inline-flex items-center gap-2"><AlertTriangleIcon size={14} /><span className="uppercase tracking-[0.14em]">Preset</span></span>
+            <select value={lintPreset} onChange={(event) => setLintPreset(event.target.value)} className="bg-transparent text-[11px] text-zinc-200 outline-none">
+              {LINT_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>{preset.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="inline-flex min-h-9 items-center gap-2 border border-zinc-700 px-3 py-2 text-[11px] text-zinc-400" title="Reuse a saved lint profile for this workspace.">
+            <span className="inline-flex items-center gap-2"><DslIcon size={14} /><span className="uppercase tracking-[0.14em]">Profile</span></span>
+            <select value={selectedProfile} onChange={(event) => applyLintProfile(event.target.value)} className="bg-transparent text-[11px] text-zinc-200 outline-none">
+              <option value="">Current</option>
+              {Object.keys(lintProfiles).sort().map((profileName) => (
+                <option key={profileName} value={profileName}>{profileName}</option>
+              ))}
+            </select>
+          </label>
+          <ToolbarButton onClick={saveCurrentLintProfile} label="Save Profile" hint="Save the current preset and filters as a reusable workspace profile." icon={<SaveIcon size={14} />} />
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500" id="dsl-editor-help">
+          <span className="inline-flex items-center gap-1.5"><InfoCircleIcon size={13} />Use # to insert block markers, hover field names for documentation, and open Problems to jump directly to line-level issues.</span>
+        </div>
       </div>
 
-      {quickFixNotice && <div className="border border-b-0 border-zinc-200 bg-zinc-950 px-3 py-1 text-[10px] text-emerald-400">{quickFixNotice}</div>}
+      {quickFixNotice && <div role="status" className="border border-b-0 border-zinc-800 bg-zinc-950 px-4 py-2 text-[11px] text-emerald-300">{quickFixNotice}</div>}
 
       {showPasteFix && (
-        <div className="border border-b-0 border-t-0 border-zinc-200 bg-zinc-950 px-3 py-2">
-          <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Paste corrected DSL from AI</div>
+        <div className="border border-b-0 border-t-0 border-zinc-800 bg-zinc-950 px-4 py-3">
+          <div className="mb-1.5 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500"><SparkIcon size={14} />Paste corrected DSL from AI</div>
           <textarea
             value={fixDsl}
             onChange={(event) => setFixDsl(event.target.value)}
             rows={6}
             placeholder="Paste the corrected DSL here…"
-            className="w-full resize-y border border-zinc-700 bg-zinc-900 px-2 py-1.5 font-mono text-xs text-zinc-300 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+            aria-label="Paste corrected DSL"
+            className="w-full resize-y border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
           />
           <div className="mt-1.5 flex items-center gap-2">
             <button
@@ -837,9 +909,9 @@ export default function DslMonacoEditor({ value, onChange }) {
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden border border-zinc-200 bg-[#1e1e1e]">
-        <div className={showParsedPanel ? 'grid h-full grid-cols-1 xl:grid-cols-2' : 'h-full'}>
-          <div className="min-h-0">
+      <div className="min-h-[24rem] flex-1 overflow-hidden border border-zinc-800 bg-[#1e1e1e]">
+        <div className={showParsedPanel ? 'grid h-full min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.9fr)]' : 'h-full min-h-0'}>
+          <div className="min-h-0" aria-label="Primary DSL code editor">
             <MonacoEditor
               height="100%"
               defaultLanguage={DSL_LANGUAGE_ID}
@@ -859,13 +931,18 @@ export default function DslMonacoEditor({ value, onChange }) {
                 lineNumbersMinChars: 3,
                 automaticLayout: true,
                 glyphMargin: true,
+                accessibilitySupport: 'on',
+                ariaLabel: 'Lexor DSL editor. Use # for block markers and field names for autocomplete.',
+                scrollbar: { verticalScrollbarSize: 12, horizontalScrollbarSize: 12 },
+                overviewRulerBorder: false,
+                bracketPairColorization: { enabled: true },
                 padding: { top: 10, bottom: 16 },
               }}
             />
           </div>
           {showParsedPanel && (
-            <div className="min-h-0 overflow-auto border-l border-zinc-800 bg-zinc-950 p-3">
-              <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500">Parsed JSON Debug</div>
+            <div className="min-h-0 overflow-auto border-l border-zinc-800 bg-zinc-950 p-4" role="region" aria-label="Parsed lesson JSON preview">
+              <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500"><GridIcon size={14} />Parsed JSON Debug</div>
               <pre className="whitespace-pre-wrap text-[11px] text-zinc-300">{JSON.stringify(parsedPreview, null, 2)}</pre>
             </div>
           )}
@@ -873,8 +950,8 @@ export default function DslMonacoEditor({ value, onChange }) {
       </div>
 
       {showParserTrace && (
-        <div className="max-h-56 overflow-auto border border-t-0 border-zinc-200 bg-zinc-900">
-          <div className="border-b border-zinc-800 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Parser Trace</div>
+        <div className="max-h-64 overflow-auto border border-t-0 border-zinc-800 bg-zinc-900" role="region" aria-label="Parser trace panel">
+          <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500"><SearchIcon size={14} />Parser Trace</div>
           <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="border-r border-zinc-800">
               {parserTrace.map((entry) => (
@@ -910,9 +987,9 @@ export default function DslMonacoEditor({ value, onChange }) {
       )}
 
       {classifiedWarnings.length > 0 && showProblemsPanel && (
-        <div className="max-h-52 overflow-auto border border-t-0 border-zinc-200 bg-zinc-900">
-          <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-1.5">
-            <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Problems</span>
+        <div className="max-h-56 overflow-auto border border-t-0 border-zinc-800 bg-zinc-900" role="region" aria-label="DSL problems list">
+          <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-4 py-2">
+            <span className="inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500"><AlertTriangleIcon size={14} />Problems</span>
             {errorCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.error}`}>{errorCount}</span>}
             {warningCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.warning}`}>{warningCount}</span>}
             {infoCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.info}`}>{infoCount}</span>}
@@ -938,7 +1015,9 @@ export default function DslMonacoEditor({ value, onChange }) {
                 }}
                 className="flex w-full items-start gap-2 border-b border-zinc-800 px-3 py-1.5 text-left text-xs hover:bg-zinc-800"
               >
-                <span className={`mt-0.5 ${sevColor[item.sev]}`}>{sevIcon[item.sev]}</span>
+                <span className={`mt-0.5 ${sevColor[item.sev]}`}>
+                  {item.sev === 'error' ? <CircleXIcon size={13} /> : item.sev === 'warning' ? <AlertTriangleIcon size={13} /> : <InfoCircleIcon size={13} />}
+                </span>
                 <span className="text-zinc-300">{item.msg}</span>
                 {quickFix && (
                   <span className="ml-auto mr-2">

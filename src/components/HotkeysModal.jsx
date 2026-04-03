@@ -20,7 +20,7 @@ export default function HotkeysModal({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-40 bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
-      <div className="mx-auto max-w-2xl border border-zinc-900 bg-white p-4 md:p-6">
+      <div className="mx-auto max-w-2xl border border-zinc-900 bg-white p-6 md:p-8">
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Hotkeys</div>

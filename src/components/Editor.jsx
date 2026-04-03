@@ -384,8 +384,42 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
               <option value="correctness_only">Correctness only</option>
               <option value="show_correct_answers">Show correct answers</option>
               <option value="full_feedback">Full feedback</option>
+              <option value="teacher_only">Teacher only (no results shown)</option>
             </select>
             <div className="mt-1 text-[10px] text-zinc-400">Controls what student-facing reports can reveal after submission.</div>
+          </div>
+
+          {/* Finish Page Customization */}
+          <div className="px-6 pt-4">
+            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Finish Page</div>
+            <label className="block space-y-1">
+              <span className="text-[10px] text-zinc-400">Custom message (shown to student after finishing)</span>
+              <textarea
+                value={settings.finishPageMessage || ''}
+                onChange={(event) => patchSettings({ finishPageMessage: event.target.value })}
+                placeholder="e.g. Great job! Review your mistakes at home."
+                rows={2}
+                className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900 resize-y"
+              />
+            </label>
+            <div className="mt-3 space-y-2">
+              <div className="text-[10px] text-zinc-400">Sections visible to students</div>
+              {[
+                { key: 'score', label: 'Score circle & stats' },
+                { key: 'takeaways', label: 'Key takeaways (strengths/weaknesses)' },
+                { key: 'breakdown', label: 'Per-task breakdown' },
+              ].map((section) => (
+                <label key={section.key} className="flex items-center gap-2 text-sm text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={(settings.finishPageSections || {})[section.key] !== false}
+                    onChange={(event) => patchSettings({ finishPageSections: { ...(settings.finishPageSections || {}), [section.key]: event.target.checked } })}
+                    className="h-4 w-4 border border-zinc-300 accent-zinc-900"
+                  />
+                  {section.label}
+                </label>
+              ))}
+            </div>
           </div>
 
           {/* Font settings */}
@@ -1004,11 +1038,22 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
         {mode === 'dsl' && (
           <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px]">
             <div className="flex min-h-0 flex-col border-r border-zinc-200 bg-white">
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-200 px-4 py-2">
-                <div className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Raw DSL Editor</div>
-                <button type="button" onClick={() => loadTemplate('catalog')} className="border border-zinc-200 px-2 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50">All Types</button>
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfbf8_100%)] px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-9 w-9 items-center justify-center border border-zinc-200 bg-white text-zinc-900">
+                    <DslIcon size={16} />
+                  </span>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-700">Lexor DSL Studio</div>
+                    <div className="mt-1 text-[11px] text-zinc-500">Direct authoring mode with validation, trace tools, and structured fixes.</div>
+                  </div>
+                </div>
+                <button type="button" onClick={() => loadTemplate('catalog')} className="inline-flex items-center gap-2 border border-zinc-200 bg-white px-3 py-2 text-[11px] font-medium text-zinc-700 hover:border-zinc-900 hover:bg-zinc-50">
+                  <TemplateIcon size={14} />
+                  All Types
+                </button>
               </div>
-              <div className="min-h-0 flex-1">
+              <div className="min-h-[34rem] min-h-0 flex-1">
                 <Suspense fallback={<div className="flex h-full items-center justify-center bg-[#1e1e1e] text-sm text-zinc-400">Loading editor…</div>}>
                   <DslMonacoEditor value={dsl} onChange={syncFromDsl} />
                 </Suspense>

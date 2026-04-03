@@ -62,6 +62,10 @@ export function CopyIcon(p) {
   return <Icon {...p}><rect x="5.5" y="5.5" width="10" height="10" /><path d="M12.5 5.5V2.5h-10v10h3" /></Icon>;
 }
 
+export function SearchIcon(p) {
+  return <Icon {...p}><circle cx="8" cy="8" r="4.5" /><path d="M11.5 11.5L15.5 15.5" /></Icon>;
+}
+
 export function ExportIcon(p) {
   return <Icon {...p}><path d="M9 2.5v9M5.5 8l3.5 3.5L12.5 8" /><path d="M3 12.5v3h12v-3" /></Icon>;
 }
@@ -76,6 +80,18 @@ export function RefreshIcon(p) {
 
 export function CheckIcon(p) {
   return <Icon {...p}><path d="M3.5 9l3.5 3.5L14.5 5" /></Icon>;
+}
+
+export function AlertTriangleIcon(p) {
+  return <Icon {...p}><path d="M9 2.5l6.5 12h-13L9 2.5Z" /><path d="M9 6.2v3.8" /><rect x="8.2" y="11.5" width="1.6" height="1.6" fill="currentColor" stroke="none" /></Icon>;
+}
+
+export function InfoCircleIcon(p) {
+  return <Icon {...p}><circle cx="9" cy="9" r="6.5" /><path d="M9 7v5" /><rect x="8.2" y="4.8" width="1.6" height="1.6" fill="currentColor" stroke="none" /></Icon>;
+}
+
+export function CircleXIcon(p) {
+  return <Icon {...p}><circle cx="9" cy="9" r="6.5" /><path d="M6.5 6.5l5 5M11.5 6.5l-5 5" /></Icon>;
 }
 
 export function FolderIcon(p) {
@@ -158,6 +174,22 @@ export function TemplateIcon(p) {
 
 export function FontIcon(p) {
   return <Icon {...p}><path d="M4 14L9 3l5 11" /><path d="M6 10h6" /></Icon>;
+}
+
+export function SparkIcon(p) {
+  return <Icon {...p}><path d="M9 2.5l1.3 3.2L13.5 7 10.3 8.3 9 11.5 7.7 8.3 4.5 7l3.2-1.3L9 2.5Z" /><path d="M14 11l.8 1.9L16.7 13l-1.9.8L14 15.7l-.8-1.9-1.9-.8 1.9-.1L14 11Z" /><path d="M4 11.5l.6 1.4 1.4.1-1.4.6L4 15l-.6-1.4-1.4-.6 1.4-.1.6-1.4Z" /></Icon>;
+}
+
+export function PrintIcon(p) {
+  return <Icon {...p}><path d="M5 6V2.5h8V6" /><rect x="3" y="6" width="12" height="6" /><path d="M5 11.5h8V15.5H5V11.5Z" /><path d="M12.5 8.5h.01" /></Icon>;
+}
+
+export function CalendarIcon(p) {
+  return <Icon {...p}><rect x="2" y="3.5" width="14" height="12" /><path d="M2 7.5h14M5 2v3M13 2v3" /></Icon>;
+}
+
+export function ClockIcon(p) {
+  return <Icon {...p}><circle cx="9" cy="9" r="6.5" /><path d="M9 5.5v4l2.5 1.5" /></Icon>;
 }
 
 export function QuestionIcon(p) {

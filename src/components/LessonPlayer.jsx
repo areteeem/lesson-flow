@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getBlockLabel, getRequiredTaskBlocks, isTaskRequired, normalizeVisibleBlocks, validateLessonStructure } from '../utils/lesson';
 import GradingScreen from './GradingScreen';
 import LessonStage from './LessonStage';
+import PrivacyDot from './PrivacyDot';
 import { HamburgerIcon, FullscreenIcon, ExitFullscreenIcon } from './Icons';
 import FontSettingsPanel, { loadFontSettings, getFontCSSVars } from './FontSettingsPanel';
 import { recordDebugEvent } from '../utils/debug';
@@ -165,6 +166,8 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     }
   });
   const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [confidenceVisible, setConfidenceVisible] = useState(false);
+  const confidenceTimerRef = useRef(null);
   const [policyNotice, setPolicyNotice] = useState('');
   const shellRef = useRef(null);
   const sidebarViewportRef = useRef(null);
@@ -312,6 +315,12 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
       }, validation.issues.length > 0 ? 'warn' : 'info');
     }
   }, [blocks.length, lesson?.id, lesson?.title, validation.issues]);
+
+  useEffect(() => {
+    if (modeConfig.copyPasteRestricted) {
+      setPolicyNotice('📋 Activity is monitored in this session.');
+    }
+  }, [modeConfig.copyPasteRestricted]);
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -499,10 +508,12 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
       return;
     }
     setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
+    setConfidenceVisible(false);
   };
   const goPrev = () => {
     if (modeConfig.disableBackNavigation) return;
     setCurrentIndex((v) => Math.max(0, v - 1));
+    setConfidenceVisible(false);
   };
   const swipeHandlers = useSwipe(goNext, goPrev);
 
@@ -594,6 +605,9 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
         confidence,
       },
     }));
+    setConfidenceVisible(true);
+    if (confidenceTimerRef.current) clearTimeout(confidenceTimerRef.current);
+    confidenceTimerRef.current = setTimeout(() => setConfidenceVisible(false), 3000);
   };
 
   const effectiveFontSettings = useMemo(() => {
@@ -643,8 +657,10 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     return blocks.slice(virtualWindow.start, virtualWindow.end);
   }, [blocks, virtualWindow]);
 
+  const taskBlocks = blocks.filter((b) => b.type === 'task' || b.type === 'group');
+  const completedTaskCount = taskBlocks.filter(isComplete).length;
   const completedCount = blocks.filter(isComplete).length;
-  const progressWidth = blocks.length > 0 ? `${(completedCount / blocks.length) * 100}%` : '0%';
+  const progressWidth = taskBlocks.length > 0 ? `${(completedTaskCount / taskBlocks.length) * 100}%` : '0%';
   const requiredTasks = getRequiredTaskBlocks(blocks);
   const requiredCompleted = requiredTasks.filter((task) => Boolean(results[task.id])).length;
   const progressTimelineEntries = useMemo(() => {
@@ -744,7 +760,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
             className="relative z-10 h-full w-[min(24rem,88vw)] overflow-y-auto border-r border-zinc-200 bg-white p-4 md:w-96 md:p-5"
           >
             <div className="mb-1 text-sm font-semibold text-zinc-900">Lesson Map</div>
-            <div className="mb-4 text-xs text-zinc-500">{completedCount} of {blocks.length} completed</div>
+            <div className="mb-4 text-xs text-zinc-500">{completedTaskCount} of {taskBlocks.length} tasks completed</div>
             <div className="space-y-1.5">
               {virtualWindow.topPadding > 0 && <div style={{ height: `${virtualWindow.topPadding}px` }} />}
               {visibleBlocks.map((block, offset) => {
@@ -785,6 +801,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="truncate text-sm font-semibold text-zinc-900 md:text-base">{lesson.title}</span>
+                <PrivacyDot state={mode === 'live' ? 'shared' : mode === 'practice' ? 'none' : 'local'} />
                 <span className="shrink-0 text-xs text-zinc-400">{currentIndex + 1} of {blocks.length}</span>
               </div>
               {modeConfig.requireRequiredTasks && requiredTasks.length > 0 && (
@@ -904,7 +921,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
         </main>
 
         <footer className="sticky bottom-0 z-20 border-t border-zinc-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4 md:px-5 [padding-bottom:calc(env(safe-area-inset-bottom)+0.75rem)]">
-          {current?.type === 'task' && results[current.id] && (
+          {confidenceVisible && current?.type === 'task' && results[current.id] && (
             <div className="player-frame mx-auto mb-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 animate-soft-rise">
               <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Confidence</span>
               {[1, 2, 3, 4, 5].map((value) => (
@@ -954,7 +971,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
         {showPlayerHotkeys && (
           <div className="fixed inset-0 z-50 bg-black/35 p-4" role="dialog" aria-modal="true" aria-label="Player shortcuts">
             <button type="button" onClick={() => setShowPlayerHotkeys(false)} className="absolute inset-0" />
-            <div className="relative mx-auto mt-10 max-w-xl border border-zinc-900 bg-white p-5 sm:mt-16">
+            <div className="relative mx-auto mt-10 max-w-xl border border-zinc-900 bg-white p-8 sm:mt-16">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">Keyboard Shortcuts</div>

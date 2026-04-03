@@ -251,6 +251,8 @@ export async function createAssignmentLink(lesson, options = {}) {
       suspiciousTabSwitchThreshold,
       copyPasteRestricted,
       gracePeriodSeconds,
+      finishPageMessage: String(options.finishPageMessage || lesson?.settings?.finishPageMessage || '').trim() || null,
+      finishPageSections: options.finishPageSections || lesson?.settings?.finishPageSections || null,
     },
   };
   const expiresAt = normalizeIsoDate(options.expiresAt);
