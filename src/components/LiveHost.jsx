@@ -1397,7 +1397,7 @@ export default function LiveHost({ lesson, onExit }) {
                 <div className="break-all border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">{joinUrl}</div>
                 <button
                   type="button"
-                  onClick={() => navigator.clipboard?.writeText(joinUrl)}
+                  onClick={() => { void navigator.clipboard?.writeText(joinUrl).catch(() => {}); }}
                   className="border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:text-white"
                 >
                   Copy Join Link

@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { getAiBridgeToken, hasAiBridgeToken } from '../utils/aiBridge';
+import { useMemo, useState } from 'react';
+import { buildAiGenerationPrompt, generateAiText, getAiBridgeSettings, hasAiBridgeToken } from '../utils/aiBridge';
 import { BrainIcon, WandIcon } from './Icons';
 
 const TASK_PRESETS = [
@@ -25,34 +25,21 @@ export default function AiPanel({ onInsertDsl }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [useCustom, setUseCustom] = useState(false);
+  const [requestMeta, setRequestMeta] = useState(null);
 
   const tokenAvailable = hasAiBridgeToken();
-
-  const buildPrompt = useCallback(() => {
-    if (useCustom && customPrompt.trim()) return customPrompt.trim();
-
-    const preset = TASK_PRESETS.find((p) => p.id === taskType);
-    const base = preset ? preset.prompt : 'Generate a language task';
-    const parts = [
-      base,
-      topic.trim() ? `about "${topic.trim()}"` : '',
-      `for ${level} level students`,
-      count > 1 ? `(${count} items)` : '',
-      'Output in Lexor DSL format. Each task should be a block starting with ## followed by the task type.',
-      'Use correct: field to mark the right answer in multiple choice.',
-    ];
-    return parts.filter(Boolean).join(' ');
-  }, [count, customPrompt, level, taskType, topic, useCustom]);
+  const aiSettings = getAiBridgeSettings();
+  const selectedPreset = TASK_PRESETS.find((preset) => preset.id === taskType) || TASK_PRESETS[0];
+  const promptPreview = useMemo(() => buildAiGenerationPrompt({
+    topic,
+    level,
+    taskTypeLabel: selectedPreset.label,
+    count,
+    customPrompt: useCustom ? customPrompt : '',
+  }), [count, customPrompt, level, selectedPreset.label, topic, useCustom]);
 
   const handleGenerate = async () => {
-    const token = getAiBridgeToken();
-    if (!token) {
-      setError('No AI token configured. Set VITE_AI_TOKEN in your environment.');
-      return;
-    }
-
-    const prompt = buildPrompt();
-    if (!prompt) {
+    if (!promptPreview) {
       setError('Enter a topic or custom prompt.');
       return;
     }
@@ -60,30 +47,12 @@ export default function AiPanel({ onInsertDsl }) {
     setLoading(true);
     setError('');
     setResult('');
+    setRequestMeta(null);
 
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': token },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-        }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`API error ${response.status}: ${text.slice(0, 200)}`);
-      }
-
-      const data = await response.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      if (!text.trim()) {
-        setError('AI returned an empty response. Try rephrasing your prompt.');
-        return;
-      }
-
-      setResult(text.trim());
+      const response = await generateAiText({ prompt: promptPreview });
+      setResult(response.text.trim());
+      setRequestMeta({ provider: response.provider, model: response.model });
     } catch (err) {
       setError(err.message || 'Failed to generate content.');
     } finally {
@@ -104,7 +73,7 @@ export default function AiPanel({ onInsertDsl }) {
         <BrainIcon />
         <div className="mt-3 text-sm font-medium text-zinc-700">AI Generation</div>
         <div className="mt-2 max-w-sm text-xs text-zinc-500">
-          Set <code className="border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[11px]">VITE_AI_TOKEN</code> in your environment to enable AI-powered task generation.
+          Add an API key in Settings or set <code className="border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[11px]">VITE_AI_TOKEN</code> to enable AI-powered task generation.
         </div>
       </div>
     );
@@ -113,9 +82,12 @@ export default function AiPanel({ onInsertDsl }) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="shrink-0 border-b border-zinc-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <BrainIcon />
           <span className="text-sm font-medium text-zinc-800">AI Task Generator</span>
+          <span className="ml-auto border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+            {aiSettings.provider} · {aiSettings.model}
+          </span>
         </div>
       </div>
 
@@ -165,6 +137,11 @@ export default function AiPanel({ onInsertDsl }) {
             </label>
           )}
 
+          <details className="border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
+            <summary className="cursor-pointer font-medium text-zinc-700">Prompt preview</summary>
+            <div className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-600">{promptPreview || 'Enter a topic or prompt to build the request.'}</div>
+          </details>
+
           <button type="button" onClick={handleGenerate} disabled={loading} className="flex w-full items-center justify-center gap-2 border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
             {loading ? (
               <span className="animate-pulse">Generating…</span>
@@ -178,7 +155,7 @@ export default function AiPanel({ onInsertDsl }) {
           {result && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-zinc-600">Generated DSL</span>
+                <span className="text-xs font-medium text-zinc-600">Generated DSL{requestMeta ? ` · ${requestMeta.provider}/${requestMeta.model}` : ''}</span>
                 <button type="button" onClick={handleInsert} className="border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
                   Insert into Lesson
                 </button>

@@ -16,6 +16,7 @@ function Hint({ text }) {
         onClick={() => setOpen((v) => !v)}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
+        onBlur={() => setOpen(false)}
         aria-label="More info"
       >?</button>
       {open && (
@@ -30,6 +31,7 @@ function Hint({ text }) {
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FOCUS_OPTIONS = ['vocabulary', 'reading', 'speaking', 'listening', 'writing', 'grammar', 'mixed'];
 const AI_OPTIONS = ['gemini', 'deepseek', 'claude', 'gpt'];
+const AI_PROMPT_STYLES = ['teacher-ready', 'exam-focused', 'conversation-first', 'scaffolded'];
 const LESSON_CATEGORIES = [
   'General English', 'Business English', 'IELTS / TOEFL', 'Kids & Young Learners',
   'Conversation', 'Exam Practice', 'Grammar', 'Vocabulary', 'Reading',
@@ -251,8 +253,50 @@ export default function SettingsPage({ onBack }) {
                 </select>
               </label>
               <label className="block">
+                <span className="text-xs text-zinc-600">API Key<Hint text="Stored locally in app settings and used when no environment token is available." /></span>
+                <input type="password" value={settings.aiApiKey || ''} onChange={(e) => update('aiApiKey', e.target.value)} placeholder="Paste provider API key" className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-zinc-600">Model<Hint text="Provider-specific model name. Example: gemini-2.0-flash, gpt-4.1-mini, deepseek-chat." /></span>
+                <input type="text" value={settings.aiModel || ''} onChange={(e) => update('aiModel', e.target.value)} placeholder="Leave blank for provider default" className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </label>
+              <label className="block">
                 <span className="text-xs text-zinc-600">Tasks Per Part (Quick Generate)<Hint text="How many tasks to create for each part when using the Quick Generate feature." /></span>
                 <input type="number" min={1} max={20} value={settings.defaultTasksPerPart || 3} onChange={(e) => update('defaultTasksPerPart', Number(e.target.value))} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs text-zinc-600">Endpoint Override<Hint text="Optional full API endpoint. Leave blank to use the default endpoint for the selected provider." /></span>
+                <input type="text" value={settings.aiEndpoint || ''} onChange={(e) => update('aiEndpoint', e.target.value)} placeholder="https://..." className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-zinc-600">Temperature<Hint text="Lower values are more deterministic. Higher values are more creative." /></span>
+                <input type="number" min={0} max={2} step={0.1} value={settings.aiTemperature ?? 0.7} onChange={(e) => update('aiTemperature', Number(e.target.value))} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-zinc-600">Max Output Tokens<Hint text="Caps response length. Increase for larger lesson outputs." /></span>
+                <input type="number" min={128} max={8192} step={128} value={settings.aiMaxOutputTokens || 2048} onChange={(e) => update('aiMaxOutputTokens', Number(e.target.value))} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-zinc-600">Prompt Style<Hint text="A global framing style applied to AI generation prompts." /></span>
+                <select value={settings.aiPromptStyle || 'teacher-ready'} onChange={(e) => update('aiPromptStyle', e.target.value)} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
+                  {AI_PROMPT_STYLES.map((style) => <option key={style} value={style}>{style}</option>)}
+                </select>
+              </label>
+              <label className="flex items-center gap-3 text-sm text-zinc-700">
+                <input type="checkbox" checked={settings.aiIncludeAnswerKeys !== false} onChange={(e) => update('aiIncludeAnswerKeys', e.target.checked)} />
+                Include answer keys in generated output<Hint text="When enabled, AI prompts ask for correct values and answer keys where the DSL supports them." />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs text-zinc-600">System Prompt<Hint text="High-level instruction applied before every AI request." /></span>
+                <textarea value={settings.aiSystemPrompt || ''} onChange={(e) => update('aiSystemPrompt', e.target.value)} rows={4} placeholder="You are an expert ESL lesson designer..." className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs text-zinc-600">Prompt Prefix<Hint text="Inserted before each generated request. Useful for reusable lesson constraints." /></span>
+                <textarea value={settings.aiPromptPrefix || ''} onChange={(e) => update('aiPromptPrefix', e.target.value)} rows={3} placeholder="Always keep tasks concise, classroom-ready, and DSL-compatible..." className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs text-zinc-600">Prompt Suffix<Hint text="Inserted after each generated request. Good for validation rules and formatting reminders." /></span>
+                <textarea value={settings.aiPromptSuffix || ''} onChange={(e) => update('aiPromptSuffix', e.target.value)} rows={3} placeholder="Make sure every task can be pasted into the editor without extra cleanup." className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
               </label>
             </div>
           </section>

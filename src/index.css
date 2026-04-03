@@ -341,6 +341,13 @@ html[data-theme='dark'] select {
   color: var(--color-text-primary);
 }
 
+html[data-theme='dark'] code,
+html[data-theme='dark'] pre {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
 html[data-theme='dark'] button {
   color: inherit;
 }
