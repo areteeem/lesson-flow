@@ -134,6 +134,12 @@ export default function LiveHost({ lesson, onExit }) {
     groupModeEnabled: lesson?.settings?.liveGroupModeEnabled === true,
     groupCount: clampGroupCount(lesson?.settings?.liveGroupCount, 2),
     captainRotationEvery: clampCaptainRotation(lesson?.settings?.liveCaptainRotationEvery, 1),
+    balanceEnabled: lesson?.settings?.liveBalanceEnabled === true,
+    balanceStartCredits: Number(lesson?.settings?.liveBalanceStartCredits) > 0 ? Number(lesson.settings.liveBalanceStartCredits) : 100,
+    balanceCorrectReward: Number(lesson?.settings?.liveBalanceCorrectReward) > 0 ? Number(lesson.settings.liveBalanceCorrectReward) : 10,
+    balanceWrongPenalty: Number(lesson?.settings?.liveBalanceWrongPenalty) > 0 ? Number(lesson.settings.liveBalanceWrongPenalty) : 5,
+    balanceAllowNegative: lesson?.settings?.liveBalanceAllowNegative !== false,
+    privacyMode: lesson?.settings?.livePrivacyMode === true,
   }));
   const [autoAdvanceRemaining, setAutoAdvanceRemaining] = useState(null);
   const [autoModeRemainingSeconds, setAutoModeRemainingSeconds] = useState(null);
@@ -168,6 +174,12 @@ export default function LiveHost({ lesson, onExit }) {
       liveGroupModeEnabled: liveSettings.groupModeEnabled === true,
       liveGroupCount: clampGroupCount(liveSettings.groupCount, 2),
       liveCaptainRotationEvery: clampCaptainRotation(liveSettings.captainRotationEvery, 1),
+      liveBalanceEnabled: liveSettings.balanceEnabled === true,
+      liveBalanceStartCredits: liveSettings.balanceStartCredits,
+      liveBalanceCorrectReward: liveSettings.balanceCorrectReward,
+      liveBalanceWrongPenalty: liveSettings.balanceWrongPenalty,
+      liveBalanceAllowNegative: liveSettings.balanceAllowNegative,
+      livePrivacyMode: liveSettings.privacyMode === true,
     },
     blocks,
   }), [blocks, lesson?.id, lesson?.settings, lesson?.title, liveSettings]);
@@ -705,6 +717,7 @@ export default function LiveHost({ lesson, onExit }) {
         origin: 'live',
         sourceType: 'live',
         teamName,
+        balance: computeStudentBalance(studentId),
         submissionState: breakdown.some((entry) => entry.correct === null) ? 'awaiting_review' : 'graded',
         interaction: {
           transport: transportMode,
@@ -720,7 +733,7 @@ export default function LiveHost({ lesson, onExit }) {
         timestamp: submittedAt,
       };
     }).filter(Boolean);
-  }, [captainsByTeam, gradableTasks, lesson?.dsl, lesson?.id, lesson?.title, manualPoints, reopenAuditTrail, sessionId, skipAuditTrail, spotlightAuditTrail, students, teamAssignments, transportMode]);
+  }, [captainsByTeam, computeStudentBalance, gradableTasks, lesson?.dsl, lesson?.id, lesson?.title, manualPoints, reopenAuditTrail, sessionId, skipAuditTrail, spotlightAuditTrail, students, teamAssignments, transportMode]);
 
   const persistFinishedLiveResults = useCallback(async () => {
     if (hasPersistedLiveResultsRef.current) return;
@@ -918,6 +931,28 @@ export default function LiveHost({ lesson, onExit }) {
     return { earned, totalPoints, completed, pct };
   }, [gradableTasks, manualPoints, students]);
 
+  const computeStudentBalance = useCallback((playerId) => {
+    if (!liveSettings.balanceEnabled) return null;
+    const student = students[playerId];
+    const responses = student?.responses || {};
+    let balance = liveSettings.balanceStartCredits;
+    gradableTasks.forEach((block) => {
+      const result = responses[block.id];
+      if (!result) return;
+      const override = manualPoints[playerId]?.[block.id];
+      const isCorrect = typeof override === 'number' && Number.isFinite(override)
+        ? override >= getTaskPoints(block)
+        : result.correct === true;
+      const isWrong = typeof override === 'number' && Number.isFinite(override)
+        ? override <= 0
+        : result.correct === false;
+      if (isCorrect) balance += liveSettings.balanceCorrectReward;
+      else if (isWrong) balance -= liveSettings.balanceWrongPenalty;
+      if (!liveSettings.balanceAllowNegative && balance < 0) balance = 0;
+    });
+    return balance;
+  }, [gradableTasks, liveSettings.balanceAllowNegative, liveSettings.balanceCorrectReward, liveSettings.balanceEnabled, liveSettings.balanceStartCredits, liveSettings.balanceWrongPenalty, manualPoints, students]);
+
   const setManualPoint = (playerId, blockId, value) => {
     const parsed = Number(value);
     setManualPoints((prev) => ({
@@ -1089,11 +1124,12 @@ export default function LiveHost({ lesson, onExit }) {
           completed: stats.completed,
           totalPoints: stats.totalPoints,
           earned: stats.earned,
+          balance: computeStudentBalance(id),
         };
       })
       .sort((left, right) => right.pct - left.pct || right.completed - left.completed)
       .slice(0, 3);
-  }, [students, computeStudentStats]);
+  }, [students, computeStudentBalance, computeStudentStats]);
 
   const teamLeaderboard = useMemo(() => {
     if (!liveSettings.groupModeEnabled) return [];
@@ -1149,10 +1185,11 @@ export default function LiveHost({ lesson, onExit }) {
         studentId,
         name: student.name || 'Student',
         score: stats.pct,
+        balance: computeStudentBalance(studentId),
         answers,
       };
     });
-  }, [students, allTaskBlocks, computeStudentStats]);
+  }, [students, allTaskBlocks, computeStudentBalance, computeStudentStats]);
 
   const taskAnalytics = useMemo(() => {
     return allTaskBlocks.map((block, index) => {
@@ -1226,7 +1263,7 @@ export default function LiveHost({ lesson, onExit }) {
         <div className="text-xl font-bold">Live mode pre-check failed</div>
         <div className="mt-2 max-w-xl px-6 text-center text-sm text-zinc-400">The app stayed stable and refused to start a broken live session.</div>
         <div className="mt-5 w-full max-w-2xl space-y-2 px-6">
-          {!supportsLive && <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">No compatible live transport is available. Configure `VITE_LIVE_TRANSPORT=supabase` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, or use local BroadcastChannel mode.</div>}
+          {!supportsLive && <div className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">No compatible live transport is available. Check your environment configuration in Settings.</div>}
           {transportError && <div className="border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{transportError}</div>}
           {validation.issues.map((issue) => <div key={issue} className="border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{issue}</div>)}
         </div>
@@ -1237,11 +1274,11 @@ export default function LiveHost({ lesson, onExit }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-950 text-white">
-      <header className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
-          <div className="text-sm font-semibold">{lesson?.title || 'Live Lesson'}</div>
-          <span className="border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-mono tracking-wider">PIN: {pin}</span>
-          <div className="ml-1 flex items-center gap-1 border border-zinc-700 bg-zinc-900 p-0.5">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2.5 sm:flex-nowrap sm:gap-3 sm:px-6 sm:py-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div className="min-w-0 truncate text-sm font-semibold">{lesson?.title || 'Live Lesson'}</div>
+          <span className="shrink-0 border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-mono tracking-wider">PIN: {pin}</span>
+          <div className="ml-0.5 flex shrink-0 items-center gap-1 border border-zinc-700 bg-zinc-900 p-0.5">
             <button type="button" onClick={() => setHostTab('live')} className={`px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${hostTab === 'live' ? 'bg-white text-zinc-900' : 'text-zinc-400'}`}>
               Live
             </button>
@@ -1250,14 +1287,13 @@ export default function LiveHost({ lesson, onExit }) {
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{transportMode}</span>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <span className="text-xs text-zinc-400">{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
           <button type="button" onClick={onExit} className="border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:text-white">Exit</button>
         </div>
       </header>
 
-      <main className={`flex flex-1 flex-col items-center p-4 sm:p-6 ${(hostTab === 'live' && phase === PHASE.LOBBY) ? 'justify-center' : 'justify-start overflow-y-auto'}`}>
+      <main className={`flex flex-1 flex-col items-center overflow-x-hidden p-4 sm:p-6 ${(hostTab === 'live' && phase === PHASE.LOBBY) ? 'justify-center' : 'justify-start overflow-y-auto'}`}>
         {hostTab === 'results' && (
           <div className="w-full max-w-6xl">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1277,6 +1313,7 @@ export default function LiveHost({ lesson, onExit }) {
                   <tr>
                     <th className="px-3 py-2">Student</th>
                     <th className="px-3 py-2">Score</th>
+                    {liveSettings.balanceEnabled && <th className="px-3 py-2">Credits</th>}
                     <th className="px-3 py-2">Answered</th>
                     <th className="px-3 py-2">Expand</th>
                   </tr>
@@ -1290,6 +1327,7 @@ export default function LiveHost({ lesson, onExit }) {
                         <tr key={row.studentId} className="border-t border-zinc-800">
                           <td className="px-3 py-2 font-medium">{row.name}</td>
                           <td className="px-3 py-2">{row.score}%</td>
+                          {liveSettings.balanceEnabled && <td className="px-3 py-2">{row.balance ?? '—'}</td>}
                           <td className="px-3 py-2">{answeredCount}/{allTaskBlocks.length}</td>
                           <td className="px-3 py-2">
                             <button type="button" onClick={() => setExpandedStudentId(isExpanded ? '' : row.studentId)} className="border border-zinc-700 px-2 py-1 text-[10px] text-zinc-400 hover:text-white">
@@ -1299,7 +1337,7 @@ export default function LiveHost({ lesson, onExit }) {
                         </tr>
                         {isExpanded && (
                           <tr className="border-t border-zinc-800 bg-zinc-950/40">
-                            <td colSpan={4} className="px-3 py-3">
+                            <td colSpan={liveSettings.balanceEnabled ? 5 : 4} className="px-3 py-3">
                               <div className="space-y-1">
                                 {row.answers.map((answer, idx) => {
                                   const tone = answer.submitted ? (answer.isCorrect ? 'border-emerald-700 bg-emerald-950/30 text-emerald-200' : 'border-red-700 bg-red-950/30 text-red-200') : 'border-zinc-700 bg-zinc-900 text-zinc-400';
@@ -1351,9 +1389,9 @@ export default function LiveHost({ lesson, onExit }) {
           <div className="w-full max-w-lg text-center">
             <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Game PIN</div>
             <div className="mt-2 text-5xl font-black tracking-wider sm:text-6xl">{pin}</div>
-            <div className="mt-4 text-sm text-zinc-400">Share this PIN with your students. Current transport: <span className="font-medium text-zinc-200">{transportMode}</span> ({transportStatus}).</div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-start">
-              <img src={qrUrl} alt="Join QR" className="mx-auto h-[220px] w-[220px] border border-zinc-700 bg-white p-2" />
+            <div className="mt-4 text-sm text-zinc-400">Share this PIN with your students to join the session.</div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-start">
+              <img src={qrUrl} alt="Join QR" className="mx-auto h-[140px] w-[140px] border border-zinc-700 bg-white p-1.5 sm:h-[180px] sm:w-[180px] sm:p-2" />
               <div className="space-y-2 text-left">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Join Link</div>
                 <div className="break-all border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">{joinUrl}</div>
@@ -1386,9 +1424,9 @@ export default function LiveHost({ lesson, onExit }) {
               </button>
               {showBasicSettings !== false && (
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.allowRetry} onChange={(event) => setLiveSettings((current) => ({ ...current, allowRetry: event.target.checked }))} />Allow retries (try again)</label>
-                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showCheckButton} onChange={(event) => setLiveSettings((current) => ({ ...current, showCheckButton: event.target.checked }))} />Show check button</label>
-                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.lockAfterSubmit} onChange={(event) => setLiveSettings((current) => ({ ...current, lockAfterSubmit: event.target.checked }))} />One attempt per task</label>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.allowRetry} onChange={(event) => setLiveSettings((current) => ({ ...current, allowRetry: event.target.checked }))} />Allow retries <span className="group relative"><span className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-zinc-600 text-[8px] font-bold text-zinc-500">?</span><span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 hidden w-44 -translate-x-1/2 border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-[10px] text-zinc-300 shadow group-hover:block">Students can retry tasks after submitting.</span></span></label>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.showCheckButton} onChange={(event) => setLiveSettings((current) => ({ ...current, showCheckButton: event.target.checked }))} />Show check button <span className="group relative"><span className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-zinc-600 text-[8px] font-bold text-zinc-500">?</span><span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 hidden w-44 -translate-x-1/2 border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-[10px] text-zinc-300 shadow group-hover:block">Displays a check button so students get instant feedback.</span></span></label>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" checked={liveSettings.lockAfterSubmit} onChange={(event) => setLiveSettings((current) => ({ ...current, lockAfterSubmit: event.target.checked }))} />One attempt per task <span className="group relative"><span className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-zinc-600 text-[8px] font-bold text-zinc-500">?</span><span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 hidden w-44 -translate-x-1/2 border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-[10px] text-zinc-300 shadow group-hover:block">Locks the task after the first submission.</span></span></label>
                   <label className="space-y-1 text-xs text-zinc-300">
                     <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Class pace mode</span>
                     <select
@@ -1538,6 +1576,38 @@ export default function LiveHost({ lesson, onExit }) {
                 <div className="mt-2 text-[11px] text-zinc-500">Leaderboard cards appear after each question when at least two students are connected.</div>
               )}
             </div>
+            <div className="mt-3 border border-zinc-800 bg-zinc-900 px-4 py-3 text-left text-sm text-zinc-300">
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
+                <input type="checkbox" checked={liveSettings.balanceEnabled} onChange={(event) => setLiveSettings((current) => ({ ...current, balanceEnabled: event.target.checked }))} />
+                Enable credit balance
+              </label>
+              {liveSettings.balanceEnabled && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Starting credits</span>
+                    <input type="number" min={0} step={1} value={liveSettings.balanceStartCredits} onChange={(event) => setLiveSettings((current) => ({ ...current, balanceStartCredits: Math.max(0, Number(event.target.value) || 0) }))} className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white" />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Correct answer reward</span>
+                    <input type="number" min={0} step={1} value={liveSettings.balanceCorrectReward} onChange={(event) => setLiveSettings((current) => ({ ...current, balanceCorrectReward: Math.max(0, Number(event.target.value) || 0) }))} className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white" />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-300">
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Wrong answer penalty</span>
+                    <input type="number" min={0} step={1} value={liveSettings.balanceWrongPenalty} onChange={(event) => setLiveSettings((current) => ({ ...current, balanceWrongPenalty: Math.max(0, Number(event.target.value) || 0) }))} className="w-full border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-white" />
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
+                    <input type="checkbox" checked={liveSettings.balanceAllowNegative} onChange={(event) => setLiveSettings((current) => ({ ...current, balanceAllowNegative: event.target.checked }))} />
+                    Allow negative balance
+                  </label>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 border border-zinc-800 bg-zinc-900 px-4 py-3 text-left text-sm text-zinc-300">
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
+                <input type="checkbox" checked={liveSettings.privacyMode} onChange={(event) => setLiveSettings((current) => ({ ...current, privacyMode: event.target.checked }))} />
+                Privacy mode <span className="group relative"><span className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-zinc-600 text-[8px] font-bold text-zinc-500">?</span><span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 hidden w-48 -translate-x-1/2 border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-[10px] text-zinc-300 shadow group-hover:block">Students see randomly assigned safe names instead of typing their own.</span></span>
+              </label>
+            </div>
             <button type="button" onClick={startSession} disabled={playerCount === 0} className="action-primary mt-8 px-8 py-3 text-sm font-bold disabled:opacity-30">
               Start live lesson
             </button>
@@ -1547,14 +1617,16 @@ export default function LiveHost({ lesson, onExit }) {
         {hostTab === 'live' && phase === PHASE.RUNNING && (
           <div className="w-full max-w-6xl">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Teacher Control</div>
-                <div className="mt-1 text-sm text-zinc-300">Block {currentIndex + 1} of {blocks.length}: {currentBlock ? getBlockLabel(currentBlock, currentIndex) : 'Unavailable block'}</div>
-                <div className="mt-1 text-xs text-zinc-500">Participants: {playerCount}</div>
+                <div className="mt-1 truncate text-sm text-zinc-300">Block {currentIndex + 1}/{blocks.length}: {currentBlock ? getBlockLabel(currentBlock, currentIndex) : 'N/A'}</div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-zinc-500">
+                  <span>{playerCount} joined</span>
+                  <span>Pace: {paceMode.replace('_', '-')}</span>
+                </div>
                 {currentBlockStats && playerCount > 0 && (
                   <div className="mt-1"><SessionWarmth responded={currentBlockStats.submitted} total={playerCount} /></div>
                 )}
-                <div className="mt-1 text-xs text-zinc-500">Pace: {paceMode.replace('_', '-')}</div>
                 {autoAdvanceRemaining !== null && (
                   <div className="mt-1 text-xs text-zinc-400">Auto-advancing in {autoAdvanceRemaining}s</div>
                 )}
@@ -1576,9 +1648,9 @@ export default function LiveHost({ lesson, onExit }) {
                   <div className="mt-1 text-xs text-amber-300">Auto mode paused</div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={goPrev} disabled={currentIndex === 0} className="border border-zinc-700 px-4 py-2 text-sm text-zinc-200 disabled:opacity-30" aria-label="Previous question">← Back</button>
-                <button type="button" onClick={goNext} className="action-primary px-4 py-2 text-sm font-bold">{currentIndex === blocks.length - 1 ? 'Finish →' : 'Next →'}</button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={goPrev} disabled={currentIndex === 0} className="border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 disabled:opacity-30 sm:px-4 sm:py-2" aria-label="Previous question">← Back</button>
+                <button type="button" onClick={goNext} className="action-primary px-3 py-1.5 text-sm font-bold sm:px-4 sm:py-2">{currentIndex === blocks.length - 1 ? 'Finish →' : 'Next →'}</button>
                 <div className="relative">
                   <button type="button" onClick={() => setShowRunningOverflow(v => !v)} className="overflow-menu-btn border border-zinc-700 px-2.5 py-2 text-sm text-zinc-400" aria-label="More actions" aria-expanded={showRunningOverflow}>⋮</button>
                   {showRunningOverflow && (
@@ -1618,7 +1690,7 @@ export default function LiveHost({ lesson, onExit }) {
                     <div key={leader.id} className="leaderboard-row border border-zinc-800 bg-zinc-950/40 px-3 py-2">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">#{index + 1}</div>
                       <div className="mt-1 text-sm font-semibold text-zinc-100">{leader.name}</div>
-                      <div className="text-xs text-zinc-400">{leader.pct}% • {leader.completed} answered</div>
+                      <div className="text-xs text-zinc-400">{leader.pct}% • {leader.completed} answered{leader.balance !== null ? ` • ${leader.balance} cr` : ''}</div>
                     </div>
                   ))}
                   {topLeaders.length === 0 && <div className="text-xs text-zinc-500">Waiting for submissions...</div>}
@@ -1723,9 +1795,9 @@ export default function LiveHost({ lesson, onExit }) {
               <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Final Top 3</div>
               <div className="grid gap-2">
                 {topLeaders.map((leader, index) => (
-                  <div key={leader.id} className="flex items-center justify-between border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-300">
+                  <div key={leader.id} className="flex flex-wrap items-center justify-between gap-1 border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-300">
                     <span>#{index + 1} {leader.name}</span>
-                    <span>{leader.earned.toFixed(1)} / {leader.totalPoints} pts ({leader.pct}%)</span>
+                    <span>{leader.earned.toFixed(1)} / {leader.totalPoints} pts ({leader.pct}%){leader.balance !== null ? ` • ${leader.balance} cr` : ''}</span>
                   </div>
                 ))}
                 {topLeaders.length === 0 && <div className="text-xs text-zinc-500">No leaderboard data.</div>}

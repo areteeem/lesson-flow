@@ -196,6 +196,55 @@ export function QuestionIcon(p) {
   return <Icon {...p}><path d="M6.5 6.5C6.5 5 7.5 4 9 4s2.5 1 2.5 2.5c0 1.5-1.5 2-2.5 2.5V11" /><rect x="8.25" y="12.5" width="1.5" height="1.5" fill="currentColor" stroke="none" /></Icon>;
 }
 
+// ─── Import / IO ──────────────────────────────
+export function ClipboardIcon(p) {
+  return <Icon {...p}><path d="M6 3.5h-.5a1 1 0 00-1 1V15h9V4.5a1 1 0 00-1-1H12" /><rect x="6.5" y="2" width="5" height="2.5" /></Icon>;
+}
+
+export function UploadIcon(p) {
+  return <Icon {...p}><path d="M9 3v9M5 6l4-3 4 3" /><path d="M3 12v3h12v-3" /></Icon>;
+}
+
+export function KeyIcon(p) {
+  return <Icon {...p}><circle cx="6" cy="7" r="3" /><path d="M9 7h6.5M13 7v2.5" /></Icon>;
+}
+
+export function CoinIcon(p) {
+  return <Icon {...p}><circle cx="9" cy="9" r="6.5" /><path d="M9 5v8M7 6.5h3c.8 0 1.5.7 1.5 1.5s-.7 1.5-1.5 1.5H7.5h3c.8 0 1.5.7 1.5 1.5s-.7 1.5-1.5 1.5H7" /></Icon>;
+}
+
+export function ShieldIcon(p) {
+  return <Icon {...p}><path d="M9 2L3 5v4c0 4.5 3 7 6 8 3-1 6-3.5 6-8V5L9 2Z" /></Icon>;
+}
+
+export function WandIcon(p) {
+  return <Icon {...p}><path d="M3 15L12 6l1.5 1.5L4.5 16.5" /><path d="M12 3l1 1M15 6l1 1M10.5 5.5l1-2M14.5 4.5l2-1" /></Icon>;
+}
+
+export function HelpCircleIcon(p) {
+  return <Icon {...p}><circle cx="9" cy="9" r="6.5" /><path d="M7 7.5C7 6.5 7.8 5.5 9 5.5s2 1 2 2c0 1.2-1.2 1.5-2 2V11" /><rect x="8.25" y="12" width="1.5" height="1.5" fill="currentColor" stroke="none" /></Icon>;
+}
+
+export function BrainIcon(p) {
+  return <Icon {...p}><path d="M9 2v14M9 2C7 2 5 3.5 5 5.5c0 1-.5 2-1.5 2.5C2.5 8.5 3 11 5 12c1 .5 2 2 2 3.5V16" /><path d="M9 2c2 0 4 1.5 4 3.5 0 1 .5 2 1.5 2.5C15.5 8.5 15 11 13 12c-1 .5-2 2-2 3.5V16" /></Icon>;
+}
+
+export function UsersIcon(p) {
+  return <Icon {...p}><circle cx="7" cy="6" r="2.5" /><path d="M2 14c0-2.5 2-4 5-4s5 1.5 5 4" /><circle cx="13" cy="5.5" r="2" /><path d="M13 10c2 0 3.5 1 3.5 3" /></Icon>;
+}
+
+export function EyeOffIcon(p) {
+  return <Icon {...p}><path d="M3 3l12 12M6.5 6.5C5 7.5 3.5 9 3.5 9s2.5 5 5.5 5c1 0 2-.4 2.8-1" /><path d="M14.5 9s-2.5-5-5.5-5c-.7 0-1.4.2-2 .5" /></Icon>;
+}
+
+export function ToggleOnIcon(p) {
+  return <Icon {...p}><rect x="2" y="5.5" width="14" height="7" rx="3.5" /><circle cx="12.5" cy="9" r="2.5" fill="currentColor" /></Icon>;
+}
+
+export function ToggleOffIcon(p) {
+  return <Icon {...p}><rect x="2" y="5.5" width="14" height="7" rx="3.5" /><circle cx="5.5" cy="9" r="2.5" /></Icon>;
+}
+
 // ─── Slides ───────────────────────────────────
 export function SlideIcon(p) {
   return <Icon {...p}><rect x="2" y="3" width="14" height="12" /><path d="M2 7h14" /></Icon>;

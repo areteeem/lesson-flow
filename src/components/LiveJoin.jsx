@@ -102,6 +102,7 @@ export default function LiveJoin({ onExit }) {
   const deadlineClosed = paceMode === LIVE_PACE_MODE.TEACHER_LED && Number(session?.questionDeadlineRemainingSeconds) === 0;
   const myTeam = session?.teamAssignments?.[playerId] || '';
   const isTeamCaptain = Boolean(myTeam && session?.captainsByTeam?.[myTeam] === playerId);
+  const isPrivacyMode = session?.lesson?.settings?.livePrivacyMode === true;
   const liveTaskOptions = useMemo(() => {
     const settings = session?.lesson?.settings || {};
     return {
@@ -113,6 +114,23 @@ export default function LiveJoin({ onExit }) {
       lockMessage: deadlineClosed ? 'Time is up for this question. Responses are now closed.' : '',
     };
   }, [deadlineClosed, session]);
+
+  const studentBalance = useMemo(() => {
+    const settings = session?.lesson?.settings || {};
+    if (!settings.liveBalanceEnabled) return null;
+    const startCredits = Number(settings.liveBalanceStartCredits) || 100;
+    const correctReward = Number(settings.liveBalanceCorrectReward) || 10;
+    const wrongPenalty = Number(settings.liveBalanceWrongPenalty) || 5;
+    const allowNegative = settings.liveBalanceAllowNegative !== false;
+    let balance = startCredits;
+    Object.values(results).forEach((result) => {
+      if (!result) return;
+      if (result.correct === true) balance += correctReward;
+      else if (result.correct === false) balance -= wrongPenalty;
+      if (!allowNegative && balance < 0) balance = 0;
+    });
+    return balance;
+  }, [results, session]);
 
   useEffect(() => {
     void ensureSession();
@@ -128,7 +146,7 @@ export default function LiveJoin({ onExit }) {
       }
       if (Date.now() - lastSyncRef.current > 26000) {
         setStatus('disconnected');
-        setError('Connection to host was lost. In local mode, host and join must stay in the same browser environment.');
+        setError('Connection to host was lost. Please check your network and try again.');
       }
     }, 4000);
     return () => window.clearInterval(id);
@@ -243,7 +261,7 @@ export default function LiveJoin({ onExit }) {
 
   const handleJoin = () => {
     if (!supportsConfiguredLiveTransport(typeof window !== 'undefined' ? window.location.search : '')) {
-      setError('No compatible live transport is available. Configure Supabase transport with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, or use BroadcastChannel fallback.');
+      setError('No compatible live transport is available. Check your environment configuration in Settings.');
       return;
     }
     if (!pin.trim() || !name.trim()) return;
@@ -261,7 +279,7 @@ export default function LiveJoin({ onExit }) {
       },
     });
     if (!ch) {
-      setError('Unable to start live transport for this session.');
+      setError('Unable to connect to this session. Please try again.');
       return;
     }
 
@@ -480,29 +498,34 @@ export default function LiveJoin({ onExit }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-950 text-white">
-      <header className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold">{name}</span>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate text-sm font-semibold">{name}</span>
           <PrivacyDot state="shared" />
-          {myTeam && <span className="border border-sky-700 bg-sky-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-300">{myTeam}</span>}
-          {isTeamCaptain && <span className="border border-amber-600 bg-amber-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-300">Captain</span>}
+          {myTeam && <span className="shrink-0 border border-sky-700 bg-sky-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-300">{myTeam}</span>}
+          {isTeamCaptain && <span className="shrink-0 border border-amber-600 bg-amber-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-300">Captain</span>}
         </div>
-        <button type="button" onClick={onExit} className="text-xs text-zinc-500 hover:text-white">Leave</button>
+        <button type="button" onClick={onExit} className="shrink-0 text-xs text-zinc-500 hover:text-white">Leave</button>
       </header>
 
-      <main className={`flex flex-1 flex-col items-center p-4 sm:p-6 ${phase === PHASE.RUNNING ? 'justify-start overflow-y-auto' : 'justify-center'}`}>
+      <main className={`flex flex-1 flex-col items-center overflow-x-hidden p-4 sm:p-6 ${phase === PHASE.RUNNING ? 'justify-start overflow-y-auto' : 'justify-center'}`}>
         {phase === PHASE.WAITING && (
           <div className="w-full max-w-xl text-center">
             <div className="text-lg font-semibold">You're in!</div>
             <div className="mt-2 text-sm text-zinc-400">Waiting for the host to start the live lesson…</div>
             <div className="mt-2 text-xs text-zinc-500">Current participants: {Number(session?.participantCount) || 0}</div>
-            <div className="mt-6 border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-400">As soon as the teacher advances, you will receive the same slide or task instantly. Current transport: <span className="font-medium text-zinc-200">{transportMode}</span>.</div>
+            {isPrivacyMode && <div className="mt-3 border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-300">Privacy mode is active — random safe names are assigned.</div>}
+            <div className="mt-6 border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-400">As soon as the teacher advances, you will receive the same slide or task instantly.</div>
           </div>
         )}
 
         {phase === PHASE.RUNNING && (
           <div className="w-full max-w-6xl pb-8 text-zinc-900 [&_input]:text-zinc-900 [&_textarea]:text-zinc-900 [&_select]:text-zinc-900">
-            <div className="mb-4 text-sm text-zinc-400">Live block {Math.min(effectiveIndex + 1, Math.max(blocks.length, 1))} / {blocks.length || 1}</div>
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-zinc-400">
+              <span>Block {Math.min(effectiveIndex + 1, Math.max(blocks.length, 1))} / {blocks.length || 1}</span>
+              <div className="h-1.5 flex-1 bg-zinc-800 sm:max-w-[200px]"><div className="h-full bg-emerald-500 transition-all" style={{ width: `${blocks.length > 0 ? ((effectiveIndex + 1) / blocks.length) * 100 : 0}%` }} /></div>
+              {studentBalance !== null && <span className="ml-auto border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-xs font-medium text-amber-300">{studentBalance} cr</span>}
+            </div>
             {session?.autoModeRemainingSeconds !== null && session?.autoModeRemainingSeconds !== undefined && (
               <div className="mb-2 text-xs text-zinc-500">Auto mode time remaining: {Math.max(0, Number(session.autoModeRemainingSeconds) || 0)}s</div>
             )}
@@ -561,13 +584,29 @@ export default function LiveJoin({ onExit }) {
 
         {phase === PHASE.FINISHED && (
           <div className="w-full max-w-md text-center">
-            <div className="mb-2 text-2xl font-black">Lesson complete</div>
-            <div className="mb-6 text-lg text-zinc-400">Your local responses are preserved for this session.</div>
-            <div className="border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">
-              Completed interactions: <strong>{Object.keys(results).length}</strong>
-              {status === 'host-left' && <div className="mt-2 text-xs text-zinc-500">The host closed the live session.</div>}
+            <div className="mb-2 text-3xl font-black">Well done!</div>
+            <div className="mb-6 text-sm text-zinc-400">Lesson complete. Your responses are saved.</div>
+            <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
+              <div className="border border-zinc-800 bg-zinc-900 px-3 py-3">
+                <div className="text-zinc-500">Answered</div>
+                <div className="mt-1 text-lg font-bold text-white">{Object.keys(results).length}</div>
+              </div>
+              {studentBalance !== null ? (
+                <div className="border border-zinc-800 bg-zinc-900 px-3 py-3">
+                  <div className="text-zinc-500">Credits</div>
+                  <div className={`mt-1 text-lg font-bold ${studentBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{studentBalance}</div>
+                </div>
+              ) : (
+                <div className="border border-zinc-800 bg-zinc-900 px-3 py-3">
+                  <div className="text-zinc-500">Blocks</div>
+                  <div className="mt-1 text-lg font-bold text-white">{blocks.length}</div>
+                </div>
+              )}
             </div>
-            <button type="button" onClick={onExit} className="mt-6 border border-zinc-700 px-6 py-2 text-sm text-zinc-300 hover:text-white">Back</button>
+            {status === 'host-left' && (
+              <div className="border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs text-zinc-500">The host closed the live session.</div>
+            )}
+            <button type="button" onClick={onExit} className="mt-6 border border-zinc-700 px-6 py-2.5 text-sm text-zinc-300 hover:text-white">Back</button>
           </div>
         )}
       </main>

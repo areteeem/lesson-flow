@@ -12,12 +12,14 @@ import MarkdownComposer from './MarkdownComposer';
 import TemplatePicker from './TemplatePicker';
 import PromptModal from './PromptModal';
 import { hasAiBridgeToken } from '../utils/aiBridge';
-import { BackIcon, DotsVerticalIcon, PlayIcon as PlayIconSharp, SaveIcon as SaveIconSharp, SettingsIcon as SettingsIconSharp, DslIcon, BuilderIcon, PreviewIcon, TemplateIcon } from './Icons';
+import { BackIcon, DotsVerticalIcon, PlayIcon as PlayIconSharp, SaveIcon as SaveIconSharp, SettingsIcon as SettingsIconSharp, DslIcon, BuilderIcon, PreviewIcon, TemplateIcon, ClipboardIcon, BrainIcon } from './Icons';
+import QuizImportModal from './QuizImportModal';
 
 const DslMonacoEditor = lazy(() => import('./DslMonacoEditor'));
 const BuilderPanel = lazy(() => import('./BuilderPanel'));
 const BlockPreview = lazy(() => import('./BlockPreview'));
 const GradingConsole = lazy(() => import('./GradingConsole'));
+const AiPanel = lazy(() => import('./AiPanel'));
 const HISTORY_LIMIT = 50;
 
 function createStateFromLesson(sourceLesson, existingBlocks) {
@@ -469,6 +471,12 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   const autoSaveRef = useRef(null);
   const dslParseTimer = useRef(null);
   const [mode, setMode] = useState('builder');
+  const aiEnabled = hasAiBridgeToken();
+  const editorModes = useMemo(() => {
+    const base = ['dsl', 'builder', 'preview', 'grading'];
+    if (aiEnabled) base.push('ai');
+    return base;
+  }, [aiEnabled]);
   const initialState = useMemo(() => createStateFromLesson(lesson), [lesson]);
   // Combined history state — eliminates stale-closure bugs on fast edits
   const [hist, setHist] = useState(() => ({ entries: [initialState], index: 0 }));
@@ -481,6 +489,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   const [focusMode, setFocusMode] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showQuizImport, setShowQuizImport] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [saveState, setSaveState] = useState({
     status: 'idle',
@@ -852,7 +861,6 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   }, [sessions, lesson?.id, parsed.title]);
 
   const paletteCommands = useMemo(() => {
-    const aiEnabled = hasAiBridgeToken();
     const blockCommands = allBlocks.map((block, i) => ({
       id: `go-${block.id}`, label: `Go to: ${block.title || block.question || block.instruction || `Block ${i + 1}`}`, group: 'Navigate',
       action: () => { setSelectedBlockId(block.id); setMode('builder'); },
@@ -879,6 +887,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
       { id: 'mode-builder', label: 'Switch to Builder', group: 'Mode', action: () => setMode('builder') },
       { id: 'mode-preview', label: 'Switch to Preview', group: 'Mode', action: () => setMode('preview') },
       { id: 'mode-grading', label: 'Switch to Grading', group: 'Mode', action: () => setMode('grading') },
+      ...(aiEnabled ? [{ id: 'mode-ai', label: 'Switch to AI Generator', group: 'Mode', action: () => setMode('ai') }] : []),
       { id: 'focus-toggle', label: focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode', group: 'View', action: () => setFocusMode((v) => !v) },
       { id: 'debug-toggle', label: showDebugPanel ? 'Hide Debug Panel' : 'Show Debug Panel', group: 'View', action: () => setShowDebugPanel((v) => !v) },
       { id: 'quick-add', label: 'Open Quick Add Palette', shortcut: 'Ctrl+K', group: 'Insert', action: () => setMode('builder') },
@@ -955,8 +964,8 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
           <div className="flex shrink-0 items-center gap-1 md:gap-1.5">
             {/* Mode switcher */}
             <div className="hidden border border-zinc-200 sm:flex" role="tablist" aria-label="Editor mode">
-              {['dsl', 'builder', 'preview', 'grading'].map((entry) => (
-                <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : entry === 'preview' ? 'Preview' : 'Grading'}</button>
+              {editorModes.map((entry) => (
+                <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : entry === 'preview' ? 'Preview' : entry === 'grading' ? 'Grading' : 'AI'}</button>
               ))}
             </div>
 
@@ -984,6 +993,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
               </IconButton>
               {menuOpen && (
                 <div className="absolute right-0 top-full z-30 mt-1 min-w-48 border border-zinc-200 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
+                  <button type="button" onClick={() => { setShowQuizImport(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50"><ClipboardIcon className="h-3.5 w-3.5 text-zinc-400" /> Import Quiz</button>
                   <button type="button" onClick={() => dslInputRef.current?.click()} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Import DSL</button>
                   <button type="button" onClick={() => inputRef.current?.click()} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Import JSON</button>
                   <button type="button" onClick={() => { exportLesson(payload); setMenuOpen(false); }} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Export JSON</button>
@@ -1114,6 +1124,18 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
             </Suspense>
           </div>
         )}
+
+        {mode === 'ai' && (
+          <div className="h-full overflow-auto bg-[#f7f7f5]">
+            <Suspense fallback={<div className="flex h-full items-center justify-center bg-white text-sm text-zinc-500">Loading AI…</div>}>
+              <AiPanel onInsertDsl={(generated) => {
+                const combined = dsl.trim() ? `${dsl.trim()}\n\n${generated}` : generated;
+                syncFromDsl(combined);
+                setMode('builder');
+              }} />
+            </Suspense>
+          </div>
+        )}
       </div>
 
       {/* Mobile bottom tab bar */}
@@ -1124,13 +1146,14 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
               <BackIcon />
               <span className="text-[10px]">Back</span>
             </button>
-            {['dsl', 'builder', 'preview', 'grading'].map((entry) => (
+            {editorModes.map((entry) => (
               <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setMode(entry)} className={`flex flex-1 flex-col items-center gap-0.5 py-2 ${mode === entry ? 'text-zinc-900' : 'text-zinc-400'}`}>
                 {entry === 'dsl' && <DslIcon />}
                 {entry === 'builder' && <BuilderIcon />}
                 {entry === 'preview' && <PreviewIcon />}
                 {entry === 'grading' && <span className="text-xs font-bold">%</span>}
-                <span className="text-[10px] font-medium">{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Build' : entry === 'preview' ? 'View' : 'Grade'}</span>
+                {entry === 'ai' && <BrainIcon />}
+                <span className="text-[10px] font-medium">{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Build' : entry === 'preview' ? 'View' : entry === 'grading' ? 'Grade' : 'AI'}</span>
               </button>
             ))}
           </div>
@@ -1140,6 +1163,15 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
       {isMobile && <HotkeysModal isOpen={showHotkeys} onClose={() => setShowHotkeys(false)} />}
       {showLessonSettings && <LessonSettingsModal lesson={parsed} onClose={() => setShowLessonSettings(false)} onSave={syncFromModel} />}
       {showCommandPalette && <CommandPalette commands={paletteCommands} onClose={() => setShowCommandPalette(false)} />}
+      {showQuizImport && (
+        <QuizImportModal
+          onImport={(quizDsl) => {
+            const combined = dsl.trim() ? `${dsl.trim()}\n\n${quizDsl}` : quizDsl;
+            syncFromDsl(combined);
+          }}
+          onClose={() => setShowQuizImport(false)}
+        />
+      )}
 
       {/* State Debug Panel */}
       {showDebugPanel && (

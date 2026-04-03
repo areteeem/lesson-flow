@@ -6,6 +6,27 @@ import { getSessionUser, signInWithEmail, signOut, signUpWithEmail, upgradeToEma
 import { getAccountSyncAvailability, pullAccountSnapshotFromCloud, pushAccountSnapshotToCloud, readAccountSyncStatus, syncAccountDataBidirectional } from '../utils/accountCloudSync';
 import AutoCleanupDashboard from './AutoCleanupDashboard';
 
+function Hint({ text }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative ml-1 inline-block align-middle">
+      <button
+        type="button"
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-zinc-300 text-[9px] font-bold leading-none text-zinc-400 hover:border-zinc-500 hover:text-zinc-600"
+        onClick={() => setOpen((v) => !v)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        aria-label="More info"
+      >?</button>
+      {open && (
+        <span className="absolute bottom-full left-1/2 z-50 mb-1.5 w-52 -translate-x-1/2 border border-zinc-200 bg-white px-3 py-2 text-[11px] leading-relaxed text-zinc-600 shadow-md">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FOCUS_OPTIONS = ['vocabulary', 'reading', 'speaking', 'listening', 'writing', 'grammar', 'mixed'];
 const AI_OPTIONS = ['gemini', 'deepseek', 'claude', 'gpt'];
@@ -192,14 +213,14 @@ export default function SettingsPage({ onBack }) {
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Lesson Defaults</div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="text-xs text-zinc-600">Default Level</span>
+                <span className="text-xs text-zinc-600">Default Level<Hint text="CEFR level applied to new lessons. Affects difficulty of AI-generated content." /></span>
                 <select value={settings.defaultLevel || ''} onChange={(e) => update('defaultLevel', e.target.value)} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
                   <option value="">None</option>
                   {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="text-xs text-zinc-600">Default Focus</span>
+                <span className="text-xs text-zinc-600">Default Focus<Hint text="Skill focus applied to new lessons. Guides which task types are prioritized." /></span>
                 <select value={settings.defaultFocus || ''} onChange={(e) => update('defaultFocus', e.target.value)} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
                   <option value="">None</option>
                   {FOCUS_OPTIONS.map((f) => <option key={f} value={f} className="capitalize">{f}</option>)}
@@ -213,7 +234,7 @@ export default function SettingsPage({ onBack }) {
                 </select>
               </label>
               <label className="block">
-                <span className="text-xs text-zinc-600">Default Duration (minutes)</span>
+                <span className="text-xs text-zinc-600">Default Duration (minutes)<Hint text="Suggested lesson length. Used for AI generation pacing." /></span>
                 <input type="number" min={5} max={120} value={settings.defaultDuration || 45} onChange={(e) => update('defaultDuration', Number(e.target.value))} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
               </label>
             </div>
@@ -224,13 +245,13 @@ export default function SettingsPage({ onBack }) {
             <div className="mb-4 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">AI Preferences</div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="text-xs text-zinc-600">Preferred AI</span>
+                <span className="text-xs text-zinc-600">Preferred AI<Hint text="Which AI provider to use for generating lessons and tasks." /></span>
                 <select value={settings.preferredAI || 'gemini'} onChange={(e) => update('preferredAI', e.target.value)} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
                   {AI_OPTIONS.map((a) => <option key={a} value={a} className="capitalize">{a}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="text-xs text-zinc-600">Tasks Per Part (Quick Generate)</span>
+                <span className="text-xs text-zinc-600">Tasks Per Part (Quick Generate)<Hint text="How many tasks to create for each part when using the Quick Generate feature." /></span>
                 <input type="number" min={1} max={20} value={settings.defaultTasksPerPart || 3} onChange={(e) => update('defaultTasksPerPart', Number(e.target.value))} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
               </label>
             </div>
@@ -262,23 +283,23 @@ export default function SettingsPage({ onBack }) {
               </div>
               <label className="flex items-center gap-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={settings.showHintsDefault !== false} onChange={(e) => update('showHintsDefault', e.target.checked)} />
-                Show hints by default
+                Show hints by default<Hint text="Display hint text on tasks in the player. Students can still toggle hints manually." />
               </label>
               <label className="flex items-center gap-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={settings.showExplanationsDefault !== false} onChange={(e) => update('showExplanationsDefault', e.target.checked)} />
-                Show explanations by default
+                Show explanations by default<Hint text="Show explanations after answering. Useful for self-study mode." />
               </label>
               <label className="flex items-center gap-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={settings.randomizeAnswers !== false} onChange={(e) => update('randomizeAnswers', e.target.checked)} />
-                Randomize answer order in player
+                Randomize answer order in player<Hint text="Shuffles multiple-choice options each time a task is displayed." />
               </label>
               <label className="flex items-center gap-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={settings.autoSave !== false} onChange={(e) => update('autoSave', e.target.checked)} />
-                Auto-save lessons while editing
+                Auto-save lessons while editing<Hint text="Periodically saves your work so you don't lose changes." />
               </label>
               <label className="flex items-center gap-3 text-sm text-zinc-700">
                 <input type="checkbox" checked={settings.compactMode === true} onChange={(e) => update('compactMode', e.target.checked)} />
-                Compact mode for power users
+                Compact mode for power users<Hint text="Reduces padding and spacing across the interface for more content on screen." />
               </label>
               {settings.autoSave !== false && (
                 <label className="ml-6 block">
