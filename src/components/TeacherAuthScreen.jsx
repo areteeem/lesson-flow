@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { signInWithEmail, signUpWithEmail } from '../utils/accountAuth';
+import { requestPasswordReset, signInWithEmail, signUpWithEmail } from '../utils/accountAuth';
 import { syncAccountDataBidirectional } from '../utils/accountCloudSync';
 
 export default function TeacherAuthScreen() {
@@ -51,9 +51,22 @@ export default function TeacherAuthScreen() {
     setMessage('Account created and signed in.');
   };
 
+  const handleResetPassword = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setMessage('Enter your email to receive a reset link.');
+      return;
+    }
+    setBusy(true);
+    setMessage('Sending reset link...');
+    const result = await requestPasswordReset(cleanEmail);
+    setBusy(false);
+    setMessage(result.ok ? 'Password reset link sent. Check your email.' : (result.error || 'Password reset failed.'));
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-6">
-      <div className="w-full max-w-md border border-zinc-200 bg-white p-6">
+      <div className="auth-card w-full max-w-md border border-zinc-200 bg-white p-6">
         <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Teacher account required</div>
         <div className="mt-2 text-xl font-semibold text-zinc-950">Sign in to open your workspace</div>
         <div className="mt-2 text-sm text-zinc-500">Student links remain accessible without teacher login.</div>
@@ -78,6 +91,7 @@ export default function TeacherAuthScreen() {
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={handleSignIn} disabled={busy} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">Sign In</button>
           <button type="button" onClick={handleSignUp} disabled={busy} className="border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:border-zinc-900 disabled:opacity-60">Create Account</button>
+          <button type="button" onClick={handleResetPassword} disabled={busy} className="border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-medium text-zinc-700 hover:border-zinc-900 disabled:opacity-60">Reset Password</button>
         </div>
 
         <div className="mt-3 text-xs text-zinc-600">{message}</div>

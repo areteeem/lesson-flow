@@ -45,6 +45,12 @@ function IconActionButton({ title, onClick, children, className = '', disabled =
   );
 }
 
+function handleSelectableCardKeyDown(event, onActivate) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  onActivate();
+}
+
 function QuickAddDivider({ onAddTask, onAddSlide, onAddGroup }) {
   return (
     <div className="group relative flex h-7 items-center justify-center">
@@ -87,8 +93,6 @@ function QualityRing({ score, checks, onFix }) {
         </svg>
         <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-800">{normalized}</span>
       </button>
-      <div className="pointer-events-none absolute right-0 top-16 mt-2 w-72 translate-y-1 border border-zinc-200 bg-white p-3 opacity-0 shadow-xl transition group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
-        <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Health Report</div>
         <div className="space-y-1">
           {checks.map((check) => (
             <div key={check.id} className={check.passed ? 'flex items-center justify-between border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700' : 'flex items-center justify-between border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-600'}>
@@ -101,7 +105,6 @@ function QualityRing({ score, checks, onFix }) {
             </div>
           ))}
         </div>
-      </div>
     </div>
   );
 }
@@ -453,8 +456,9 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
               className="space-y-2"
             >
               <DropIndicator active={dropTarget?.scope === 'group' && dropTarget.groupId === block.id && dropTarget.index === index} label={mobileDragItem ? 'Tap to place inside group' : 'Insert inside group here'} />
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 draggable
                 onDragStart={(event) => {
                   event.dataTransfer.setData('application/x-group-id', block.id);
@@ -472,6 +476,7 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                 onDragLeave={() => onCombineLeave(block.id, child.id)}
                 onDrop={(event) => onCombineDrop(event, block.id, child.id)}
                 onClick={() => onSelect(child.id)}
+                onKeyDown={(event) => handleSelectableCardKeyDown(event, () => onSelect(child.id))}
                 className={selectedId === child.id ? 'w-full border border-zinc-900 bg-zinc-900 p-2 text-left text-white sm:p-3' : dropTarget?.scope === 'group-combine' && dropTarget.groupId === block.id && dropTarget.targetId === child.id ? 'w-full border-2 border-zinc-900 bg-zinc-100 p-2 text-left text-zinc-900 sm:p-3' : mobileDragItem?.childId === child.id ? 'w-full border-2 border-zinc-900 bg-zinc-100 p-2 text-left text-zinc-900 sm:p-3' : 'w-full border border-zinc-200 bg-white p-2 text-left text-zinc-900 sm:p-3'}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -504,7 +509,7 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                     <IconActionButton title="Delete block" onClick={(event) => { event.stopPropagation(); onDeleteChild(child.id); }}><TrashIcon /></IconActionButton>
                   </div>
                 </div>
-              </button>
+              </div>
               {selectedId === child.id && child.type !== 'group' && (
                 <div className="border border-zinc-200 bg-white p-2 sm:p-4">
                   <div>
@@ -1817,9 +1822,11 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                             className={selectedTopLevel ? 'border border-zinc-900 bg-white' : dropTarget?.scope === 'top-combine' && dropTarget.targetId === block.id ? 'border-2 border-dashed border-zinc-900 bg-zinc-50' : mobileDragItem?.blockId === block.id ? 'border-2 border-zinc-900 bg-zinc-50' : 'border border-zinc-200 bg-white transition hover:border-zinc-400'}
                           >
                         {/* Block card header — always visible */}
-                        <button
-                          type="button"
+                        <div
+                          role="button"
+                          tabIndex={0}
                           onClick={() => onSelect(block.id)}
+                          onKeyDown={(event) => handleSelectableCardKeyDown(event, () => onSelect(block.id))}
                           className="flex w-full items-start gap-2 p-2 text-left sm:gap-3 sm:p-3"
                         >
                           {/* Left: Index + drag handle */}
@@ -1855,7 +1862,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                             <IconActionButton title="Duplicate variant" onClick={(event) => { event.stopPropagation(); duplicateVariantTopLevelBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-zinc-900"><span className="text-xs">⋇</span></IconActionButton>
                             <IconActionButton title="Delete" onClick={(event) => { event.stopPropagation(); onDeleteBlock(block.id); }} className="border-zinc-200 text-zinc-400 hover:text-red-600"><TrashIcon /></IconActionButton>
                           </div>
-                        </button>
+                        </div>
 
                         {/* Expanded editor — shown when selected */}
                         {selectedTopLevel && block.type !== 'group' && (

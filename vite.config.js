@@ -6,6 +6,25 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const supabaseTarget = env.VITE_SUPABASE_URL ? String(env.VITE_SUPABASE_URL).trim() : '';
+  const aiToken = env.AI_TOKEN ? String(env.AI_TOKEN).trim() : env.VITE_AI_TOKEN ? String(env.VITE_AI_TOKEN).trim() : '';
+  const proxy = {};
+
+  if (supabaseTarget) {
+    proxy['/__supabase'] = {
+      target: supabaseTarget,
+      changeOrigin: true,
+      rewrite: (reqPath) => reqPath.replace(/^\/__supabase/, ''),
+    };
+  }
+
+  proxy['/api/ai'] = {
+    target: 'https://apifreellm.com',
+    changeOrigin: true,
+    rewrite: () => '/api/v1/chat',
+    headers: aiToken ? {
+      Authorization: `Bearer ${aiToken}`,
+    } : undefined,
+  };
 
   return {
     plugins: [react(), tailwindcss()],
@@ -14,17 +33,9 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, 'src'),
       },
     },
-    server: supabaseTarget
-      ? {
-        proxy: {
-          '/__supabase': {
-            target: supabaseTarget,
-            changeOrigin: true,
-            rewrite: (reqPath) => reqPath.replace(/^\/__supabase/, ''),
-          },
-        },
-      }
-      : undefined,
+    server: {
+      proxy,
+    },
     build: {
       rollupOptions: {
         output: {
@@ -38,3 +49,4 @@ export default defineConfig(({ mode }) => {
     },
   };
 })
+

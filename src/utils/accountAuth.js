@@ -182,6 +182,22 @@ export async function signUpWithEmail(email, password) {
   }
 }
 
+export async function requestPasswordReset(email) {
+  const client = getSupabaseClient();
+  if (!client) return { ok: false, error: 'Supabase not configured' };
+
+  try {
+    const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/` : undefined;
+    const { error } = await client.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+    if (error) {
+      return { ok: false, error: error.message || 'Password reset failed' };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error?.message || 'Password reset failed' };
+  }
+}
+
 export async function signOut() {
   const client = getSupabaseClient();
   if (!client) {

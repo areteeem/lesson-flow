@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createLessonTemplate } from '../utils/builder';
 import { parseLesson, generateDSL } from '../parser';
 import { CloseIcon, TemplateIcon, TrashIcon } from './Icons';
@@ -302,6 +303,16 @@ export default function TemplatePicker({ onSelect, onClose }) {
   const [cefrFilter, setCefrFilter] = useState('all');
   const [gradeFilter, setGradeFilter] = useState('all');
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const { body } = document;
+    const previousOverflow = body.style.overflow;
+    body.style.overflow = 'hidden';
+    return () => {
+      body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   const templates = useMemo(() => {
     const builtins = BUILTIN_TEMPLATES.map((t) => {
       const lesson = buildTemplateLesson(t);
@@ -369,7 +380,7 @@ export default function TemplatePicker({ onSelect, onClose }) {
     if (selectedId === `custom-${customId}`) setSelectedId(null);
   };
 
-  return (
+  const modal = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="flex h-full max-h-[680px] w-full max-w-[900px] flex-col overflow-hidden border border-zinc-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.15)] sm:h-[80vh]">
         {/* Header */}
@@ -493,7 +504,7 @@ export default function TemplatePicker({ onSelect, onClose }) {
 
           {/* Preview panel (mobile — full overlay) */}
           {selected && (
-            <div className="fixed inset-0 z-60 flex flex-col bg-white sm:hidden">
+            <div className="fixed inset-0 z-[60] flex flex-col bg-white sm:hidden">
               <TemplatePreviewPanel template={selected} parsed={selected.parsed} onUse={handleUse} onClose={() => setSelectedId(null)} />
             </div>
           )}
@@ -501,4 +512,7 @@ export default function TemplatePicker({ onSelect, onClose }) {
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return modal;
+  return createPortal(modal, document.body);
 }

@@ -11,8 +11,7 @@ import HotkeysModal from './HotkeysModal';
 import MarkdownComposer from './MarkdownComposer';
 import TemplatePicker from './TemplatePicker';
 import PromptModal from './PromptModal';
-import { hasAiBridgeToken } from '../utils/aiBridge';
-import { BackIcon, DotsVerticalIcon, PlayIcon as PlayIconSharp, SaveIcon as SaveIconSharp, SettingsIcon as SettingsIconSharp, DslIcon, BuilderIcon, PreviewIcon, TemplateIcon, ClipboardIcon, BrainIcon } from './Icons';
+import { BackIcon, DotsVerticalIcon, PlayIcon as PlayIconSharp, SaveIcon as SaveIconSharp, SettingsIcon as SettingsIconSharp, DslIcon, BuilderIcon, PreviewIcon, TemplateIcon, ClipboardIcon, BrainIcon, QuestionIcon } from './Icons';
 import QuizImportModal from './QuizImportModal';
 
 const DslMonacoEditor = lazy(() => import('./DslMonacoEditor'));
@@ -31,8 +30,8 @@ function createStateFromLesson(sourceLesson, existingBlocks) {
 
 function IconButton({ title, onClick, children, className = '', variant }) {
   const base = variant === 'primary'
-    ? 'inline-flex h-10 w-10 items-center justify-center border border-zinc-900 bg-zinc-900 text-white transition hover:bg-zinc-800'
-    : `inline-flex h-10 w-10 items-center justify-center border border-zinc-200 text-zinc-700 transition hover:border-zinc-900 ${className}`;
+    ? 'editor-control-btn editor-control-btn-primary inline-flex h-10 w-10 items-center justify-center border transition'
+    : `editor-control-btn inline-flex h-10 w-10 items-center justify-center border transition ${className}`;
   return (
     <button type="button" title={title} aria-label={title} onClick={onClick} className={base}>
       {children}
@@ -464,19 +463,14 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
   );
 }
 
-export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpenGuide }) {
+export default function Editor({ lesson, routeMode = 'builder', requestedOverlay = '', onNavigateMode, onNavigateOverlay, onSave, onPlay, onGoLive, onBack, onOpenGuide }) {
   const { sessions } = useAppContext();
   const inputRef = useRef(null);
   const dslInputRef = useRef(null);
   const autoSaveRef = useRef(null);
   const dslParseTimer = useRef(null);
-  const [mode, setMode] = useState('builder');
-  const aiEnabled = hasAiBridgeToken();
-  const editorModes = useMemo(() => {
-    const base = ['dsl', 'builder', 'preview', 'grading'];
-    if (aiEnabled) base.push('ai');
-    return base;
-  }, [aiEnabled]);
+  const [mode, setMode] = useState(routeMode || 'builder');
+  const editorModes = useMemo(() => ['dsl', 'builder', 'preview', 'grading', 'ai'], []);
   const initialState = useMemo(() => createStateFromLesson(lesson), [lesson]);
   // Combined history state — eliminates stale-closure bugs on fast edits
   const [hist, setHist] = useState(() => ({ entries: [initialState], index: 0 }));
@@ -528,6 +522,10 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     setHist({ entries: [next], index: 0 });
     setSelectedBlockId(next.parsed.blocks[0]?.id || null);
   }, [initialState]);
+
+  useEffect(() => {
+    setMode(routeMode || 'builder');
+  }, [routeMode]);
 
   const current = hist.entries[hist.index] || hist.entries[hist.entries.length - 1] || createStateFromLesson(lesson);
   const parsed = current.parsed;
@@ -777,6 +775,13 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     });
   };
 
+  const syncTemplateMenuOpen = useCallback((nextOpen, nextMode = mode) => {
+    setTemplateMenuOpen(nextOpen);
+    if ((requestedOverlay === 'templates') !== nextOpen) {
+      onNavigateOverlay?.(nextOpen ? 'templates' : '', nextMode, payloadRef.current || buildPayload());
+    }
+  }, [buildPayload, mode, onNavigateOverlay, requestedOverlay]);
+
   useEffect(() => {
     const onKeyDown = (event) => {
       const key = event.key.toLowerCase();
@@ -795,7 +800,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
         if (focusMode) { setFocusMode(false); return; }
         setShowHotkeys(false);
         setMenuOpen(false);
-        setTemplateMenuOpen(false);
+        syncTemplateMenuOpen(false);
         setShowCommandPalette(false);
         return;
       }
@@ -835,7 +840,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [hist, isMobile, focusMode, allBlocks, selectedBlockId, mode]);
+  }, [allBlocks, focusMode, isMobile, mode, selectedBlockId, syncTemplateMenuOpen]);
 
   const handleAddBlock = (block) => {
     const nextModel = { ...parsed, blocks: [...parsed.blocks, block] };
@@ -849,6 +854,19 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   };
 
   const payload = useMemo(() => buildPayload(), [buildPayload]);
+  const setModeAndSync = useCallback((nextMode) => {
+    if (mode === nextMode && routeMode === nextMode) return;
+    setMode(nextMode);
+    if (routeMode !== nextMode) {
+      onNavigateMode?.(nextMode, payloadRef.current || buildPayload());
+    }
+  }, [buildPayload, mode, onNavigateMode, routeMode]);
+
+  useEffect(() => {
+    const shouldOpen = requestedOverlay === 'templates';
+    setTemplateMenuOpen((currentValue) => (currentValue === shouldOpen ? currentValue : shouldOpen));
+  }, [requestedOverlay]);
+
   const editorSessions = useMemo(() => {
     const lessonId = lesson?.id || null;
     const lessonTitle = parsed.title || '';
@@ -863,7 +881,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
   const paletteCommands = useMemo(() => {
     const blockCommands = allBlocks.map((block, i) => ({
       id: `go-${block.id}`, label: `Go to: ${block.title || block.question || block.instruction || `Block ${i + 1}`}`, group: 'Navigate',
-      action: () => { setSelectedBlockId(block.id); setMode('builder'); },
+      action: () => { setSelectedBlockId(block.id); setModeAndSync('builder'); },
     }));
     const insertBlockCommand = (type, label) => ({
       id: `insert-${type}`,
@@ -873,7 +891,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
         const block = createDefaultBlock(type, { blank: true });
         syncFromModel({ ...parsed, blocks: [...(parsed.blocks || []), block] });
         setSelectedBlockId(block.id);
-        setMode('builder');
+        setModeAndSync('builder');
       },
     });
 
@@ -883,14 +901,14 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
       { id: 'save', label: 'Save Lesson', shortcut: 'Ctrl+S', group: 'File', action: () => { void performSave('manual'); } },
       { id: 'play', label: 'Play Lesson', group: 'File', action: () => onPlay(payload) },
       { id: 'settings', label: 'Lesson Settings', group: 'Edit', action: () => setShowLessonSettings(true) },
-      { id: 'mode-dsl', label: 'Switch to DSL Editor', group: 'Mode', action: () => setMode('dsl') },
-      { id: 'mode-builder', label: 'Switch to Builder', group: 'Mode', action: () => setMode('builder') },
-      { id: 'mode-preview', label: 'Switch to Preview', group: 'Mode', action: () => setMode('preview') },
-      { id: 'mode-grading', label: 'Switch to Grading', group: 'Mode', action: () => setMode('grading') },
-      ...(aiEnabled ? [{ id: 'mode-ai', label: 'Switch to AI Generator', group: 'Mode', action: () => setMode('ai') }] : []),
+      { id: 'mode-dsl', label: 'Switch to DSL Editor', group: 'Mode', action: () => setModeAndSync('dsl') },
+      { id: 'mode-builder', label: 'Switch to Builder', group: 'Mode', action: () => setModeAndSync('builder') },
+      { id: 'mode-preview', label: 'Switch to Preview', group: 'Mode', action: () => setModeAndSync('preview') },
+      { id: 'mode-grading', label: 'Switch to Grading', group: 'Mode', action: () => setModeAndSync('grading') },
+      { id: 'mode-ai', label: 'Switch to AI Generator', group: 'Mode', action: () => setModeAndSync('ai') },
       { id: 'focus-toggle', label: focusMode ? 'Exit Focus Mode' : 'Enter Focus Mode', group: 'View', action: () => setFocusMode((v) => !v) },
       { id: 'debug-toggle', label: showDebugPanel ? 'Hide Debug Panel' : 'Show Debug Panel', group: 'View', action: () => setShowDebugPanel((v) => !v) },
-      { id: 'quick-add', label: 'Open Quick Add Palette', shortcut: 'Ctrl+K', group: 'Insert', action: () => setMode('builder') },
+      { id: 'quick-add', label: 'Open Quick Add Palette', shortcut: 'Ctrl+K', group: 'Insert', action: () => setModeAndSync('builder') },
       insertBlockCommand('slide', 'Insert Intro Slide'),
       insertBlockCommand('multiple_choice', 'Insert Multiple Choice Task'),
       insertBlockCommand('group', 'Insert Group Container'),
@@ -898,11 +916,11 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
       { id: 'student-pdf', label: 'Print Student PDF', group: 'File', action: () => printStudentLesson(payload) },
       { id: 'teacher-pdf', label: 'Print Teacher PDF', group: 'File', action: () => printLessonReport(payload) },
       { id: 'save-template', label: 'Save as Template', group: 'File', action: () => setTemplatePromptOpen(true) },
-      ...(aiEnabled ? [{ id: 'ai-enabled', label: 'AI Rephrase Available (token detected)', group: 'AI', action: () => setMode('builder') }] : []),
+      { id: 'ai-open', label: 'Open AI Generator', group: 'AI', action: () => setModeAndSync('ai') },
       { id: 'back', label: 'Back to Home', group: 'Navigation', action: onBack },
       ...blockCommands,
     ];
-  }, [allBlocks, dsl, focusMode, mode, parsed, payload, showDebugPanel, performSave]);
+  }, [allBlocks, focusMode, onBack, parsed, payload, performSave, setModeAndSync, showDebugPanel]);
 
   const loadTemplate = (kind, customDsl = null) => {
     let next;
@@ -913,14 +931,14 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
     }
     setHist({ entries: [next], index: 0 });
     setSelectedBlockId(next.parsed.blocks[0]?.id || null);
-    setMode('builder');
-    setTemplateMenuOpen(false);
+    setModeAndSync('builder');
+    syncTemplateMenuOpen(false, 'builder');
   };
 
   return (
-    <div className="kodak-canvas flex h-screen flex-col overflow-hidden bg-[#f7f7f5]">
+    <div className="kodak-canvas editor-shell flex h-screen flex-col overflow-hidden bg-[#f7f7f5]">
       {/* Top toolbar */}
-      <header className="shrink-0 border-b border-zinc-200 bg-white">
+      <header className="editor-topbar shrink-0 border-b border-zinc-200 bg-white">
         {focusMode ? (
           <div className="flex items-center justify-between gap-3 px-4 py-2">
             <div className="flex min-w-0 items-center gap-3">
@@ -965,7 +983,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
             {/* Mode switcher */}
             <div className="hidden border border-zinc-200 sm:flex" role="tablist" aria-label="Editor mode">
               {editorModes.map((entry) => (
-                <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setMode(entry)} className={mode === entry ? 'border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : entry === 'preview' ? 'Preview' : entry === 'grading' ? 'Grading' : 'AI'}</button>
+                <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setModeAndSync(entry)} className={mode === entry ? 'editor-mode-btn border-r border-zinc-900 bg-zinc-900 px-2 py-1.5 text-xs font-medium text-white last:border-r-0 md:px-3' : 'editor-mode-btn border-r border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600 last:border-r-0 hover:bg-zinc-50 md:px-3'}>{entry === 'dsl' ? 'DSL' : entry === 'builder' ? 'Builder' : entry === 'preview' ? 'Preview' : entry === 'grading' ? 'Grading' : 'AI'}</button>
               ))}
             </div>
 
@@ -978,14 +996,24 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
             {/* Mobile mode switcher — moved to bottom bar, hidden from header */}
 
             <div className="relative">
-              <button type="button" onClick={() => setTemplateMenuOpen(true)} className="hidden border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900 md:inline-flex md:items-center md:gap-1">
+              <button type="button" onClick={() => syncTemplateMenuOpen(true)} className="editor-text-btn hidden border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900 md:inline-flex md:items-center md:gap-1">
                 <TemplateIcon size={14} />
                 Templates
               </button>
               {templateMenuOpen && (
-                <TemplatePicker onSelect={loadTemplate} onClose={() => setTemplateMenuOpen(false)} />
+                <TemplatePicker onSelect={loadTemplate} onClose={() => syncTemplateMenuOpen(false)} />
               )}
             </div>
+
+            <IconButton title={mode === 'dsl' ? 'Open DSL templates' : 'Open guide'} onClick={() => {
+              if (mode === 'dsl') {
+                syncTemplateMenuOpen(true);
+                return;
+              }
+              onOpenGuide?.();
+            }}>
+              <QuestionIcon />
+            </IconButton>
 
             <div className="relative">
               <IconButton title="Import or export" onClick={() => setMenuOpen((v) => !v)}>
@@ -1065,7 +1093,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
               </div>
               <div className="min-h-[34rem] min-h-0 flex-1">
                 <Suspense fallback={<div className="flex h-full items-center justify-center bg-[#1e1e1e] text-sm text-zinc-400">Loading editor…</div>}>
-                  <DslMonacoEditor value={dsl} onChange={syncFromDsl} />
+                  <DslMonacoEditor value={dsl} onChange={syncFromDsl} onLoadTemplate={loadTemplate} />
                 </Suspense>
               </div>
             </div>
@@ -1073,7 +1101,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
               <div className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Parsed blocks</div>
               <div className="space-y-1.5">
                 {allBlocks.map((block, index) => (
-                  <button key={block.id} type="button" onClick={() => { setSelectedBlockId(block.id); setMode('builder'); }} className="w-full border border-zinc-200 bg-white px-3 py-2 text-left transition hover:border-zinc-900">
+                  <button key={block.id} type="button" onClick={() => { setSelectedBlockId(block.id); setModeAndSync('builder'); }} className="w-full border border-zinc-200 bg-white px-3 py-2 text-left transition hover:border-zinc-900">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">{block.taskType || block.type}</div>
                     <div className="mt-0.5 text-xs font-medium text-zinc-800 truncate">{block.title || block.question || block.instruction || `Block ${index + 1}`}</div>
                   </button>
@@ -1116,7 +1144,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
             <Suspense fallback={<div className="flex h-full items-center justify-center bg-white text-sm text-zinc-500">Loading grading…</div>}>
               <GradingConsole
                 sessions={editorSessions}
-                onBack={() => setMode('builder')}
+                onBack={() => setModeAndSync('builder')}
                 initialLessonId={lesson?.id || null}
                 initialLessonTitle={parsed.title || null}
                 requireLessonSelection={false}
@@ -1128,10 +1156,10 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
         {mode === 'ai' && (
           <div className="h-full overflow-auto bg-[#f7f7f5]">
             <Suspense fallback={<div className="flex h-full items-center justify-center bg-white text-sm text-zinc-500">Loading AI…</div>}>
-              <AiPanel onInsertDsl={(generated) => {
+              <AiPanel lessonContext={parsed} onInsertDsl={(generated) => {
                 const combined = dsl.trim() ? `${dsl.trim()}\n\n${generated}` : generated;
                 syncFromDsl(combined);
-                setMode('builder');
+                setModeAndSync('builder');
               }} />
             </Suspense>
           </div>
@@ -1147,7 +1175,7 @@ export default function Editor({ lesson, onSave, onPlay, onGoLive, onBack, onOpe
               <span className="text-[10px]">Back</span>
             </button>
             {editorModes.map((entry) => (
-              <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setMode(entry)} className={`flex flex-1 flex-col items-center gap-0.5 py-2 ${mode === entry ? 'text-zinc-900' : 'text-zinc-400'}`}>
+              <button key={entry} type="button" role="tab" aria-selected={mode === entry} onClick={() => setModeAndSync(entry)} className={`flex flex-1 flex-col items-center gap-0.5 py-2 ${mode === entry ? 'text-zinc-900' : 'text-zinc-400'}`}>
                 {entry === 'dsl' && <DslIcon />}
                 {entry === 'builder' && <BuilderIcon />}
                 {entry === 'preview' && <PreviewIcon />}

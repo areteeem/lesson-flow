@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState, useCallback, useEffect } from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo } from 'react';
+import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAppContext } from './context/AppContext';
 import { createLessonTemplate, createPromptPresetLesson } from './utils/builder';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -23,6 +23,57 @@ const SharedLessonPreview = lazy(() => import('./components/SharedLessonPreview'
 const TeacherAuthScreen = lazy(() => import('./components/TeacherAuthScreen'));
 const AssignmentPlayerPage = lazy(() => import('./components/AssignmentPlayerPage'));
 const SharedResultPage = lazy(() => import('./components/SharedResultPage'));
+
+const EDITOR_MODES = ['dsl', 'builder', 'preview', 'grading', 'ai'];
+
+function normalizeEditorMode(value) {
+  return EDITOR_MODES.includes(value) ? value : 'builder';
+}
+
+function slugifyLessonSegment(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
+
+function extractLessonIdFromRef(value = '') {
+  return String(value || '').trim().split('-')[0] || '';
+}
+
+function buildEditorPath(lesson, mode = 'builder', hash = '') {
+  const normalizedMode = normalizeEditorMode(mode);
+  const lessonId = lesson?.id ? String(lesson.id) : 'new';
+  const lessonSlug = slugifyLessonSegment(lesson?.title || '');
+  const lessonRef = lessonId === 'new' ? 'new' : lessonSlug ? `${lessonId}-${lessonSlug}` : lessonId;
+  const normalizedHash = String(hash || '').replace(/^#/, '').trim();
+  return `/editor/${normalizedMode}/${lessonRef}${normalizedHash ? `#${normalizedHash}` : ''}`;
+}
+
+function readStoredCurrentLesson() {
+  try {
+    const stored = sessionStorage.getItem('lf_current_lesson');
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveLessonFromRoute(lessons, lessonId, lessonRef) {
+  const ref = lessonRef && lessonRef !== 'new' ? String(lessonRef) : lessonId && lessonId !== 'new' ? String(lessonId) : '';
+  if (!ref) return null;
+
+  const directId = extractLessonIdFromRef(ref);
+  const routeSlug = ref.includes('-') ? ref.slice(ref.indexOf('-') + 1) : '';
+
+  return (lessons || []).find((lesson) => {
+    if (!lesson) return false;
+    if (String(lesson.id || '') === directId) return true;
+    return routeSlug && slugifyLessonSegment(lesson.title || '') === routeSlug;
+  }) || null;
+}
 
 function ScreenFallback({ label = 'Loading…' }) {
   return (
@@ -76,11 +127,11 @@ function HomePage() {
             const lesson = createLessonTemplate(template || 'blank');
             if (customTitle?.trim()) lesson.title = customTitle.trim();
             persistCurrentLesson(lesson);
-            navigate('/editor/new');
+            navigate(buildEditorPath(lesson, 'builder'));
           }}
           onSelect={(lesson) => {
             persistCurrentLesson(lesson);
-            navigate(`/editor/${lesson.id}`);
+            navigate(buildEditorPath(lesson, 'builder'));
           }}
           onPractice={(lesson) => {
             persistCurrentLesson(lesson);
@@ -93,7 +144,7 @@ function HomePage() {
           onSaveFolders={saveFolders}
           onImport={(lesson) => {
             persistCurrentLesson(lesson);
-            navigate('/editor/new');
+            navigate(buildEditorPath(lesson, 'builder'));
           }}
         />
       </Suspense>
@@ -101,27 +152,49 @@ function HomePage() {
   );
 }
 
-function EditorPage() {
-  const { saveLesson, refresh } = useAppContext();
+function EditorPage({ forcedMode = '' }) {
+  const { lessons, saveLesson, refresh } = useAppContext();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { lessonId, editorMode, lessonRef } = useParams();
   const [showGuide, setShowGuide] = useState(false);
+  const routeMode = normalizeEditorMode(forcedMode || editorMode);
+  const requestedOverlay = String(location.hash || '').replace(/^#/, '').trim().toLowerCase();
+  const routedLesson = useMemo(() => resolveLessonFromRoute(lessons, lessonId, lessonRef), [lessonId, lessonRef, lessons]);
+  const [currentLesson, setCurrentLesson] = useState(() => routedLesson || readStoredCurrentLesson());
 
-  const [currentLesson, setCurrentLesson] = useState(() => {
-    try {
-      const stored = sessionStorage.getItem('lf_current_lesson');
-      return stored ? JSON.parse(stored) : null;
-    } catch { return null; }
-  });
+  useEffect(() => {
+    if (routedLesson) {
+      setCurrentLesson(routedLesson);
+      persistCurrentLesson(routedLesson);
+      return;
+    }
+
+    if (lessonRef === 'new' || lessonId === 'new' || (!lessonId && !lessonRef)) {
+      const stored = readStoredCurrentLesson();
+      if (stored) setCurrentLesson(stored);
+    }
+  }, [lessonId, lessonRef, routedLesson]);
+
+  const syncEditorLocation = useCallback((nextMode, lesson, hashValue = requestedOverlay) => {
+    const targetLesson = lesson || currentLesson || routedLesson || readStoredCurrentLesson();
+    const nextPath = buildEditorPath(targetLesson, nextMode, hashValue);
+    if (`${location.pathname}${location.hash}` !== nextPath) {
+      navigate(nextPath, { replace: true });
+    }
+  }, [currentLesson, location.hash, location.pathname, navigate, requestedOverlay, routedLesson]);
 
   const handleSave = useCallback((lesson) => {
     const saved = saveLesson(lesson);
+    setCurrentLesson(saved);
     try {
       sessionStorage.setItem('lf_current_lesson', JSON.stringify(saved));
     } catch {
       // Ignore session storage write failures.
     }
+    syncEditorLocation(routeMode, saved);
     return saved;
-  }, [saveLesson]);
+  }, [routeMode, saveLesson, syncEditorLocation]);
 
   const handlePlay = useCallback((lesson) => {
     const saved = saveLesson(lesson);
@@ -145,11 +218,23 @@ function EditorPage() {
     setShowGuide(false);
   }, [currentLesson]);
 
+  const handleNavigateMode = useCallback((nextMode, lesson) => {
+    syncEditorLocation(nextMode, lesson);
+  }, [syncEditorLocation]);
+
+  const handleNavigateOverlay = useCallback((nextHash, nextMode, lesson) => {
+    syncEditorLocation(nextMode || routeMode, lesson, nextHash || '');
+  }, [routeMode, syncEditorLocation]);
+
   return (
     <ErrorBoundary message="Editor crashed. Your latest save is preserved.">
       <Suspense fallback={<ScreenFallback label="Loading editor…" />}>
         <Editor
           lesson={currentLesson}
+          routeMode={routeMode}
+          requestedOverlay={requestedOverlay}
+          onNavigateMode={handleNavigateMode}
+          onNavigateOverlay={handleNavigateOverlay}
           onSave={handleSave}
           onPlay={handlePlay}
           onGoLive={(lesson) => {
@@ -273,7 +358,7 @@ function SharePreviewPage() {
         <SharedLessonPreview
           onMakeCopy={(lesson) => {
             persistCurrentLesson(lesson);
-            navigate('/editor/new');
+            navigate(buildEditorPath(lesson, 'builder'));
           }}
           onBack={() => navigate('/')}
         />
@@ -302,7 +387,7 @@ export default function App() {
     const nextLesson = createPromptPresetLesson(config, null);
     persistCurrentLesson(nextLesson);
     setShowGuide(false);
-    navigate('/editor/new');
+    navigate(buildEditorPath(nextLesson, 'builder'));
   }, [navigate]);
 
   useEffect(() => {
@@ -351,6 +436,13 @@ export default function App() {
     <>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/editor/new" element={<EditorPage />} />
+        <Route path="/editor/dsl" element={<EditorPage forcedMode="dsl" />} />
+        <Route path="/editor/builder" element={<EditorPage forcedMode="builder" />} />
+        <Route path="/editor/preview" element={<EditorPage forcedMode="preview" />} />
+        <Route path="/editor/grading" element={<EditorPage forcedMode="grading" />} />
+        <Route path="/editor/ai" element={<EditorPage forcedMode="ai" />} />
+        <Route path="/editor/:editorMode/:lessonRef" element={<EditorPage />} />
         <Route path="/editor/:lessonId" element={<EditorPage />} />
         <Route path="/play/:lessonId" element={<PlayPage />} />
         <Route path="/settings" element={<SettingsRoute />} />

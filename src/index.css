@@ -361,6 +361,106 @@ html[data-theme='dark'] ::placeholder {
   color: var(--color-text-placeholder);
 }
 
+.editor-shell {
+  color: var(--color-text-primary);
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), rgba(247, 247, 245, 0.95) 34%, rgba(240, 238, 232, 0.98) 100%);
+}
+
+.editor-topbar {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+}
+
+.editor-control-btn,
+.editor-text-btn,
+.editor-mode-btn,
+.auth-card {
+  box-shadow: var(--shadow-depth-1);
+}
+
+.editor-control-btn {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: color-mix(in srgb, var(--color-border-default) 72%, white 28%);
+  color: var(--color-text-primary);
+}
+
+.editor-control-btn:hover,
+.editor-text-btn:hover,
+.editor-mode-btn[aria-selected='false']:hover {
+  background: color-mix(in srgb, var(--color-bg-hover) 82%, white 18%);
+  border-color: var(--color-border-strong);
+}
+
+.editor-control-btn-primary {
+  background: var(--color-border-strong);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-inverse);
+}
+
+.editor-control-btn-primary:hover {
+  background: color-mix(in srgb, var(--color-border-strong) 88%, white 12%);
+  border-color: color-mix(in srgb, var(--color-border-strong) 88%, white 12%);
+}
+
+.editor-text-btn {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: color-mix(in srgb, var(--color-border-default) 72%, white 28%);
+  color: var(--color-text-primary);
+}
+
+.editor-mode-btn {
+  min-height: 2.5rem;
+  letter-spacing: 0.01em;
+}
+
+.auth-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 247, 242, 0.96));
+}
+
+html[data-theme='dark'] .editor-shell {
+  background:
+    radial-gradient(circle at top left, rgba(47, 47, 42, 0.9), rgba(24, 24, 22, 0.96) 42%, rgba(14, 14, 13, 1) 100%) !important;
+}
+
+html[data-theme='dark'] .editor-topbar {
+  background: rgba(20, 20, 19, 0.9) !important;
+  border-color: #343430 !important;
+}
+
+html[data-theme='dark'] .editor-control-btn,
+html[data-theme='dark'] .editor-text-btn,
+html[data-theme='dark'] .auth-card {
+  background: linear-gradient(180deg, rgba(33, 33, 30, 0.96), rgba(24, 24, 22, 0.96)) !important;
+  border-color: #42423d !important;
+  color: #f0f0ed !important;
+}
+
+html[data-theme='dark'] .editor-control-btn:hover,
+html[data-theme='dark'] .editor-text-btn:hover,
+html[data-theme='dark'] .editor-mode-btn[aria-selected='false']:hover {
+  background: rgba(43, 43, 39, 0.98) !important;
+  border-color: #f0f0ed !important;
+}
+
+html[data-theme='dark'] .editor-control-btn-primary,
+html[data-theme='dark'] .editor-mode-btn[aria-selected='true'] {
+  background: #f0f0ed !important;
+  border-color: #f0f0ed !important;
+  color: #141413 !important;
+}
+
+html[data-theme='dark'] .editor-mode-btn[aria-selected='false'] {
+  background: rgba(24, 24, 22, 0.94) !important;
+  border-color: #343430 !important;
+  color: #c8c7c0 !important;
+}
+
+html[data-theme='dark'] .auth-card {
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.38) !important;
+}
+
 button,
 input,
 textarea,

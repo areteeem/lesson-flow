@@ -408,12 +408,9 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     };
   }, []);
 
-  // Enter fullscreen on mount
+  // Keep fullscreen state in sync with the browser, but only enter fullscreen from an explicit user action.
   useEffect(() => {
-    const el = shellRef.current || document.documentElement;
-    if (el.requestFullscreen && !document.fullscreenElement) {
-      el.requestFullscreen().catch(() => {});
-    }
+    setIsFullscreen(!!document.fullscreenElement);
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);

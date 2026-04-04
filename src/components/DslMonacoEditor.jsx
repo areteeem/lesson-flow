@@ -4,7 +4,7 @@ import * as monacoInstance from 'monaco-editor';
 import { generateDSL, parseLesson } from '../parser';
 import { TASK_REGISTRY } from '../config/taskRegistry';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
-import { AlertTriangleIcon, CheckIcon, CircleXIcon, CopyIcon, DslIcon, ExportIcon, GridIcon, InfoCircleIcon, RefreshIcon, SaveIcon, SearchIcon, SparkIcon } from './Icons';
+import { AlertTriangleIcon, CheckIcon, CircleXIcon, CopyIcon, DslIcon, ExportIcon, GridIcon, InfoCircleIcon, QuestionIcon, RefreshIcon, SaveIcon, SearchIcon, SparkIcon, TemplateIcon } from './Icons';
 
 // Use locally installed monaco-editor instead of CDN (CDN is blocked by CSP)
 loader.config({ monaco: monacoInstance });
@@ -575,13 +575,13 @@ function downloadTextFile(content, fileName, mimeType = 'text/plain;charset=utf-
 function ToolbarButton({ label, hint, icon, active = false, tone = 'neutral', className = '', ...props }) {
   const toneClass = active
     ? tone === 'warning'
-      ? 'border-amber-500/70 bg-amber-500/15 text-amber-200'
+      ? 'border-amber-400 bg-amber-500/20 text-amber-100'
       : tone === 'success'
-        ? 'border-emerald-500/70 bg-emerald-500/15 text-emerald-200'
+        ? 'border-emerald-400 bg-emerald-500/20 text-emerald-100'
         : tone === 'accent'
-          ? 'border-blue-500/70 bg-blue-500/15 text-blue-200'
-          : 'border-violet-500/70 bg-violet-500/15 text-violet-200'
-    : 'border-zinc-700/90 text-zinc-300 hover:border-zinc-500 hover:text-white';
+          ? 'border-blue-400 bg-blue-500/20 text-blue-100'
+          : 'border-violet-400 bg-violet-500/20 text-violet-100'
+    : 'border-zinc-600 bg-zinc-900/85 text-zinc-100 hover:border-zinc-300 hover:bg-zinc-800';
 
   return (
     <button
@@ -615,7 +615,7 @@ function StatusChip({ icon, label, value, tone = 'neutral' }) {
   );
 }
 
-export default function DslMonacoEditor({ value, onChange }) {
+export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const timerRef = useRef(null);
@@ -634,6 +634,7 @@ export default function DslMonacoEditor({ value, onChange }) {
   const [showParsedPanel, setShowParsedPanel] = useState(false);
   const [quickFixNotice, setQuickFixNotice] = useState('');
   const [showProblemsPanel, setShowProblemsPanel] = useState(false);
+  const [showUtilityShelf, setShowUtilityShelf] = useState(false);
 
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -805,7 +806,7 @@ export default function DslMonacoEditor({ value, onChange }) {
 
   return (
     <div className="flex h-full min-h-[34rem] flex-col bg-zinc-950" role="region" aria-label="Lexor DSL editor workspace">
-      <div className="border border-b-0 border-zinc-800 bg-[linear-gradient(180deg,#151515_0%,#101010_100%)] px-4 py-3">
+      <div className="border border-b-0 border-zinc-700 bg-[linear-gradient(180deg,#161616_0%,#101010_100%)] px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-zinc-100">
@@ -834,23 +835,12 @@ export default function DslMonacoEditor({ value, onChange }) {
             hint="Copy the current DSL to the clipboard."
             icon={<CopyIcon size={14} />}
           />
-          <ToolbarButton
-            onClick={() => {
-              const prompt = `Fix the following Lesson DSL. Return ONLY the corrected DSL, no explanations:\n\n${value || ''}${warnings.length ? `\n\nCurrent issues with line numbers:\n${warningReport()}` : ''}`;
-              copyToClipboard(prompt, 'fix');
-            }}
-            label={copied === 'fix' ? 'Copied Prompt' : 'Copy Fix Prompt'}
-            hint="Copy the DSL together with current issues for external AI repair."
-            icon={<ExportIcon size={14} />}
-          />
           <ToolbarButton onClick={handleAutoFormat} label="Auto Format" hint="Normalize spacing and layout in the current DSL." icon={<RefreshIcon size={14} />} />
-          <ToolbarButton onClick={handleSafeNormalize} label="Safe Normalize" hint="Rebuild the DSL from the parsed lesson model." icon={<SparkIcon size={14} />} />
-          <ToolbarButton onClick={() => setShowParsedPanel((current) => !current)} label="Parsed JSON" hint="Show or hide the parsed lesson structure." icon={<GridIcon size={14} />} active={showParsedPanel} tone="accent" />
-          <ToolbarButton onClick={() => setShowParserTrace((current) => !current)} label="Parser Trace" hint="Inspect how the DSL parser segmented the document into blocks." icon={<SearchIcon size={14} />} active={showParserTrace} />
           <ToolbarButton onClick={() => setShowProblemsPanel((current) => !current)} label={showProblemsPanel ? 'Hide Problems' : `Problems (${visibleIssueCount})`} hint="Open the problems list and jump to issues by line." icon={<AlertTriangleIcon size={14} />} active={showProblemsPanel} tone="warning" />
           <ToolbarButton onClick={() => setShowPasteFix((current) => !current)} label={showPasteFix ? 'Cancel Paste' : 'Paste Fix'} hint="Paste a corrected DSL version and apply it safely." icon={<SparkIcon size={14} />} active={showPasteFix} tone="success" />
-          <ToolbarButton onClick={handleExportWarningsJson} label="Warnings JSON" hint="Export visible warnings as a JSON file." icon={<ExportIcon size={14} />} />
-          <ToolbarButton onClick={handleExportWarningsCsv} label="Warnings CSV" hint="Export visible warnings as a CSV file." icon={<ExportIcon size={14} className="rotate-90" />} />
+          {onLoadTemplate && <ToolbarButton onClick={() => onLoadTemplate('blank')} label="Blank" hint="Load a clean blank lesson template." icon={<TemplateIcon size={14} />} />}
+          {onLoadTemplate && <ToolbarButton onClick={() => onLoadTemplate('catalog')} label="All Types" hint="Load the all-types DSL reference lesson." icon={<QuestionIcon size={14} />} />}
+          <ToolbarButton onClick={() => setShowUtilityShelf((current) => !current)} label={showUtilityShelf ? 'Hide Tools' : 'More Tools'} hint="Show parser, export, and profile utilities." icon={<GridIcon size={14} />} active={showUtilityShelf} tone="accent" />
 
           <label className="ml-auto inline-flex min-h-9 items-center gap-2 border border-zinc-700 px-3 py-2 text-[11px] text-zinc-400" title="Choose how strict the DSL validator should be.">
             <span className="inline-flex items-center gap-2"><AlertTriangleIcon size={14} /><span className="uppercase tracking-[0.14em]">Preset</span></span>
@@ -860,20 +850,39 @@ export default function DslMonacoEditor({ value, onChange }) {
               ))}
             </select>
           </label>
-          <label className="inline-flex min-h-9 items-center gap-2 border border-zinc-700 px-3 py-2 text-[11px] text-zinc-400" title="Reuse a saved lint profile for this workspace.">
-            <span className="inline-flex items-center gap-2"><DslIcon size={14} /><span className="uppercase tracking-[0.14em]">Profile</span></span>
-            <select value={selectedProfile} onChange={(event) => applyLintProfile(event.target.value)} className="bg-transparent text-[11px] text-zinc-200 outline-none">
-              <option value="">Current</option>
-              {Object.keys(lintProfiles).sort().map((profileName) => (
-                <option key={profileName} value={profileName}>{profileName}</option>
-              ))}
-            </select>
-          </label>
-          <ToolbarButton onClick={saveCurrentLintProfile} label="Save Profile" hint="Save the current preset and filters as a reusable workspace profile." icon={<SaveIcon size={14} />} />
         </div>
 
+        {showUtilityShelf && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 border border-zinc-800 bg-zinc-950/80 p-2">
+            <ToolbarButton
+              onClick={() => {
+                const prompt = `Fix the following Lesson DSL. Return ONLY the corrected DSL, no explanations:\n\n${value || ''}${warnings.length ? `\n\nCurrent issues with line numbers:\n${warningReport()}` : ''}`;
+                copyToClipboard(prompt, 'fix');
+              }}
+              label={copied === 'fix' ? 'Copied Prompt' : 'Copy Fix Prompt'}
+              hint="Copy the DSL together with current issues for external AI repair."
+              icon={<ExportIcon size={14} />}
+            />
+            <ToolbarButton onClick={handleSafeNormalize} label="Safe Normalize" hint="Rebuild the DSL from the parsed lesson model." icon={<SparkIcon size={14} />} />
+            <ToolbarButton onClick={() => setShowParsedPanel((current) => !current)} label="Parsed JSON" hint="Show or hide the parsed lesson structure." icon={<GridIcon size={14} />} active={showParsedPanel} tone="accent" />
+            <ToolbarButton onClick={() => setShowParserTrace((current) => !current)} label="Parser Trace" hint="Inspect how the DSL parser segmented the document into blocks." icon={<SearchIcon size={14} />} active={showParserTrace} />
+            <ToolbarButton onClick={handleExportWarningsJson} label="Warnings JSON" hint="Export visible warnings as a JSON file." icon={<ExportIcon size={14} />} />
+            <ToolbarButton onClick={handleExportWarningsCsv} label="Warnings CSV" hint="Export visible warnings as a CSV file." icon={<ExportIcon size={14} className="rotate-90" />} />
+            <label className="inline-flex min-h-9 items-center gap-2 border border-zinc-700 px-3 py-2 text-[11px] text-zinc-400" title="Reuse a saved lint profile for this workspace.">
+              <span className="inline-flex items-center gap-2"><DslIcon size={14} /><span className="uppercase tracking-[0.14em]">Profile</span></span>
+              <select value={selectedProfile} onChange={(event) => applyLintProfile(event.target.value)} className="bg-transparent text-[11px] text-zinc-200 outline-none">
+                <option value="">Current</option>
+                {Object.keys(lintProfiles).sort().map((profileName) => (
+                  <option key={profileName} value={profileName}>{profileName}</option>
+                ))}
+              </select>
+            </label>
+            <ToolbarButton onClick={saveCurrentLintProfile} label="Save Profile" hint="Save the current preset and filters as a reusable workspace profile." icon={<SaveIcon size={14} />} />
+          </div>
+        )}
+
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500" id="dsl-editor-help">
-          <span className="inline-flex items-center gap-1.5"><InfoCircleIcon size={13} />Use # to insert block markers, hover field names for documentation, and open Problems to jump directly to line-level issues.</span>
+          <span className="inline-flex items-center gap-1.5"><InfoCircleIcon size={13} />Use # to insert block markers, keep the main row for writing tools, and open More Tools only when you need parser/export utilities.</span>
         </div>
       </div>
 
@@ -909,9 +918,14 @@ export default function DslMonacoEditor({ value, onChange }) {
         </div>
       )}
 
-      <div className="min-h-[24rem] flex-1 overflow-hidden border border-zinc-800 bg-[#1e1e1e]">
+      <div className="dsl-editor-host min-h-[24rem] flex-1 overflow-hidden border border-zinc-800 bg-[#1e1e1e]">
         <div className={showParsedPanel ? 'grid h-full min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.9fr)]' : 'h-full min-h-0'}>
-          <div className="min-h-0" aria-label="Primary DSL code editor">
+          <div className="relative h-full min-h-0" aria-label="Primary DSL code editor">
+            {!String(value || '').trim() && (
+              <div className="pointer-events-none absolute inset-x-6 top-4 z-10 border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-400">
+                Start with <span className="font-semibold text-zinc-100">#LESSON</span>, then add <span className="font-semibold text-zinc-100">#SLIDE</span> or <span className="font-semibold text-zinc-100">#TASK</span> blocks. Use Blank or All Types above if you want a starter structure.
+              </div>
+            )}
             <MonacoEditor
               height="100%"
               defaultLanguage={DSL_LANGUAGE_ID}

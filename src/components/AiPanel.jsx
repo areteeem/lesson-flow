@@ -13,11 +13,34 @@ const TASK_PRESETS = [
   { id: 'reading', label: 'Reading Comprehension', prompt: 'Generate a short reading passage with comprehension questions' },
 ];
 
-const LEVEL_OPTIONS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+function asList(value) {
+  if (Array.isArray(value)) return value.map((entry) => String(entry || '').trim()).filter(Boolean);
+  const single = String(value || '').trim();
+  return single ? [single] : [];
+}
 
-export default function AiPanel({ onInsertDsl }) {
-  const [topic, setTopic] = useState('');
-  const [level, setLevel] = useState('B1');
+function derivePromptContext(lessonContext) {
+  const settings = lessonContext?.settings || {};
+  const difficulty = asList(settings.difficulty);
+  const focus = asList(settings.focus);
+  const lessonTopic = String(settings.lessonTopic || '').trim();
+  const grammarTopic = String(settings.grammarTopic || '').trim();
+  const title = String(lessonContext?.title || '').trim();
+  const description = String(settings.description || '').trim();
+
+  return {
+    title,
+    lessonTopic,
+    grammarTopic,
+    focus,
+    focusLabel: focus.join(', '),
+    level: difficulty[0] || 'B1',
+    description,
+    hasInputContext: Boolean(title || lessonTopic || grammarTopic || description || focus.length),
+  };
+}
+
+export default function AiPanel({ onInsertDsl, lessonContext }) {
   const [taskType, setTaskType] = useState('mc');
   const [count, setCount] = useState(3);
   const [customPrompt, setCustomPrompt] = useState('');
@@ -29,18 +52,28 @@ export default function AiPanel({ onInsertDsl }) {
 
   const tokenAvailable = hasAiBridgeToken();
   const aiSettings = getAiBridgeSettings();
+  const promptContext = useMemo(() => derivePromptContext(lessonContext), [lessonContext]);
   const selectedPreset = TASK_PRESETS.find((preset) => preset.id === taskType) || TASK_PRESETS[0];
   const promptPreview = useMemo(() => buildAiGenerationPrompt({
-    topic,
-    level,
+    title: promptContext.title,
+    topic: promptContext.lessonTopic || promptContext.title,
+    grammarTopic: promptContext.grammarTopic,
+    focus: promptContext.focusLabel,
+    level: promptContext.level,
+    description: promptContext.description,
     taskTypeLabel: selectedPreset.label,
     count,
     customPrompt: useCustom ? customPrompt : '',
-  }), [count, customPrompt, level, selectedPreset.label, topic, useCustom]);
+  }), [count, customPrompt, promptContext.description, promptContext.focusLabel, promptContext.grammarTopic, promptContext.lessonTopic, promptContext.level, promptContext.title, selectedPreset.label, useCustom]);
 
   const handleGenerate = async () => {
+    if (!useCustom && !promptContext.hasInputContext) {
+      setError('Add lesson topic, grammar, focus, or description in the prompt generator first, or switch to a custom prompt.');
+      return;
+    }
+
     if (!promptPreview) {
-      setError('Enter a topic or custom prompt.');
+      setError('Add lesson context or write a custom prompt.');
       return;
     }
 
@@ -67,18 +100,6 @@ export default function AiPanel({ onInsertDsl }) {
     }
   };
 
-  if (!tokenAvailable) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-        <BrainIcon />
-        <div className="mt-3 text-sm font-medium text-zinc-700">AI Generation</div>
-        <div className="mt-2 max-w-sm text-xs text-zinc-500">
-          Add an API key in Settings or set <code className="border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[11px]">VITE_AI_TOKEN</code> to enable AI-powered task generation.
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="shrink-0 border-b border-zinc-200 bg-white px-4 py-3">
@@ -86,13 +107,39 @@ export default function AiPanel({ onInsertDsl }) {
           <BrainIcon />
           <span className="text-sm font-medium text-zinc-800">AI Task Generator</span>
           <span className="ml-auto border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
-            {aiSettings.provider} · {aiSettings.model}
+            {aiSettings.provider}
           </span>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
         <div className="mx-auto max-w-xl space-y-4">
+          {!tokenAvailable && (
+            <div className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              AI requests use the app server proxy. If generation fails, check the server-side AI token configuration.
+            </div>
+          )}
+
+          <div className="border border-zinc-200 bg-white p-4">
+            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">Prompt Generator Context</div>
+            {promptContext.hasInputContext ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {promptContext.title && <span className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-700">Title: {promptContext.title}</span>}
+                  {promptContext.lessonTopic && <span className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-700">Topic: {promptContext.lessonTopic}</span>}
+                  {promptContext.grammarTopic && <span className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-700">Grammar: {promptContext.grammarTopic}</span>}
+                  {promptContext.focus.map((entry) => <span key={entry} className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-700">Focus: {entry}</span>)}
+                  <span className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-700">Level: {promptContext.level}</span>
+                </div>
+                {promptContext.description && <div className="text-xs leading-relaxed text-zinc-600">{promptContext.description}</div>}
+              </div>
+            ) : (
+              <div className="mt-3 text-xs leading-relaxed text-zinc-500">
+                No lesson context is set yet. Fill in the lesson topic, grammar focus, description, or level in the prompt generator or lesson settings, then come back here.
+              </div>
+            )}
+          </div>
+
           {/* Quick mode vs Custom */}
           <div className="flex gap-1 border border-zinc-200 p-0.5">
             <button type="button" onClick={() => setUseCustom(false)} className={`flex-1 px-3 py-1.5 text-xs font-medium ${!useCustom ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-50'}`}>Quick Generate</button>
@@ -101,22 +148,15 @@ export default function AiPanel({ onInsertDsl }) {
 
           {!useCustom ? (
             <>
-              <label className="block">
-                <span className="text-xs text-zinc-600">Topic / Theme</span>
-                <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. Travel, Food, Daily routines…" className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
-              </label>
-
               <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="text-xs text-zinc-600">Level</span>
-                  <select value={level} onChange={(e) => setLevel(e.target.value)} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
-                    {LEVEL_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                </label>
                 <label className="block">
                   <span className="text-xs text-zinc-600">Count</span>
                   <input type="number" min={1} max={10} value={count} onChange={(e) => setCount(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900" />
                 </label>
+                <div className="block">
+                  <span className="text-xs text-zinc-600">Level Source</span>
+                  <div className="mt-1 border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">{promptContext.level}</div>
+                </div>
               </div>
 
               <div>
@@ -139,14 +179,14 @@ export default function AiPanel({ onInsertDsl }) {
 
           <details className="border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
             <summary className="cursor-pointer font-medium text-zinc-700">Prompt preview</summary>
-            <div className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-600">{promptPreview || 'Enter a topic or prompt to build the request.'}</div>
+            <div className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-600">{promptPreview || 'Add lesson context in the prompt generator or write a custom prompt.'}</div>
           </details>
 
-          <button type="button" onClick={handleGenerate} disabled={loading} className="flex w-full items-center justify-center gap-2 border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+          <button type="button" onClick={handleGenerate} disabled={loading || !tokenAvailable} className="flex w-full items-center justify-center gap-2 border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
             {loading ? (
               <span className="animate-pulse">Generating…</span>
             ) : (
-              <><WandIcon /><span>Generate</span></>
+              <><WandIcon /><span>{tokenAvailable ? 'Generate' : 'Server AI Not Ready'}</span></>
             )}
           </button>
 
@@ -155,7 +195,7 @@ export default function AiPanel({ onInsertDsl }) {
           {result && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-zinc-600">Generated DSL{requestMeta ? ` · ${requestMeta.provider}/${requestMeta.model}` : ''}</span>
+                <span className="text-xs font-medium text-zinc-600">Generated DSL{requestMeta ? ` · ${requestMeta.provider}` : ''}</span>
                 <button type="button" onClick={handleInsert} className="border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
                   Insert into Lesson
                 </button>
