@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { generateDSL, parseLesson } from '../parser';
 import { exportLesson, importDsl, importLesson, printLessonReport, printStudentLesson } from '../storage';
 import { loadAppSettings } from '../utils/appSettings';
+import { mergeGeneratedDslIntoLesson } from '../utils/aiBridge';
 import { syncLessonToCloud } from '../utils/cloudSync';
 import { addCustomTemplate } from './GuidePanel';
 import { createDefaultBlock, createLessonTemplate, deleteBlockFromTree } from '../utils/builder';
@@ -1157,8 +1158,27 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
           <div className="h-full overflow-auto bg-[#f7f7f5]">
             <Suspense fallback={<div className="flex h-full items-center justify-center bg-white text-sm text-zinc-500">Loading AI…</div>}>
               <AiPanel lessonContext={parsed} onInsertDsl={(generated) => {
-                const combined = dsl.trim() ? `${dsl.trim()}\n\n${generated}` : generated;
-                syncFromDsl(combined);
+                try {
+                  const merged = mergeGeneratedDslIntoLesson({
+                    title: parsed.title,
+                    settings: parsed.settings,
+                    blocks: parsed.blocks,
+                    lesson: parsed.lesson,
+                  }, generated);
+                  syncFromDsl(merged.dsl);
+                  pushToast({
+                    tone: 'success',
+                    title: 'AI blocks inserted',
+                    message: `${merged.insertedBlockCount} block${merged.insertedBlockCount === 1 ? '' : 's'} added to the lesson.`,
+                  });
+                } catch (error) {
+                  pushToast({
+                    tone: 'error',
+                    title: 'AI insert failed',
+                    message: error?.message || 'The generated content could not be parsed into lesson blocks.',
+                  });
+                  return;
+                }
                 setModeAndSync('builder');
               }} />
             </Suspense>

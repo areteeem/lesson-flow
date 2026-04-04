@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import MonacoEditor, { loader } from '@monaco-editor/react';
 import * as monacoInstance from 'monaco-editor';
 import { generateDSL, parseLesson } from '../parser';
+import { getSlideTemplate, getTaskTemplate } from '../config/dslPromptTemplates';
 import { TASK_REGISTRY } from '../config/taskRegistry';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 import { AlertTriangleIcon, CheckIcon, CircleXIcon, CopyIcon, DslIcon, ExportIcon, GridIcon, InfoCircleIcon, QuestionIcon, RefreshIcon, SaveIcon, SearchIcon, SparkIcon, TemplateIcon } from './Icons';
@@ -635,6 +636,10 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
   const [quickFixNotice, setQuickFixNotice] = useState('');
   const [showProblemsPanel, setShowProblemsPanel] = useState(false);
   const [showUtilityShelf, setShowUtilityShelf] = useState(false);
+  const [showTemplateHelp, setShowTemplateHelp] = useState(false);
+  const [selectedTemplateKind, setSelectedTemplateKind] = useState('task');
+  const [selectedTemplateType, setSelectedTemplateType] = useState('multiple_choice');
+  const [dismissedIssueKeys, setDismissedIssueKeys] = useState([]);
 
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -648,9 +653,28 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
     return classifyWarnings(warnings, lines, lintPreset);
   }, [lintPreset, value, warnings]);
 
+  const issueKey = useCallback((item) => `${item.sev}:${item.lineNum}:${item.msg}`, []);
+
   const visibleWarnings = useMemo(() => {
-    return classifiedWarnings.filter((entry) => severityFilters[entry.sev] !== false);
-  }, [classifiedWarnings, severityFilters]);
+    return classifiedWarnings.filter((entry) => severityFilters[entry.sev] !== false && !dismissedIssueKeys.includes(issueKey(entry)));
+  }, [classifiedWarnings, dismissedIssueKeys, issueKey, severityFilters]);
+
+  const hiddenIssueCount = classifiedWarnings.length - visibleWarnings.length;
+
+  const taskTemplateEntries = useMemo(() => TASK_REGISTRY.filter((entry) => !entry.hiddenFromLibrary), []);
+  const slideTemplateEntries = useMemo(() => SLIDE_REGISTRY, []);
+  const selectedTemplate = useMemo(() => {
+    if (selectedTemplateKind === 'slide') {
+      return slideTemplateEntries.find((entry) => entry.type === selectedTemplateType) || slideTemplateEntries[0] || null;
+    }
+    return taskTemplateEntries.find((entry) => entry.type === selectedTemplateType) || taskTemplateEntries[0] || null;
+  }, [selectedTemplateKind, selectedTemplateType, slideTemplateEntries, taskTemplateEntries]);
+  const selectedTemplateDsl = useMemo(() => {
+    if (!selectedTemplate) return '';
+    return selectedTemplateKind === 'slide'
+      ? getSlideTemplate(selectedTemplate.type)
+      : getTaskTemplate(selectedTemplate.type);
+  }, [selectedTemplate, selectedTemplateKind]);
 
   const parserTrace = useMemo(() => buildParserTrace(value || ''), [value]);
 
@@ -792,6 +816,26 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
     scheduleValidation(value || '');
   }, [lintPreset, scheduleValidation, value]);
 
+  useEffect(() => {
+    const available = new Set(classifiedWarnings.map((entry) => issueKey(entry)));
+    setDismissedIssueKeys((current) => current.filter((key) => available.has(key)));
+  }, [classifiedWarnings, issueKey]);
+
+  const insertTemplateSnippet = useCallback((snippet) => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco || !snippet) return;
+
+    const selection = editor.getSelection();
+    if (!selection) return;
+
+    editor.executeEdits('dsl-template-help', [{ range: selection, text: `${snippet.trim()}\n` }]);
+    const nextValue = editor.getValue();
+    onChange(nextValue);
+    scheduleValidation(nextValue);
+    editor.focus();
+  }, [onChange, scheduleValidation]);
+
   useEffect(() => () => clearTimeout(timerRef.current), []);
 
   const sevColor = { error: 'text-red-400', warning: 'text-amber-400', info: 'text-blue-400' };
@@ -840,6 +884,7 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
           <ToolbarButton onClick={() => setShowPasteFix((current) => !current)} label={showPasteFix ? 'Cancel Paste' : 'Paste Fix'} hint="Paste a corrected DSL version and apply it safely." icon={<SparkIcon size={14} />} active={showPasteFix} tone="success" />
           {onLoadTemplate && <ToolbarButton onClick={() => onLoadTemplate('blank')} label="Blank" hint="Load a clean blank lesson template." icon={<TemplateIcon size={14} />} />}
           {onLoadTemplate && <ToolbarButton onClick={() => onLoadTemplate('catalog')} label="All Types" hint="Load the all-types DSL reference lesson." icon={<QuestionIcon size={14} />} />}
+          <ToolbarButton onClick={() => setShowTemplateHelp((current) => !current)} label={showTemplateHelp ? 'Hide Templates' : 'Task Templates'} hint="Open ready-to-paste DSL examples for task and slide types." icon={<TemplateIcon size={14} />} active={showTemplateHelp} tone="accent" />
           <ToolbarButton onClick={() => setShowUtilityShelf((current) => !current)} label={showUtilityShelf ? 'Hide Tools' : 'More Tools'} hint="Show parser, export, and profile utilities." icon={<GridIcon size={14} />} active={showUtilityShelf} tone="accent" />
 
           <label className="ml-auto inline-flex min-h-9 items-center gap-2 border border-zinc-700 px-3 py-2 text-[11px] text-zinc-400" title="Choose how strict the DSL validator should be.">
@@ -914,6 +959,49 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
               Apply Fix
             </button>
             <button type="button" onClick={() => { setFixDsl(''); setShowPasteFix(false); }} className="border border-zinc-700 px-3 py-1 text-[10px] font-medium text-zinc-400 transition hover:text-zinc-200">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {showTemplateHelp && (
+        <div className="border border-b-0 border-t-0 border-zinc-800 bg-zinc-950 px-4 py-3">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => { setSelectedTemplateKind('task'); if (selectedTemplateKind !== 'task') setSelectedTemplateType(taskTemplateEntries[0]?.type || 'multiple_choice'); }} className={selectedTemplateKind === 'task' ? 'border border-zinc-300 bg-zinc-100 px-3 py-1.5 text-[11px] font-medium text-zinc-900' : 'border border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-400'}>Tasks</button>
+                <button type="button" onClick={() => { setSelectedTemplateKind('slide'); if (selectedTemplateKind !== 'slide') setSelectedTemplateType(slideTemplateEntries[0]?.type || 'slide'); }} className={selectedTemplateKind === 'slide' ? 'border border-zinc-300 bg-zinc-100 px-3 py-1.5 text-[11px] font-medium text-zinc-900' : 'border border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-400'}>Slides</button>
+              </div>
+              <div className="max-h-64 overflow-auto border border-zinc-800 bg-zinc-900/70">
+                {(selectedTemplateKind === 'slide' ? slideTemplateEntries : taskTemplateEntries).map((entry) => (
+                  <button
+                    key={entry.type}
+                    type="button"
+                    onClick={() => setSelectedTemplateType(entry.type)}
+                    className={selectedTemplateType === entry.type ? 'flex w-full items-start justify-between border-b border-zinc-800 bg-zinc-800 px-3 py-2 text-left text-xs text-zinc-100' : 'flex w-full items-start justify-between border-b border-zinc-800 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800'}
+                  >
+                    <span>
+                      <span className="block font-medium">{entry.label}</span>
+                      <span className="mt-0.5 block text-[10px] text-zinc-500">{selectedTemplateKind === 'slide' ? entry.layout : entry.category}</span>
+                    </span>
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">{entry.type}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500">DSL template help</div>
+                  <div className="mt-1 text-xs text-zinc-400">Use these parser-safe examples as a reference or insert them directly at the cursor.</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => copyToClipboard(selectedTemplateDsl, 'template')} className="border border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-white">{copied === 'template' ? 'Copied' : 'Copy template'}</button>
+                  <button type="button" onClick={() => insertTemplateSnippet(selectedTemplateDsl)} className="border border-blue-500/60 bg-blue-500/10 px-3 py-1.5 text-[11px] text-blue-100 hover:bg-blue-500/20">Insert at cursor</button>
+                </div>
+              </div>
+              <pre className="max-h-72 overflow-auto border border-zinc-800 bg-[#161616] p-3 text-[11px] text-zinc-200">{selectedTemplateDsl || 'Select a task or slide type to see its DSL template.'}</pre>
+            </div>
           </div>
         </div>
       )}
@@ -1008,6 +1096,7 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
             {warningCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.warning}`}>{warningCount}</span>}
             {infoCount > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevBg.info}`}>{infoCount}</span>}
             <div className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500">
+              {hiddenIssueCount > 0 && <button type="button" onClick={() => setDismissedIssueKeys([])} className="border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-500 hover:text-white">Show hidden ({hiddenIssueCount})</button>}
               <label className="inline-flex items-center gap-1"><input type="checkbox" checked={severityFilters.error} onChange={(event) => setSeverityFilters((current) => ({ ...current, error: event.target.checked }))} />Errors</label>
               <label className="inline-flex items-center gap-1"><input type="checkbox" checked={severityFilters.warning} onChange={(event) => setSeverityFilters((current) => ({ ...current, warning: event.target.checked }))} />Warnings</label>
               <label className="inline-flex items-center gap-1"><input type="checkbox" checked={severityFilters.info} onChange={(event) => setSeverityFilters((current) => ({ ...current, info: event.target.checked }))} />Info</label>
@@ -1047,6 +1136,18 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
                     </button>
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setDismissedIssueKeys((current) => [...current, issueKey(item)]);
+                  }}
+                  className="shrink-0 text-zinc-500 transition hover:text-zinc-200"
+                  aria-label="Hide issue"
+                  title="Hide issue"
+                >
+                  X
+                </button>
                 <span className="shrink-0 text-zinc-600">Ln {item.lineNum}</span>
               </div>
             );

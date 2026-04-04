@@ -66,16 +66,129 @@ function QuickAddDivider({ onAddTask, onAddSlide, onAddGroup }) {
   );
 }
 
+const QUALITY_RING_STORAGE_KEY = 'lesson-flow-builder-quality-ring-v2';
+
+function loadQualityRingPrefs() {
+  if (typeof window === 'undefined') return { hidden: false, position: { x: null, y: 96 } };
+  try {
+    const parsed = JSON.parse(localStorage.getItem(QUALITY_RING_STORAGE_KEY) || '{}');
+    return {
+      hidden: parsed.hidden === true,
+      position: {
+        x: Number.isFinite(parsed?.position?.x) ? parsed.position.x : null,
+        y: Number.isFinite(parsed?.position?.y) ? parsed.position.y : 96,
+      },
+    };
+  } catch {
+    return { hidden: false, position: { x: null, y: 96 } };
+  }
+}
+
+function saveQualityRingPrefs(nextPrefs) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(QUALITY_RING_STORAGE_KEY, JSON.stringify(nextPrefs));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function clampQualityRingPosition(position) {
+  if (typeof window === 'undefined') return position;
+  const widgetSize = 86;
+  const margin = 16;
+  const fallbackX = Math.max(margin, window.innerWidth - widgetSize - margin);
+  const safeX = Number.isFinite(position?.x) ? position.x : fallbackX;
+  const safeY = Number.isFinite(position?.y) ? position.y : 96;
+
+  return {
+    x: Math.max(margin, Math.min(window.innerWidth - widgetSize - margin, safeX)),
+    y: Math.max(72, Math.min(window.innerHeight - widgetSize - margin, safeY)),
+  };
+}
+
 function QualityRing({ score, checks, onFix }) {
   const normalized = Math.max(0, Math.min(100, Number(score) || 0));
   const radius = 23;
   const circumference = 2 * Math.PI * radius;
   const strokeOffset = circumference - ((normalized / 100) * circumference);
   const tone = normalized >= 80 ? 'text-emerald-600' : normalized >= 50 ? 'text-amber-600' : 'text-red-600';
+  const failedChecks = checks.filter((check) => !check.passed);
+  const [prefs, setPrefs] = useState(() => loadQualityRingPrefs());
+  const [showPopover, setShowPopover] = useState(false);
+  const dragRef = useRef(null);
+
+  const position = useMemo(() => clampQualityRingPosition(prefs.position || {}), [prefs.position]);
+
+  useEffect(() => {
+    saveQualityRingPrefs({ ...prefs, position });
+  }, [position, prefs]);
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      if (!dragRef.current) return;
+      const next = clampQualityRingPosition({
+        x: event.clientX - dragRef.current.offsetX,
+        y: event.clientY - dragRef.current.offsetY,
+      });
+      setPrefs((current) => ({ ...current, position: next }));
+      setShowPopover(false);
+    };
+
+    const handlePointerUp = () => {
+      dragRef.current = null;
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setPrefs((current) => ({ ...current, position: clampQualityRingPosition(current.position || {}) }));
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  if (prefs.hidden) {
+    return (
+      <button
+        type="button"
+        onClick={() => setPrefs((current) => ({ ...current, hidden: false }))}
+        className="fixed bottom-5 right-5 z-20 hidden border border-zinc-200 bg-white px-3 py-2 text-[11px] font-medium text-zinc-700 shadow-[0_12px_30px_rgba(0,0,0,0.12)] transition hover:border-zinc-900 xl:inline-flex"
+      >
+        Show lesson score
+      </button>
+    );
+  }
+
+  const popoverLeft = position.x > (typeof window !== 'undefined' ? window.innerWidth - 360 : 900);
+  const popoverLow = position.y > (typeof window !== 'undefined' ? window.innerHeight - 320 : 700);
 
   return (
-    <div className="group fixed right-5 top-[88px] z-20 hidden xl:block">
-      <button type="button" title="Lesson health" className="relative h-16 w-16 rounded-full border border-zinc-200 bg-white/85 shadow-[0_10px_30px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+    <div className="fixed z-20 hidden xl:block" style={{ left: `${position.x}px`, top: `${position.y}px` }}>
+      <div
+        className="group relative"
+        onMouseEnter={() => setShowPopover(true)}
+        onMouseLeave={() => setShowPopover(false)}
+      >
+        <button
+          type="button"
+          title="Lesson health"
+          onPointerDown={(event) => {
+            dragRef.current = {
+              offsetX: event.clientX - position.x,
+              offsetY: event.clientY - position.y,
+            };
+          }}
+          className="relative flex h-[74px] w-[74px] items-center justify-center rounded-full border border-zinc-200 bg-white shadow-[0_14px_35px_rgba(0,0,0,0.16)] transition hover:border-zinc-900"
+        >
+          <span className="pointer-events-none absolute top-2 text-[9px] font-medium uppercase tracking-[0.16em] text-zinc-400">Score</span>
         <svg className="h-16 w-16 -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
           <circle cx="28" cy="28" r={radius} className="stroke-zinc-200" strokeWidth="6" fill="none" />
           <circle
@@ -91,20 +204,47 @@ function QualityRing({ score, checks, onFix }) {
             strokeDashoffset={strokeOffset}
           />
         </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-800">{normalized}</span>
-      </button>
-        <div className="space-y-1">
-          {checks.map((check) => (
-            <div key={check.id} className={check.passed ? 'flex items-center justify-between border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700' : 'flex items-center justify-between border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-600'}>
-              <span>{check.label}</span>
-              {!check.passed && (
-                <button type="button" onClick={() => onFix(check.action)} className="border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-zinc-600">
-                  Fix
-                </button>
-              )}
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm font-semibold text-zinc-800">{normalized}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setPrefs((current) => ({ ...current, hidden: true }))}
+          className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-zinc-200 bg-white text-[10px] text-zinc-500 opacity-0 shadow-sm transition hover:border-zinc-900 hover:text-zinc-900 group-hover:opacity-100"
+          aria-label="Hide lesson score"
+          title="Hide lesson score"
+        >
+          X
+        </button>
+
+        {showPopover && (
+          <div className={`absolute z-10 w-80 border border-zinc-200 bg-white p-3 shadow-[0_18px_40px_rgba(0,0,0,0.14)] ${popoverLeft ? 'right-[88px]' : 'left-[88px]'} ${popoverLow ? 'bottom-0' : 'top-0'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500">Improve this lesson</div>
+                <div className="mt-1 text-sm font-semibold text-zinc-900">{failedChecks.length === 0 ? 'Healthy lesson structure' : `${failedChecks.length} focused improvement${failedChecks.length === 1 ? '' : 's'}`}</div>
+              </div>
+              <div className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${normalized >= 80 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : normalized >= 50 ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                {normalized}
+              </div>
             </div>
-          ))}
-        </div>
+
+            <div className="mt-3 space-y-1.5">
+              {checks.map((check) => (
+                <div key={check.id} className={check.passed ? 'flex items-center justify-between gap-2 border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] text-emerald-700' : 'flex items-center justify-between gap-2 border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] text-zinc-600'}>
+                  <span className="pr-2">{check.label}</span>
+                  {!check.passed && (
+                    <button type="button" onClick={() => onFix(check.action)} className="shrink-0 border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-zinc-600 transition hover:border-zinc-900">
+                      Fix
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 text-[11px] text-zinc-500">Drag the score circle anywhere. Hover it again to reopen these hints.</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -730,6 +870,8 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const [batchScope, setBatchScope] = useState('all');
   const [batchMessage, setBatchMessage] = useState('');
   const [showUtilityPanels, setShowUtilityPanels] = useState(false);
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(true);
+  const [dismissedSuggestionTexts, setDismissedSuggestionTexts] = useState([]);
 
   const [collapsedLibrarySections, setCollapsedLibrarySections] = useState(() => {
     const initial = {};
@@ -989,6 +1131,20 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     }
     return tips.slice(0, 2);
   }, [blocks]);
+
+  const visibleSuggestions = useMemo(() => {
+    return suggestions.filter((tip) => !dismissedSuggestionTexts.includes(tip.text));
+  }, [dismissedSuggestionTexts, suggestions]);
+
+  useEffect(() => {
+    if (duplicateQuestionGroups.length === 0) {
+      setShowDuplicateWarning(true);
+    }
+  }, [duplicateQuestionGroups.length]);
+
+  useEffect(() => {
+    setDismissedSuggestionTexts((current) => current.filter((text) => suggestions.some((tip) => tip.text === text)));
+  }, [suggestions]);
 
   const addBlockAndTrack = (block) => {
     trackRecentType(block.taskType || block.type);
@@ -1704,9 +1860,12 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                       <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Grade level: {readability.gradeLevel === null ? 'n/a' : readability.gradeLevel}</div>
                       <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Estimate: {estimatedMinutes} min</div>
                     </div>
-                    {duplicateQuestionGroups.length > 0 && (
-                      <div className="mt-2 border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                        Duplicate prompts detected: {duplicateQuestionGroups.length}. <button type="button" onClick={() => runQualityAction('focus_duplicate')} className="underline">Jump to first duplicate</button>
+                    {duplicateQuestionGroups.length > 0 && showDuplicateWarning && (
+                      <div className="mt-2 flex items-start justify-between gap-2 border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                        <div>
+                          Duplicate prompts detected: {duplicateQuestionGroups.length}. <button type="button" onClick={() => runQualityAction('focus_duplicate')} className="underline">Jump to first duplicate</button>
+                        </div>
+                        <button type="button" onClick={() => setShowDuplicateWarning(false)} className="shrink-0 text-[10px] font-medium text-amber-700 transition hover:text-amber-900" aria-label="Hide duplicate prompt warning">X</button>
                       </div>
                     )}
                     <div className="mt-2 space-y-1">
@@ -1721,12 +1880,15 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                 </div>}
 
                 {/* Smart suggestions */}
-                {suggestions.length > 0 && !mobileDragItem && (
+                {visibleSuggestions.length > 0 && !mobileDragItem && (
                   <div className="hidden space-y-1.5 sm:block">
-                    {suggestions.map((tip, i) => (
+                    {visibleSuggestions.map((tip, i) => (
                       <div key={i} className="flex items-center justify-between gap-2 border border-dashed border-zinc-300 bg-zinc-50 px-3 py-2">
-                        <span className="text-[11px] text-zinc-500">💡 {tip.text}</span>
-                        {tip.action && <button type="button" onClick={tip.action} className="shrink-0 border border-zinc-300 px-2 py-1 text-[10px] font-medium text-zinc-600 transition hover:border-zinc-900">+ Add</button>}
+                        <span className="text-[11px] text-zinc-500">Tip: {tip.text}</span>
+                        <div className="flex items-center gap-2">
+                          {tip.action && <button type="button" onClick={tip.action} className="shrink-0 border border-zinc-300 px-2 py-1 text-[10px] font-medium text-zinc-600 transition hover:border-zinc-900">+ Add</button>}
+                          <button type="button" onClick={() => setDismissedSuggestionTexts((current) => [...current, tip.text])} className="shrink-0 text-[10px] font-medium text-zinc-400 transition hover:text-zinc-700" aria-label="Hide suggestion">X</button>
+                        </div>
                       </div>
                     ))}
                   </div>

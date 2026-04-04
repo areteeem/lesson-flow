@@ -7,9 +7,9 @@
   <img src="https://img.shields.io/badge/Monaco-DSL_Studio-0078D4?logo=visualstudiocode&logoColor=white" alt="Monaco Editor" />
 </p>
 
-# Lesson Flow
+# Lexor
 
-Lesson Flow is an interactive lesson platform for authoring, delivering, and grading classroom experiences in one product. It combines a visual lesson builder, a Monaco-powered DSL studio, a student player, live classroom controls, assignment delivery, grading workflows, and an AI-assisted content pipeline.
+Lexor is an interactive lesson platform for authoring, delivering, and grading classroom experiences in one product. It combines a visual lesson builder, a Monaco-powered DSL studio, a student player, live classroom controls, assignment delivery, grading workflows, and an AI-assisted content pipeline.
 
 It is designed around one core idea: a lesson should be authored once and then reused consistently across builder preview, self-paced play, live sessions, and grading without maintaining separate content models.
 
@@ -30,10 +30,28 @@ It is designed around one core idea: a lesson should be authored once and then r
 - **Accessibility-first runtime** with high contrast, dyslexia-friendly reading options, reduced motion, text zoom, keyboard shortcuts, and fullscreen controls.
 
 ## Screenshots
+<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.5rem;">
+  <figure style="flex:1 1 45%;text-align:center;margin:0;">
+    <img src="Screenshot 2026-04-04 124533.png" alt="Builder workspace" style="max-width:100%;height:auto;border:1px solid #eee;padding:8px;background:#fff;" />
+    <figcaption>Builder workspace</figcaption>
+  </figure>
+  <figure style="flex:1 1 45%;text-align:center;margin:0;">
+    <img src="Screenshot 2026-04-04 124543.png" alt="Lesson preview" style="max-width:100%;height:auto;border:1px solid #eee;padding:8px;background:#fff;" />
+    <figcaption>Lesson preview</figcaption>
+  </figure>
+  <figure style="flex:1 1 45%;text-align:center;margin:0;">
+    <img src="Screenshot 2026-04-04 124556.png" alt="Grading console" style="max-width:100%;height:auto;border:1px solid #eee;padding:8px;background:#fff;" />
+    <figcaption>Grading console</figcaption>
+  </figure>
+  <figure style="flex:1 1 45%;text-align:center;margin:0;">
+    <img src="Screenshot 2026-04-04 124640.png" alt="Player / Live classroom" style="max-width:100%;height:auto;border:1px solid #eee;padding:8px;background:#fff;" />
+    <figcaption>Player / Live classroom</figcaption>
+  </figure>
+</div>
 
 ## Product Overview
 
-Lesson Flow covers the full teacher loop:
+Lexor covers the full teacher loop:
 
 1. **Author** lessons in the visual builder or DSL editor.
 2. **Deliver** them as self-paced activities, live sessions, or assignments.
