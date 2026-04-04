@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Live classroom placeholder</title>
+  <desc id="desc">Placeholder image for the live classroom screenshot.</desc>
+  <rect width="1280" height="720" fill="#f6f5f1"/>
+  <rect x="48" y="48" width="1184" height="624" fill="#ffffff" stroke="#d8d5cc" stroke-width="2"/>
+  <rect x="84" y="96" width="220" height="48" fill="#8b1e1e"/>
+  <rect x="332" y="96" width="220" height="48" fill="#f1ece2" stroke="#d8d5cc"/>
+  <rect x="84" y="188" width="520" height="360" fill="#fbfaf7" stroke="#d8d5cc"/>
+  <rect x="636" y="188" width="532" height="360" fill="#f4efe6" stroke="#d8d5cc"/>
+  <circle cx="1110" cy="116" r="18" fill="#7c8b5e"/>
+  <text x="84" y="620" font-family="Arial, sans-serif" font-size="42" fill="#1a1a18">Live Classroom Placeholder</text>
+  <text x="84" y="660" font-family="Arial, sans-serif" font-size="22" fill="#6b6b65">Replace with live host stats, Quick Pulse, warmth indicator, and classroom controls.</text>
+</svg>

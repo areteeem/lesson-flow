@@ -193,3 +193,5 @@ supabase/
   migrations/         incremental database changes
 ```
 
+
+Non-commercial use only. No hosting, redistribution, or SaaS allowed without permission.
