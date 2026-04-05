@@ -89,6 +89,7 @@ Use these only in \`#LESSON\` when needed:
 17. For single-answer tasks, \`Answer:\` must contain exactly one literal value (no commas/semicolons/pipes)
 18. For multi_select only, \`Answer:\` may use pipes and each answer must exactly match one option text
 19. For highlight_glossary, multi-word targets must be exact contiguous phrases from Text (not split into separate words)
+20. For embed slides and web_embed tasks, \`Media:\` must be a valid HTTPS URL. Optional fields: \`Height:\` (px, default 480), \`EmbedCode:\` (raw HTML iframe code), \`AllowFullscreen: true|false\`
 `.trim();
 
 export const DSL_PARSER_SAFETY_CHECKLIST = `
@@ -325,6 +326,58 @@ Answer: <sample answer>`,
 Question: Rate your confidence.
 Min: 1
 Max: 5`,
+
+  youtube: `
+#TASK: YOUTUBE
+Question: Watch the video and answer.
+Media: https://www.youtube.com/watch?v=VIDEO_ID
+Items:
+0:30 => What did the speaker say about the topic?
+1:15 => Summarize the main idea.`,
+
+  web_embed: `
+#TASK: WEB_EMBED
+Question: Explore the embedded content and answer the question below.
+Media: https://example.com/interactive-page
+Height: 500
+AllowFullscreen: true`,
+
+  word_hide_reveal: `
+#TASK: WORD_HIDE_REVEAL
+Question: Read the text and reveal the hidden words.
+Text:
+The quick brown fox jumps over the lazy dog near the river.
+FocusWords:
+quick
+jumps
+lazy
+HideMode: reveal
+HideCount: 2
+HideMinLength: 3`,
+
+  word_hide_drag: `
+#TASK: WORD_HIDE_DRAG
+Question: Drag the missing words back into the text.
+Text:
+She always walks to school in the morning and studies English after lunch.
+FocusWords:
+walks
+studies
+HideMode: drag
+HideCount: 2
+HideMinLength: 4`,
+
+  word_hide_type: `
+#TASK: WORD_HIDE_TYPE
+Question: Type the missing words to complete the text.
+Text:
+Every summer they travel to the mountains and enjoy fresh air.
+FocusWords:
+travel
+enjoy
+HideMode: type
+HideCount: 2
+HideMinLength: 4`,
 };
 
 // ────────────────────────────────────────────────
@@ -357,6 +410,15 @@ Column B
 Rows:
 Row 1 A | Row 1 B
 Row 2 A | Row 2 B`,
+
+  embed: `
+#SLIDE: EMBED
+Title: Interactive resource
+Media: https://example.com/interactive-page
+Height: 480
+Content:
+Explore the embedded resource above.
+AllowFullscreen: true`,
 };
 
 // ────────────────────────────────────────────────

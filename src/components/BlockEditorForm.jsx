@@ -1049,6 +1049,68 @@ function HighlightEditor({ block, onChange }) {
   );
 }
 
+function WordHideEditor({ block, onChange }) {
+  const text = block.text || '';
+  const focusWords = block.focusWords || [];
+
+  const words = text.split(/(\s+)/);
+
+  const isFocus = (word) => {
+    const clean = word.replace(/[.,!?;:'"()[\]{}—–-]/g, '').toLowerCase();
+    if (!clean) return false;
+    return focusWords.some((w) => w.toLowerCase() === clean);
+  };
+
+  const toggleWord = (word) => {
+    const clean = word.replace(/[.,!?;:'"()[\]{}—–-]/g, '').trim();
+    if (!clean) return;
+    const lower = clean.toLowerCase();
+    if (focusWords.some((w) => w.toLowerCase() === lower)) {
+      onChange({ ...block, focusWords: focusWords.filter((w) => w.toLowerCase() !== lower) });
+    } else {
+      onChange({ ...block, focusWords: [...focusWords, clean] });
+    }
+  };
+
+  if (!text.trim()) {
+    return <div className="border border-dashed border-zinc-200 px-4 py-4 text-center text-xs text-zinc-400">Add text above first, then click words to mark as focus words (always hidden).</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">Click words to toggle as focus words ({focusWords.length} selected — always hidden)</div>
+      <div className="border border-zinc-200 bg-zinc-50 p-4 text-sm leading-7">
+        {words.map((word, idx) => {
+          if (/^\s+$/.test(word)) return <span key={idx}>{word}</span>;
+          const active = isFocus(word);
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => toggleWord(word)}
+              className={active
+                ? 'bg-red-200 px-0.5 font-semibold text-zinc-900 hover:bg-red-300'
+                : 'px-0.5 text-zinc-700 hover:bg-red-100'}
+            >
+              {word}
+            </button>
+          );
+        })}
+      </div>
+      {focusWords.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {focusWords.map((w, idx) => (
+            <span key={idx} className="inline-flex items-center gap-1 border border-red-300 bg-red-50 px-2 py-0.5 text-xs">
+              {w}
+              <button type="button" onClick={() => onChange({ ...block, focusWords: focusWords.filter((_, i) => i !== idx) })} className="text-zinc-400 hover:text-red-500">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PairsEditor({ block, onChange, label = 'Pairs', leftLabel = 'Left', rightLabel = 'Right' }) {
   const [bulkInput, setBulkInput] = useState('');
   const [bulkError, setBulkError] = useState('');
@@ -1393,7 +1455,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
           {['opinion_survey'].includes(block.taskType) && <OptionListEditor block={block} onChange={onChange} multiple={Boolean(block.multiple)} allowCorrect={false} />}
           {['video_questions'].includes(block.taskType) && <OptionListEditor block={block} onChange={onChange} multiple={Boolean(block.multiple)} allowCorrect />}
           {['short_answer', 'long_answer', 'error_correction', 'flash_response', 'choose_and_explain', 'scenario_decision', 'highlight_mistake', 'select_and_correct'].includes(block.taskType) && input('answer', 'Answer', block.taskType === 'highlight_mistake' ? 'The incorrect word in the text' : block.taskType === 'select_and_correct' ? 'The correct replacement' : 'Correct answer(s), use | for multiple')}
-          {['drag_to_blank', 'fill_typing', 'short_answer', 'long_answer', 'reading_highlight', 'error_correction', 'flash_response', 'choose_and_explain', 'scenario_decision', 'conditional_branch_questions', 'highlight_differences', 'memory_recall', 'keyword_expand', 'highlight_mistake', 'select_and_correct', 'highlight_glossary', 'text_linking'].includes(block.taskType) && area('text', 'Text', 4, block.taskType === 'text_linking' ? 'The passage for students to annotate' : block.taskType === 'highlight_glossary' ? 'The passage students click to collect words' : 'Use ___ or {} for blanks in fill tasks')}
+          {['drag_to_blank', 'fill_typing', 'short_answer', 'long_answer', 'reading_highlight', 'error_correction', 'flash_response', 'choose_and_explain', 'scenario_decision', 'conditional_branch_questions', 'highlight_differences', 'memory_recall', 'keyword_expand', 'highlight_mistake', 'select_and_correct', 'highlight_glossary', 'text_linking', 'word_hide_reveal', 'word_hide_drag', 'word_hide_type'].includes(block.taskType) && area('text', 'Text', 4, block.taskType === 'text_linking' ? 'The passage for students to annotate' : block.taskType === 'highlight_glossary' ? 'The passage students click to collect words' : ['word_hide_reveal', 'word_hide_drag', 'word_hide_type'].includes(block.taskType) ? 'The passage — words will be hidden for students' : 'Use ___ or {} for blanks in fill tasks')}
           {['fill_typing', 'drag_to_blank'].includes(block.taskType) && <InlineBlanksEditor block={block} onChange={onChange} />}
           {['dialogue_fill', 'dialogue_completion', 'dialogue_reconstruct'].includes(block.taskType) && <DialogueEditor block={block} onChange={onChange} />}
           {['dialogue_fill', 'dialogue_completion'].includes(block.taskType) && !(block.text || '').includes('{') && input('answer', 'Answer', 'Correct values for each blank, separated by | (optional with {answer} syntax)')}
@@ -1413,6 +1475,24 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
           {['order', 'random_wheel', 'timeline_order', 'sentence_builder', 'peer_review_checklist', 'story_reconstruction', 'justify_order', 'word_family_builder', 'word_cloud'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label={block.taskType === 'sentence_builder' ? 'Words / Chunks' : block.taskType === 'word_family_builder' ? 'Word Forms' : block.taskType === 'peer_review_checklist' ? 'Checklist Items' : block.taskType === 'random_wheel' ? 'Wheel Segments' : block.taskType === 'word_cloud' ? 'Seed Words' : 'Items (correct order)'} />}
           {['categorize', 'categorize_grammar'].includes(block.taskType) && <CategorizeEditor block={block} onChange={onChange} />}
           {['reading_highlight', 'highlight_differences', 'highlight_glossary', 'text_linking'].includes(block.taskType) && <HighlightEditor block={block} onChange={onChange} />}
+          {['word_hide_reveal', 'word_hide_drag', 'word_hide_type'].includes(block.taskType) && <WordHideEditor block={block} onChange={onChange} />}
+          {['word_hide_reveal', 'word_hide_drag', 'word_hide_type'].includes(block.taskType) && (
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field label="Extra Random Words">
+                <TextInput value={block.hideCount ?? 3} onChange={(value) => apply(onChange, block, 'hideCount', Number(value) || 0)} />
+              </Field>
+              <Field label="Min Word Length">
+                <TextInput value={block.hideMinLength ?? 3} onChange={(value) => apply(onChange, block, 'hideMinLength', Number(value) || 1)} />
+              </Field>
+              <Field label="Hide Mode">
+                <select value={block.hideMode || 'reveal'} onChange={(event) => apply(onChange, block, 'hideMode', event.target.value)} className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
+                  <option value="reveal">Click to reveal</option>
+                  <option value="drag">Drag from word bank</option>
+                  <option value="type">Type the word</option>
+                </select>
+              </Field>
+            </div>
+          )}
           {['image_labeling', 'audio_transcription', 'video_questions', 'map_geography_label', 'hotspot_selection', 'image_compare_spot', 'pronunciation_shadowing', 'youtube'].includes(block.taskType) && mediaInput('media', 'Media URL', 'Direct link to image, audio, or video')}
           {['image_labeling', 'map_geography_label', 'image_compare_spot'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label="Clickable targets" field="items" />}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && <Field label="Table editor"><TableGridEditor block={block} onChange={onChange} revealMode={block.taskType === 'table_reveal'} /></Field>}

@@ -66,6 +66,13 @@ export const SLIDE_SCHEMAS = {
   flashcard_slide: { ...SLIDE_BASE, cards: { ...C(), required: true } },
   scenario: { ...SLIDE_BASE, dialogue: { ...S(), required: true }, revealMode: { ...B(), required: false } },
   map_diagram: { ...SLIDE_BASE, media: { ...S(), required: false } },
+  embed: {
+    ...SLIDE_BASE,
+    media: { ...S(), required: true },
+    embedCode: { ...S(), required: false },
+    height: { ...S('480'), required: false },
+    allowFullscreen: { ...B(true), required: false },
+  },
 };
 
 // ────────────────────────────────────────────────
@@ -406,6 +413,37 @@ export const TASK_SCHEMAS = {
     ...TASK_BASE,
     text: { ...S(), required: true },
     targets: { ...L(), required: false },
+  },
+  web_embed: {
+    ...TASK_BASE,
+    media: { ...S(), required: true },
+    embedCode: { ...S(), required: false },
+    height: { ...S('480'), required: false },
+    allowFullscreen: { ...B(true), required: false },
+  },
+  word_hide_reveal: {
+    ...TASK_BASE,
+    text: { ...S(), required: true },
+    focusWords: { ...L(), required: false },
+    hideMode: { ...S('reveal'), required: false },
+    hideCount: { ...N(3), required: false },
+    hideMinLength: { ...N(3), required: false },
+  },
+  word_hide_drag: {
+    ...TASK_BASE,
+    text: { ...S(), required: true },
+    focusWords: { ...L(), required: false },
+    hideMode: { ...S('drag'), required: false },
+    hideCount: { ...N(3), required: false },
+    hideMinLength: { ...N(3), required: false },
+  },
+  word_hide_type: {
+    ...TASK_BASE,
+    text: { ...S(), required: true },
+    focusWords: { ...L(), required: false },
+    hideMode: { ...S('type'), required: false },
+    hideCount: { ...N(3), required: false },
+    hideMinLength: { ...N(3), required: false },
   },
 };
 

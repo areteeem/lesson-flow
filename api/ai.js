@@ -17,7 +17,10 @@ export default async function handler(request, response) {
 
   const apiKey = readServerToken();
   if (!apiKey) {
-    return sendJson(response, 500, { success: false, error: 'AI token is not configured on the server.' });
+    return sendJson(response, 500, {
+      success: false,
+      error: 'AI token is not configured on the server. Add AI_TOKEN to your Vercel project environment variables (Settings > Environment Variables).',
+    });
   }
 
   const message = String(request.body?.message || '').trim();
@@ -39,6 +42,23 @@ export default async function handler(request, response) {
 
     const contentType = upstream.headers.get('content-type') || 'application/json; charset=utf-8';
     const payloadText = await upstream.text();
+
+    if (!upstream.ok) {
+      const statusCode = upstream.status;
+      if (statusCode === 401 || statusCode === 403) {
+        return sendJson(response, statusCode, {
+          success: false,
+          error: 'The AI provider rejected the configured key. Verify your AI_TOKEN in Vercel environment variables (Settings > Environment Variables). The token may be expired or invalid.',
+        });
+      }
+      if (statusCode === 429) {
+        return sendJson(response, 429, {
+          success: false,
+          error: 'The AI provider rate-limited this key. Wait a minute and try again.',
+        });
+      }
+    }
+
     response.status(upstream.status);
     response.setHeader('Content-Type', contentType);
     response.send(payloadText);

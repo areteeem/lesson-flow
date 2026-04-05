@@ -157,26 +157,50 @@ function TypeSelector({ title, entries, selected, onToggle, helper }) {
 }
 
 function TemplatePreview({ selectedTaskTypes, selectedSlideTypes }) {
-  const firstTaskType = selectedTaskTypes[0] || 'multiple_choice';
-  const firstSlideType = selectedSlideTypes[0] || 'slide';
-  const taskTemplate = getTaskTemplate(firstTaskType);
-  const slideTemplate = getSlideTemplate(firstSlideType);
+  const taskTemplates = selectedTaskTypes
+    .map((type) => ({ type, template: getTaskTemplate(type) }))
+    .filter((entry) => entry.template);
+  const slideTemplates = selectedSlideTypes
+    .map((type) => ({ type, template: getSlideTemplate(type) }))
+    .filter((entry) => entry.template);
+
+  const [expandedSection, setExpandedSection] = useState('tasks');
 
   return (
     <div className="border border-zinc-200 bg-zinc-50 p-3">
       <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
         <TemplateIcon />
-        Template guidance
+        DSL template examples ({taskTemplates.length + slideTemplates.length} types)
       </div>
-      <div className="mt-3 space-y-3">
-        <div>
-          <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-zinc-400">Task example</div>
-          <pre className="max-h-40 overflow-auto border border-zinc-200 bg-white p-3 text-[11px] text-zinc-700">{taskTemplate || 'Select a task type to preview its DSL template.'}</pre>
-        </div>
-        <div>
-          <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-zinc-400">Slide example</div>
-          <pre className="max-h-32 overflow-auto border border-zinc-200 bg-white p-3 text-[11px] text-zinc-700">{slideTemplate || 'Select a slide type to preview its DSL template.'}</pre>
-        </div>
+
+      <div className="mt-3 flex gap-2">
+        <button type="button" onClick={() => setExpandedSection('tasks')} className={`border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] transition ${expandedSection === 'tasks' ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-zinc-200 text-zinc-500 hover:border-zinc-400'}`}>
+          Tasks ({taskTemplates.length})
+        </button>
+        <button type="button" onClick={() => setExpandedSection('slides')} className={`border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] transition ${expandedSection === 'slides' ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-zinc-200 text-zinc-500 hover:border-zinc-400'}`}>
+          Slides ({slideTemplates.length})
+        </button>
+      </div>
+
+      <div className="mt-3 max-h-80 space-y-3 overflow-auto pr-1">
+        {expandedSection === 'tasks' && taskTemplates.length === 0 && (
+          <div className="text-xs text-zinc-400">Select task types to preview their DSL templates.</div>
+        )}
+        {expandedSection === 'tasks' && taskTemplates.map((entry) => (
+          <div key={entry.type}>
+            <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">{entry.type.replace(/_/g, ' ')}</div>
+            <pre className="max-h-36 overflow-auto border border-zinc-200 bg-white p-2.5 text-[11px] leading-relaxed text-zinc-700">{entry.template.trim()}</pre>
+          </div>
+        ))}
+        {expandedSection === 'slides' && slideTemplates.length === 0 && (
+          <div className="text-xs text-zinc-400">Select slide types to preview their DSL templates.</div>
+        )}
+        {expandedSection === 'slides' && slideTemplates.map((entry) => (
+          <div key={entry.type}>
+            <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">{entry.type.replace(/_/g, ' ')}</div>
+            <pre className="max-h-36 overflow-auto border border-zinc-200 bg-white p-2.5 text-[11px] leading-relaxed text-zinc-700">{entry.template.trim()}</pre>
+          </div>
+        ))}
       </div>
     </div>
   );

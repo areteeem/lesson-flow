@@ -303,6 +303,10 @@ export function TaskIconReadingHighlight(p) {
   return <Icon {...p}><path d="M3 4h12M3 7h12M3 10h12M3 13h8" /><rect x="6" y="6" width="6" height="2" fill="currentColor" opacity="0.2" /></Icon>;
 }
 
+export function TaskIconWordHide(p) {
+  return <Icon {...p}><path d="M3 4h12M3 7h12M3 10h12M3 13h8" /><rect x="4" y="6" width="4" height="2" fill="currentColor" opacity="0.35" /><rect x="10" y="9" width="3" height="2" fill="currentColor" opacity="0.35" /><path d="M9 2l-1 2 1 2" strokeDasharray="1 1" /></Icon>;
+}
+
 export function TaskIconRandomWheel(p) {
   return <Icon {...p}><rect x="3" y="3" width="12" height="12" /><path d="M9 3v12M3 9h12M3 3l12 12M15 3L3 15" /></Icon>;
 }
@@ -451,6 +455,9 @@ const TASK_TYPE_ICON_MAP = {
   peer_review_checklist: TaskIconChecklist,
   puzzle_jigsaw: TaskIconPuzzle,
   youtube: TaskIconYouTube,
+  word_hide_reveal: TaskIconWordHide,
+  word_hide_drag: TaskIconWordHide,
+  word_hide_type: TaskIconWordHide,
 };
 
 export function TaskTypeIcon({ taskType, ...props }) {

@@ -62,6 +62,10 @@ export const TASK_REGISTRY = [
   defineTask('word_cloud', 'Word Cloud', 'collection', 'Vocabulary', ['word cloud', 'brainstorm', 'vocabulary'], 'Students contribute words to build a live word cloud.'),
   defineTask('highlight_glossary', 'Highlight Glossary', 'text', 'Reading', ['highlight', 'glossary', 'translation', 'vocabulary'], 'Highlight words in a passage to build a live list with optional translations.'),
   defineTask('text_linking', 'Text Linking', 'text', 'Reading', ['annotation', 'glossary', 'linking', 'highlight', 'vocabulary'], 'Select words in a passage to build a linked glossary with notes.'),
+  defineTask('web_embed', 'Web Embed', 'media', 'Media', ['embed', 'iframe', 'website', 'link', 'html'], 'Embed an external website, form, or interactive widget with optional questions.'),
+  defineTask('word_hide_reveal', 'Word Hide — Reveal', 'text', 'Reading', ['word hide', 'reveal', 'click', 'reading', 'cloze'], 'Hide words in a passage — students click to reveal them.'),
+  defineTask('word_hide_drag', 'Word Hide — Drag', 'text', 'Reading', ['word hide', 'drag', 'bank', 'cloze', 'gap fill'], 'Hide words in a passage — students drag them from a word bank.'),
+  defineTask('word_hide_type', 'Word Hide — Type', 'text', 'Input', ['word hide', 'type', 'cloze', 'gap fill', 'typing'], 'Hide words in a passage — students type the missing words.'),
 ];
 
 export const TASK_TYPE_MAP = Object.fromEntries(TASK_REGISTRY.map((entry) => [entry.type, entry]));

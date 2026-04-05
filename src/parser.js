@@ -87,6 +87,7 @@ const LIST_KEYS = new Set([
   'examples', 'notes', 'columns', 'rows', 'blanks', 'targets', 'cards',
   'contains', 'blocks', 'prompts', 'answers', 'questions', 'steps', 'keywords',
   'taskrefs', 'media', 'images', 'videos', 'audios', 'leftitems', 'rightitems', 'hiddenrows', 'hiddencells',
+  'focuswords',
 ]);
 
 const MULTILINE_KEYS = new Set([
@@ -111,6 +112,8 @@ const KNOWN_KEYS = new Set([
   'liveautoadvancepolicy', 'liveautoadvancesubmissionthreshold',
   'allowretrylive', 'showcheckbuttonlive', 'lockaftersubmitlive', 'hidequestioncontentlive',
   'livepacemode', 'livegroupmodeenabled', 'livegroupcount', 'livecaptainrotationevery',
+  'embedcode', 'height', 'allowfullscreen',
+  'hidemode', 'hidecount', 'hideminlength', 'focuswords',
 ]);
 
 function detectBlock(line) {
@@ -762,7 +765,7 @@ function buildBlock(definition, rawData, index, warnings) {
     block.content = sanitizeContent(rawData.content || rawData.text || '');
   }
 
-  if (['two_column_text_task', 'image_task', 'video_task', 'carousel', 'group_task_slide', 'step_by_step', 'focus', 'flashcard_slide', 'scenario', 'map_diagram'].includes(definition.type)) {
+  if (['two_column_text_task', 'image_task', 'video_task', 'carousel', 'group_task_slide', 'step_by_step', 'focus', 'flashcard_slide', 'scenario', 'map_diagram', 'embed'].includes(definition.type)) {
     block.layout = definition.type;
     block.content = sanitizeContent(rawData.content || rawData.text || '');
     block.left = sanitizeContent(rawData.left || '');
@@ -777,6 +780,11 @@ function buildBlock(definition, rawData, index, warnings) {
     block.audio = sanitizeUrl(rawData.audio || '');
     block.cards = parseCards(toList(rawData.cards || rawData.pairs));
     block.revealMode = toBoolean(rawData.revealmode, false);
+    if (definition.type === 'embed') {
+      block.embedCode = rawData.embedcode || '';
+      block.height = rawData.height || '480';
+      block.allowFullscreen = toBoolean(rawData.allowfullscreen, true);
+    }
   }
 
   if (definition.type === 'structure') {
@@ -839,6 +847,19 @@ function buildBlock(definition, rawData, index, warnings) {
     block.revealMode = rawData.revealmode || 'manual';
     block.randomHiddenCount = toNumber(rawData.randomhiddencount, null);
     block.flexibleOrder = toBoolean(rawData.flexibleorder, false);
+
+    if (block.taskType === 'web_embed') {
+      block.embedCode = rawData.embedcode || '';
+      block.height = rawData.height || '480';
+      block.allowFullscreen = toBoolean(rawData.allowfullscreen, true);
+    }
+
+    if (['word_hide_reveal', 'word_hide_drag', 'word_hide_type'].includes(block.taskType)) {
+      block.focusWords = toList(rawData.focuswords);
+      block.hideMode = rawData.hidemode || (block.taskType === 'word_hide_drag' ? 'drag' : block.taskType === 'word_hide_type' ? 'type' : 'reveal');
+      block.hideCount = toNumber(rawData.hidecount, 3);
+      block.hideMinLength = toNumber(rawData.hideminlength, 3);
+    }
 
     if (['multiple_choice', 'multi_select', 'true_false', 'yes_no', 'either_or', 'opinion_survey'].includes(block.taskType)) {
       const originalCount = block.options.length;
@@ -1293,6 +1314,9 @@ export function generateDSL(lesson) {
     if (block.dialogue) lines.push(`Dialogue: ${block.dialogue}`);
     if (block.type !== 'task' && block.revealMode) lines.push('RevealMode: true');
     if (block.media) lines.push(`Media: ${block.media}`);
+    if (block.embedCode) lines.push(`EmbedCode: ${block.embedCode}`);
+    if (block.height && block.height !== '480') lines.push(`Height: ${block.height}`);
+    if (block.allowFullscreen === false) lines.push('AllowFullscreen: false');
     if (block.image) lines.push(`Image: ${block.image}`);
     if (block.video) lines.push(`Video: ${block.video}`);
     if (block.audio) lines.push(`Audio: ${block.audio}`);
@@ -1358,6 +1382,12 @@ export function generateDSL(lesson) {
       if (block.hiddenCells?.length) pushList(lines, 'HiddenCells', block.hiddenCells);
       if (['table_reveal', 'table_drag'].includes(block.taskType) && block.revealMode) lines.push(`RevealMode: ${block.revealMode}`);
       if (['table_reveal', 'table_drag'].includes(block.taskType) && block.randomHiddenCount) lines.push(`RandomHiddenCount: ${block.randomHiddenCount}`);
+      if (['word_hide_reveal', 'word_hide_drag', 'word_hide_type'].includes(block.taskType)) {
+        pushList(lines, 'FocusWords', block.focusWords);
+        if (block.hideMode) lines.push(`HideMode: ${block.hideMode}`);
+        if (block.hideCount != null) lines.push(`HideCount: ${block.hideCount}`);
+        if (block.hideMinLength != null) lines.push(`HideMinLength: ${block.hideMinLength}`);
+      }
       if (block.explanation) lines.push(`Explanation: ${block.explanation}`);
       // Skip Pairs output for categorize tasks — pairs are embedded in Items with => syntax
       if (!['categorize', 'categorize_grammar'].includes(block.taskType)) {

@@ -1,3 +1,4 @@
+import EmbedSlide from './EmbedSlide';
 import GroupBlock from './GroupBlock';
 import GenericSlide from './GenericSlide';
 import RichSlide from './RichSlide';
@@ -27,6 +28,7 @@ function renderStandalone(block, results, onCompleteBlock, onProgressBlock, task
   if (block.type === 'rich') return <RichSlide block={block} />;
   if (block.type === 'structure') return <StructureSlide block={block} />;
   if (block.type === 'table') return <TableSlide block={block} />;
+  if (block.type === 'embed') return <EmbedSlide block={block} />;
   if (!['slide', 'rich', 'structure', 'table', 'group', 'split_group', 'task'].includes(block.type)) return <GenericSlide block={block} />;
   if (block.type === 'group' || block.type === 'split_group') return <GroupBlock block={block} results={results} onCompleteChild={onCompleteBlock} />;
   if (block.type === 'task') {

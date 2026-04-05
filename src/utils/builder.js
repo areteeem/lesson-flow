@@ -381,6 +381,30 @@ const TASK_PRESETS = {
     targets: ['0'],
     hint: 'The first message is pinned. Drag the rest into order.',
   },
+  word_hide_reveal: {
+    question: 'Read the text and reveal the hidden words.',
+    text: 'The quick brown fox jumps over the lazy dog near the river.',
+    focusWords: ['quick', 'jumps', 'lazy'],
+    hideMode: 'reveal',
+    hideCount: 2,
+    hideMinLength: 3,
+  },
+  word_hide_drag: {
+    question: 'Drag the missing words back into the text.',
+    text: 'The quick brown fox jumps over the lazy dog near the river.',
+    focusWords: ['quick', 'jumps', 'lazy'],
+    hideMode: 'drag',
+    hideCount: 2,
+    hideMinLength: 3,
+  },
+  word_hide_type: {
+    question: 'Type the missing words to complete the text.',
+    text: 'The quick brown fox jumps over the lazy dog near the river.',
+    focusWords: ['quick', 'jumps', 'lazy'],
+    hideMode: 'type',
+    hideCount: 2,
+    hideMinLength: 3,
+  },
 };
 
 export function createDefaultBlock(type, { blank = false } = {}) {

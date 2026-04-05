@@ -27,6 +27,8 @@ import DialogueDragTask from './tasks/DialogueDragTask';
 import DialogueReconstructTask from './tasks/DialogueReconstructTask';
 import HighlightGlossaryTask from './tasks/HighlightGlossaryTask';
 import TextLinkingTask from './tasks/TextLinkingTask';
+import WebEmbedTask from './tasks/WebEmbedTask';
+import WordHideTask from './tasks/WordHideTask';
 
 const MAP = {
   multiple_choice: ChoiceTask,
@@ -94,6 +96,10 @@ const MAP = {
   youtube: YouTubeTask,
   highlight_glossary: HighlightGlossaryTask,
   text_linking: TextLinkingTask,
+  web_embed: WebEmbedTask,
+  word_hide_reveal: WordHideTask,
+  word_hide_drag: WordHideTask,
+  word_hide_type: WordHideTask,
 };
 
 export default function TaskRenderer({ block, onComplete, onProgress, existingResult, allowRetry = true, showCheckButton = true, lockAfterSubmit = false, forceLocked = false, lockMessage = 'Responses are closed for this task.' }) {
