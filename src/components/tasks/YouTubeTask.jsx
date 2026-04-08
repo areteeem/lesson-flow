@@ -36,11 +36,12 @@ export default function YouTubeTask({ block, onComplete }) {
   const questions = useMemo(() => {
     if (block.items?.length) {
       return block.items.map((item, i) => {
-        if (item.includes('=>')) {
-          const [ts, q] = item.split('=>').map((s) => s.trim());
+        const text = typeof item === 'string' ? item : String(item || '');
+        if (text.includes('=>')) {
+          const [ts, q] = text.split('=>').map((s) => s.trim());
           return { id: i, timestamp: parseTimestamp(ts), question: q };
         }
-        return { id: i, timestamp: 0, question: item };
+        return { id: i, timestamp: 0, question: text };
       }).sort((a, b) => a.timestamp - b.timestamp);
     }
     return [];

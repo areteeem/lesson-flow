@@ -1,16 +1,58 @@
 import { useState } from 'react';
+import ErrorBoundary from './ErrorBoundary';
+import EmbedSlide from './EmbedSlide';
+import GenericSlide from './GenericSlide';
+import RichSlide from './RichSlide';
+import Slide from './Slide';
+import StructureSlide from './StructureSlide';
+import TableSlide from './TableSlide';
 import TaskRenderer from './TaskRenderer';
 import SplitView from './SplitView';
 import { getTaskDefinition } from '../config/taskRegistry';
 
-function renderChild(child, results, onCompleteChild) {
-  if (!child) return null;
-  if (child.type === 'group' || child.type === 'split_group')
-    return <GroupBlock block={child} results={results} onCompleteChild={onCompleteChild} />;
-  return <TaskRenderer block={child} onComplete={(result) => onCompleteChild?.(child.id, result)} existingResult={results?.[child.id]} />;
+const SLIDE_TYPES = new Set(['slide', 'rich', 'structure', 'table', 'embed']);
+
+function renderSlideChild(child) {
+  if (child.type === 'slide') return <Slide block={child} />;
+  if (child.type === 'rich') return <RichSlide block={child} />;
+  if (child.type === 'structure') return <StructureSlide block={child} />;
+  if (child.type === 'table') return <TableSlide block={child} />;
+  if (child.type === 'embed') return <EmbedSlide block={child} />;
+  return <GenericSlide block={child} />;
 }
 
-export default function GroupBlock({ block, results, onCompleteChild }) {
+function renderChild(child, results, onCompleteChild, onProgressChild, taskOptions) {
+  if (!child) return null;
+  if (child.type === 'group' || child.type === 'split_group')
+    return (
+      <ErrorBoundary message={`Failed to render nested group: ${child.title || child.ref || 'unknown'}`}>
+        <GroupBlock block={child} results={results} onCompleteChild={onCompleteChild} onProgressChild={onProgressChild} taskOptions={taskOptions} />
+      </ErrorBoundary>
+    );
+  if (SLIDE_TYPES.has(child.type))
+    return (
+      <ErrorBoundary message={`Failed to render slide inside group: ${child.type}`}>
+        {renderSlideChild(child)}
+      </ErrorBoundary>
+    );
+  return (
+    <ErrorBoundary message={`Failed to render task: ${child.taskType || child.type}`}>
+      <TaskRenderer
+        block={child}
+        onComplete={(result) => onCompleteChild?.(child.id, result)}
+        onProgress={(result) => onProgressChild?.(child.id, result)}
+        existingResult={results?.[child.id]}
+        allowRetry={taskOptions?.allowRetry !== false}
+        showCheckButton={taskOptions?.showCheckButton !== false}
+        lockAfterSubmit={taskOptions?.lockAfterSubmit === true}
+        forceLocked={taskOptions?.forceLocked === true}
+        lockMessage={taskOptions?.lockMessage || 'Responses are closed for this task.'}
+      />
+    </ErrorBoundary>
+  );
+}
+
+export default function GroupBlock({ block, results, onCompleteChild, onProgressChild, taskOptions }) {
   const children = block.children || [];
   const [activeIndex, setActiveIndex] = useState(0);
   const activeChild = children[activeIndex] || null;
@@ -50,8 +92,8 @@ export default function GroupBlock({ block, results, onCompleteChild }) {
           )}
         </div>
         <SplitView
-          left={<div className="p-2">{renderChild(children[0], results, onCompleteChild)}</div>}
-          right={<div className="p-2">{renderChild(children[rightIndex], results, onCompleteChild)}</div>}
+          left={<div className="p-2">{renderChild(children[0], results, onCompleteChild, onProgressChild, taskOptions)}</div>}
+          right={<div className="p-2">{renderChild(children[rightIndex], results, onCompleteChild, onProgressChild, taskOptions)}</div>}
         />
       </div>
     );
@@ -116,7 +158,7 @@ export default function GroupBlock({ block, results, onCompleteChild }) {
                 <span>Task {activeIndex + 1}</span>
                 {results?.[activeChild.id] && <span>{results[activeChild.id].correct === true ? 'Correct' : results[activeChild.id].correct === false ? 'Review' : 'Saved'}</span>}
               </div>
-              {renderChild(activeChild, results, onCompleteChild)}
+              {renderChild(activeChild, results, onCompleteChild, onProgressChild, taskOptions)}
             </div>
           )}
         </div>

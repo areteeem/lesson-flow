@@ -43,11 +43,12 @@ export default function WordCloudTask({ block, onComplete, onProgress }) {
   const seedWords = useMemo(() => {
     if (!block.items?.length) return [];
     return block.items.map((item) => {
-      if (item.includes(':')) {
-        const [text, count] = item.split(':').map((s) => s.trim());
-        return { text, count: Number(count) || 1 };
+      const text = typeof item === 'string' ? item : String(item || '');
+      if (text.includes(':')) {
+        const [word, count] = text.split(':').map((s) => s.trim());
+        return { text: word, count: Number(count) || 1 };
       }
-      return { text: item, count: 1 };
+      return { text, count: 1 };
     });
   }, [block.items]);
 

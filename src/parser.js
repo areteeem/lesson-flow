@@ -30,7 +30,10 @@ function setCachedParse(dsl, result) {
 
 /** Sanitize a URL field — reject javascript: and data: URIs */
 function sanitizeUrl(url) {
-  if (!url || typeof url !== 'string') return '';
+  if (!url) return '';
+  // Handle arrays (e.g. if a list key produced an array instead of string)
+  if (Array.isArray(url)) url = url[0] || '';
+  if (typeof url !== 'string') return '';
   const trimmed = url.trim();
   if (/^\s*(javascript|data|vbscript)\s*:/i.test(trimmed)) return '';
   return trimmed;
@@ -51,6 +54,8 @@ const BLOCK_PATTERNS = [
   // Catch-all: any unrecognised #SLIDE: or #TASK: line is still treated as a block boundary
   { regex: /^#SLIDE:\s*.+$/i, type: 'slide', fallback: true },
   { regex: /^#TASK:\s*.+$/i, type: 'task', taskType: 'multiple_choice', fallback: true },
+  // Bare #TASK without type — treat as generic task (type will come from TaskType field if present)
+  { regex: /^#TASK$/i, type: 'task', taskType: 'multiple_choice', fallback: true },
 ];
 
 /**
@@ -79,6 +84,34 @@ function preprocessDsl(raw) {
   text = text.replace(/^#\s+(TASK|SLIDE|LESSON|GROUP|SPLIT_GROUP|LINK)\b/gim, '#$1');
   // Fix numbered block markers like "1. #TASK: MULTIPLE_CHOICE" or "- #SLIDE"
   text = text.replace(/^(?:\d+[.)]\s*|[-*+]\s+)(#(?:TASK|SLIDE|LESSON|GROUP|SPLIT_GROUP|LINK)\b)/gim, '$1');
+  // Fix double-hash (markdown heading style): "## TASK:" or "##TASK:" → "#TASK:"
+  text = text.replace(/^#{2,}\s*(TASK|SLIDE|LESSON|GROUP|SPLIT_GROUP|LINK)\b/gim, '#$1');
+  // Fix missing space after colon in block markers: "#TASK:MULTIPLE_CHOICE" → "#TASK: MULTIPLE_CHOICE"
+  text = text.replace(/^(#(?:TASK|SLIDE)):([^\s])/gim, '$1: $2');
+  // Fix task type names with spaces: "MULTIPLE CHOICE" → "MULTIPLE_CHOICE", "TRUE FALSE" → "TRUE_FALSE" etc.
+  text = text.replace(/^(#TASK:\s*)(\w+)\s+(\w+)$/gim, (match, prefix, word1, word2) => {
+    // Only join with underscore if both words together form a known-looking task type
+    const candidate = `${word1}_${word2}`.toUpperCase();
+    // Common multi-word task types
+    const knownPairs = ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'YES_NO', 'EITHER_OR', 'DRAG_DROP',
+      'DRAG_TO_BLANK', 'TYPE_IN_BLANK', 'FILL_TYPING', 'RANDOM_WHEEL', 'WORD_CLOUD',
+      'OPEN_ANSWER', 'ERROR_CORRECTION', 'SENTENCE_BUILDER', 'STORY_RECONSTRUCTION',
+      'TIMELINE_ORDER', 'TABLE_DRAG', 'TABLE_REVEAL', 'OPINION_SURVEY', 'MULTI_SELECT',
+      'READING_HIGHLIGHT', 'EMOJI_SYMBOL_MATCH', 'MATCHING_PAIRS_CATEGORIES',
+      'CATEGORIZE_GRAMMAR', 'HIGHLIGHT_DIFFERENCES', 'HIGHLIGHT_GLOSSARY',
+      'DIALOGUE_FILL', 'DIALOGUE_COMPLETION', 'DIALOGUE_DRAG', 'DIALOGUE_RECONSTRUCT',
+      'WEB_EMBED', 'WORD_HIDE_REVEAL', 'WORD_HIDE_DRAG', 'WORD_HIDE_TYPE',
+      'SPLIT_GROUP', 'TEXT_TASK'];
+    if (knownPairs.includes(candidate)) return `${prefix}${candidate}`;
+    return match;
+  });
+  // Fix hyphens in task type names: "#TASK: MULTIPLE-CHOICE" → "#TASK: MULTIPLE_CHOICE"
+  text = text.replace(/^(#TASK:\s*)(.+)$/gim, (match, prefix, typeName) => {
+    if (typeName.includes('-')) {
+      return `${prefix}${typeName.replace(/-/g, '_')}`;
+    }
+    return match;
+  });
   return text;
 }
 
@@ -86,7 +119,7 @@ const LIST_KEYS = new Set([
   'options', 'items', 'pairs', 'categories', 'words', 'sentences', 'correct',
   'examples', 'notes', 'columns', 'rows', 'blanks', 'targets', 'cards',
   'contains', 'blocks', 'prompts', 'answers', 'questions', 'steps', 'keywords',
-  'taskrefs', 'media', 'images', 'videos', 'audios', 'leftitems', 'rightitems', 'hiddenrows', 'hiddencells',
+  'taskrefs', 'images', 'videos', 'audios', 'leftitems', 'rightitems', 'hiddenrows', 'hiddencells',
   'focuswords',
 ]);
 
@@ -114,6 +147,30 @@ const KNOWN_KEYS = new Set([
   'livepacemode', 'livegroupmodeenabled', 'livegroupcount', 'livecaptainrotationevery',
   'embedcode', 'height', 'allowfullscreen',
   'hidemode', 'hidecount', 'hideminlength', 'focuswords',
+]);
+
+// Common key misspellings / alternative names → canonical key
+const KEY_ALIASES = new Map([
+  ['queston', 'question'], ['qestion', 'question'], ['questoin', 'question'],
+  ['anwser', 'answer'], ['anser', 'answer'], ['awnser', 'answer'],
+  ['asnwer', 'answer'], ['corect', 'correct'], ['corrrect', 'correct'],
+  ['instuction', 'instruction'], ['instrution', 'instruction'], ['intruction', 'instruction'],
+  ['instrucción', 'instruction'],
+  ['optinos', 'options'], ['opitions', 'options'], ['opitons', 'options'],
+  ['itmes', 'items'], ['ietms', 'items'],
+  ['catgories', 'categories'], ['categoies', 'categories'], ['categoris', 'categories'],
+  ['explanantion', 'explanation'], ['explantion', 'explanation'], ['explaination', 'explanation'],
+  ['tittle', 'title'], ['titel', 'title'],
+  ['sentance', 'sentence'], ['sentense', 'sentence'],
+  ['refrence', 'ref'], ['reference', 'ref'],
+  ['blankes', 'blanks'], ['targest', 'targets'], ['taragets', 'targets'],
+  ['keywods', 'keywords'], ['keywoards', 'keywords'],
+  ['dialoge', 'dialogue'], ['dialog', 'dialogue'],
+  ['contentt', 'content'], ['conent', 'content'],
+  ['placholder', 'placeholder'], ['placehloder', 'placeholder'],
+  ['shuflfe', 'shuffle'], ['shuffel', 'shuffle'],
+  ['colums', 'columns'], ['columms', 'columns'],
+  ['hnt', 'hint'], ['hinte', 'hint'],
 ]);
 
 function detectBlock(line) {
@@ -492,6 +549,10 @@ function validateBlock(block, warnings) {
   if (block.media && /\[.*?\]\(.*?\)/.test(block.media)) {
     warnings.push(`"${label}" Media field contains a markdown link instead of a raw URL.`);
   }
+  // --- Group validation ---
+  if ((block.type === 'group' || block.type === 'split_group') && block.itemRefs && block.itemRefs.length === 0 && (!block.children || block.children.length === 0)) {
+    warnings.push(`Group "${label}" has no child items listed.`);
+  }
 }
 
 function parseBlockLines(lines) {
@@ -519,8 +580,13 @@ function parseBlockLines(lines) {
     const keyValue = line.match(/^([A-Za-z][A-Za-z0-9_ ]*)\s*:\s*(.*)$/);
 
     if (keyValue) {
-      const key = keyValue[1].trim().toLowerCase().replace(/\s+/g, '');
+      let key = keyValue[1].trim().toLowerCase().replace(/\s+/g, '');
       const value = keyValue[2].trim();
+
+      // Auto-correct common key misspellings
+      if (!KNOWN_KEYS.has(key) && KEY_ALIASES.has(key)) {
+        key = KEY_ALIASES.get(key);
+      }
 
       // When accumulating multiline or list content, only break on recognised DSL
       // keys.  This prevents dialogue speaker lines like "A: Hello" or "Teacher:
@@ -718,6 +784,24 @@ function autoRepairTask(block, warnings) {
     warnings.push(`Auto-fixed "${label}": moved options to items for random_wheel.`);
   }
 
+  // --- ORDER tasks: strip leading numbering that AI sometimes adds ---
+  if (['order', 'timeline_order', 'sentence_builder', 'story_reconstruction'].includes(block.taskType) && block.items.length > 0) {
+    const numberedCount = block.items.filter((item) => /^\d+[.)]\s/.test(item)).length;
+    if (numberedCount === block.items.length) {
+      block.items = block.items.map((item) => item.replace(/^\d+[.)]\s*/, '').trim());
+      warnings.push(`Auto-fixed "${label}": stripped leading numbering from order items.`);
+    }
+  }
+
+  // --- MATCH: swap pairs if only right→left are populated ---
+  if (['drag_drop', 'match', 'emoji_symbol_match'].includes(block.taskType) && block.pairs.length > 0) {
+    const allEmptyLeft = block.pairs.every((p) => !p.left && p.right);
+    if (allEmptyLeft) {
+      // Pairs only have right values — likely items were put in pairs wrongly
+      warnings.push(`Auto-fixed "${label}": pairs had empty left sides — this may indicate formatting issues.`);
+    }
+  }
+
   // --- CARDS: ensure cards exist from pairs/items ---
   if (block.taskType === 'cards') {
     if (block.cards.length === 0 && block.pairs.length > 0) {
@@ -813,7 +897,9 @@ function buildBlock(definition, rawData, index, warnings) {
   }
 
   if (definition.type === 'task') {
-    block.taskType = definition.taskType;
+    // Allow TaskType field to override the definition (useful for bare #TASK blocks)
+    const resolvedTaskType = (rawData.tasktype || rawData.type || '').toLowerCase().replace(/[\s-]/g, '_');
+    block.taskType = resolvedTaskType || definition.taskType;
     block.question = rawData.question || rawData.statement || rawData.prompt || rawData.instruction || '';
     block.text = sanitizeContent(rawData.text || rawData.content || rawData.sentence || '');
     block.placeholder = rawData.placeholder || '';
@@ -1008,17 +1094,28 @@ function attachLinks(blocks, linkBlocks) {
   });
 }
 
-function normalizeGroups(blocks) {
+function normalizeGroups(blocks, warnings = []) {
   const explicitGroups = blocks.filter((block) => block.type === 'group' || block.type === 'split_group');
   const nonGroups = blocks.filter((block) => block.type !== 'group' && block.type !== 'split_group');
   const map = new Map(blocks.map((block) => [block.ref, block]));
   const consumed = new Set();
 
   explicitGroups.forEach((group) => {
-    group.children = group.itemRefs
-      .map((ref) => map.get(slugify(ref)) || map.get(ref))
-      .filter((child) => child && child.id !== group.id);
+    const resolved = [];
+    const unresolved = [];
+    for (const ref of group.itemRefs) {
+      const child = map.get(slugify(ref)) || map.get(ref);
+      if (child && child.id !== group.id) {
+        resolved.push(child);
+      } else {
+        unresolved.push(ref);
+      }
+    }
+    group.children = resolved;
     group.children.forEach((child) => consumed.add(child.id));
+    if (unresolved.length > 0) {
+      warnings.push(`Group "${group.title || group.ref}" has unresolved child refs: ${unresolved.join(', ')}.`);
+    }
   });
 
   const syntheticGroups = [];
@@ -1211,7 +1308,7 @@ export function parseLesson(dsl, existingBlocks) {
   const linkBlocks = sections.filter((block) => block.type === 'link');
   const primaryBlocks = sections.filter((block) => block.type !== 'link');
   attachLinks(primaryBlocks, linkBlocks);
-  const blocks = normalizeGroups(primaryBlocks);
+  const blocks = normalizeGroups(primaryBlocks, warnings);
 
   // Restore stable IDs from previous parse to prevent selection/focus loss on round-trip
   if (existingBlocks) {
@@ -1347,6 +1444,7 @@ export function generateDSL(lesson) {
     }
 
     if (block.type === 'group' || block.type === 'split_group') {
+      if (block.layout && block.layout !== 'stack' && block.type === 'group') lines.push(`Layout: ${block.layout}`);
       pushList(lines, 'Items', (block.children || []).map((child) => child.ref));
     }
 

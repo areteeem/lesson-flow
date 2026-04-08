@@ -419,6 +419,23 @@ Height: 480
 Content:
 Explore the embedded resource above.
 AllowFullscreen: true`,
+
+  group: `
+#GROUP
+Title: Practice Set
+Instruction: Complete all tasks in this group.
+Layout: tabs
+Items:
+task-ref-1
+task-ref-2`,
+
+  split_group: `
+#SPLIT_GROUP
+Title: Side by Side
+Instruction: Two tasks displayed together.
+Items:
+task-ref-1
+task-ref-2`,
 };
 
 // ────────────────────────────────────────────────
@@ -456,9 +473,25 @@ export function buildGenerationPrompt(config = {}) {
   parts.push('\n## Available task types');
   parts.push(TASK_REGISTRY.map((t) => `- ${t.type.toUpperCase()}: ${t.description}`).join('\n'));
 
+  // Core examples always included so the AI has concrete formatting reference
+  const CORE_TASK_EXAMPLES = ['multiple_choice', 'fill_typing', 'match', 'order', 'reading_highlight', 'categorize'];
+  const coreTypes = new Set(CORE_TASK_EXAMPLES);
+
   if (config.taskTypes?.length) {
     parts.push('\n## Requested task templates');
     for (const type of config.taskTypes) {
+      const tmpl = TASK_TEMPLATES[type];
+      if (tmpl) {
+        parts.push(`\n### ${type.toUpperCase()}\n\`\`\`${tmpl}\n\`\`\``);
+        coreTypes.delete(type);
+      }
+    }
+  }
+
+  // Always include core reference examples the AI hasn't seen yet
+  if (coreTypes.size > 0) {
+    parts.push('\n## Core DSL format reference examples');
+    for (const type of coreTypes) {
       const tmpl = TASK_TEMPLATES[type];
       if (tmpl) parts.push(`\n### ${type.toUpperCase()}\n\`\`\`${tmpl}\n\`\`\``);
     }
@@ -471,6 +504,11 @@ export function buildGenerationPrompt(config = {}) {
       if (tmpl) parts.push(`\n### ${type.toUpperCase()}\n\`\`\`${tmpl}\n\`\`\``);
     }
   }
+
+  // Always include group/container templates
+  parts.push('\n## Container templates');
+  parts.push(`\n### GROUP\n\`\`\`${SLIDE_TEMPLATES.group}\n\`\`\``);
+  parts.push(`\n### SPLIT_GROUP\n\`\`\`${SLIDE_TEMPLATES.split_group}\n\`\`\``);
 
   if (config.topic) parts.push(`\n## Lesson topic: ${config.topic}`);
   if (config.grammar) parts.push(`## Grammar focus: ${config.grammar}`);

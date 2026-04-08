@@ -1407,7 +1407,29 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
       {block.type === 'task' ? taskPrompt('question', 'Question', compact ? 5 : 6, 'Supports bold, italic, lists, and line breaks') : input('title', 'Title', 'Heading of this slide')}
 
       {/* Content body */}
-      {block.type !== 'task' && richArea('content', 'Content', compact ? 8 : 10, 'Supports Markdown: headings, lists, bold, tables')}
+      {block.type !== 'task' && block.type !== 'group' && block.type !== 'split_group' && richArea('content', 'Content', compact ? 8 : 10, 'Supports Markdown: headings, lists, bold, tables')}
+
+      {/* Group / Split Group settings */}
+      {(block.type === 'group' || block.type === 'split_group') && (
+        <div className="space-y-3">
+          {input('instruction', 'Instruction', 'Optional instruction shown above the group')}
+          <Field label="Layout">
+            <select
+              value={block.layout || (block.type === 'split_group' ? 'split' : 'tabs')}
+              onChange={(event) => apply(onChange, block, 'layout', event.target.value)}
+              className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+            >
+              <option value="tabs">Tabs — numbered task cards</option>
+              <option value="split">Split — side by side</option>
+              <option value="stack">Stack — all tasks visible</option>
+            </select>
+          </Field>
+          <div className="border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
+            {(block.children || []).length} child task{(block.children || []).length === 1 ? '' : 's'} in this group. Use the group panel above to add, remove, or reorder children.
+          </div>
+        </div>
+      )}
+
       {block.type === 'task' && input('hint', 'Hint', 'Optional hint shown before answering')}
       {block.type === 'task' && input('points', 'Points', 'Scoring weight for this question (default 1)')}
       {block.type === 'task' && showExplanation && taskPrompt('explanation', 'Description', 4, 'Optional text shown after submission and supports formatting')}

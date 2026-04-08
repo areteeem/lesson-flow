@@ -1,3 +1,4 @@
+import ErrorBoundary from './ErrorBoundary';
 import GenericSlide from './GenericSlide';
 import GroupBlock from './GroupBlock';
 import RichSlide from './RichSlide';
@@ -12,8 +13,8 @@ export default function BlockPreview({ block }) {
   if (block.type === 'rich') return <RichSlide block={block} />;
   if (block.type === 'structure') return <StructureSlide block={block} />;
   if (block.type === 'table') return <TableSlide block={block} />;
-  if (block.type === 'group') return <GroupBlock block={block} results={{}} onCompleteChild={() => {}} />;
-  if (block.type === 'split_group') return <GroupBlock block={{ ...block, layout: 'split' }} results={{}} onCompleteChild={() => {}} />;
+  if (block.type === 'group') return <ErrorBoundary message="Failed to render group preview"><GroupBlock block={block} results={{}} onCompleteChild={() => {}} /></ErrorBoundary>;
+  if (block.type === 'split_group') return <ErrorBoundary message="Failed to render split group preview"><GroupBlock block={{ ...block, layout: 'split' }} results={{}} onCompleteChild={() => {}} /></ErrorBoundary>;
   if (block.type === 'task') return <TaskRenderer block={block} onComplete={() => {}} />;
   return <GenericSlide block={block} />;
 }

@@ -5,7 +5,10 @@ import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 
 function normalizeRows(block) {
   const sourceRows = block.rows?.length ? block.rows : [['Cell 1', 'Cell 2'], ['Cell 3', 'Cell 4']];
-  return sourceRows.map((row) => Array.isArray(row) ? row : row.toString().split('|').map((cell) => cell.trim()));
+  return sourceRows.map((row) => {
+    if (!row) return [];
+    return Array.isArray(row) ? row : String(row).split('|').map((cell) => cell.trim());
+  });
 }
 
 function getCellKey(rowIndex, columnIndex) {

@@ -1418,7 +1418,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const ungroupTopLevelBlock = (groupId) => {
     const sourceIndex = blocks.findIndex((block) => block.id === groupId);
     const source = blocks[sourceIndex];
-    if (sourceIndex === -1 || source?.type !== 'group') return;
+    if (sourceIndex === -1 || (source?.type !== 'group' && source?.type !== 'split_group')) return;
     const nextBlocks = [...blocks];
     nextBlocks.splice(sourceIndex, 1, ...(source.children || []));
     replaceBlocks(nextBlocks);
@@ -2027,13 +2027,22 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                         </div>
 
                         {/* Expanded editor — shown when selected */}
-                        {selectedTopLevel && block.type !== 'group' && (
+                        {selectedTopLevel && block.type !== 'group' && block.type !== 'split_group' && (
                           <div className="border-t border-zinc-200 bg-[#fcfcfb] p-2 sm:p-4">
                             <div>
                               <BlockEditorForm block={block} onChange={updateSelected} />
                             </div>
                             <div className="mt-3 border-t border-zinc-200 pt-3 sm:mt-4 sm:pt-4 lg:hidden">
                               {renderBlockPreview(block)}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Group header editor — shown when selected */}
+                        {selectedTopLevel && (block.type === 'group' || block.type === 'split_group') && (
+                          <div className="border-t border-zinc-200 bg-[#fcfcfb] p-2 sm:p-4">
+                            <div>
+                              <BlockEditorForm block={block} onChange={updateSelected} compact />
                             </div>
                           </div>
                         )}

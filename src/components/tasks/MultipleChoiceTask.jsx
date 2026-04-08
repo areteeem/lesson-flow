@@ -2,25 +2,27 @@ import { useState } from 'react';
 import { Md } from '../FormattedText';
 
 export default function MultipleChoiceTask({ block, onComplete, existingResult }) {
-  const [selected, setSelected] = useState(existingResult?.response != null ? block.options?.indexOf(existingResult.response) : null);
+  const options = block.options || [];
+  const [selected, setSelected] = useState(existingResult?.response != null ? Math.max(0, options.indexOf(existingResult.response)) : null);
   const [submitted, setSubmitted] = useState(!!existingResult?.submitted);
 
   const isCorrect = (opt) => {
+    if (!opt) return false;
     if (Array.isArray(block.answer)) {
       return block.answer.some(a => a.toLowerCase() === opt.toLowerCase());
     }
-    return block.answer?.toLowerCase() === opt.toLowerCase();
+    return block.answer?.toLowerCase() === opt?.toLowerCase();
   };
 
   const handleSubmit = () => {
-    if (selected === null) return;
-    const correct = isCorrect(block.options[selected]);
+    if (selected === null || selected < 0 || selected >= options.length) return;
+    const correct = isCorrect(options[selected]);
     setSubmitted(true);
     onComplete?.({
       submitted: true,
       correct,
       score: correct ? 1 : 0,
-      response: block.options[selected],
+      response: options[selected],
       correctAnswer: block.answer,
       feedback: correct ? 'Correct' : block.explanation || 'Review the highlighted options.',
     });
@@ -33,7 +35,7 @@ export default function MultipleChoiceTask({ block, onComplete, existingResult }
       </div>
       {block.hint && !submitted && <p className="mb-3 text-sm text-zinc-500"><Md text={block.hint} /></p>}
       <div className="space-y-3">
-        {block.options?.map((opt, idx) => {
+        {options.map((opt, idx) => {
           const active = selected === idx;
           const correct = submitted && isCorrect(opt);
           const wrong = submitted && active && !isCorrect(opt);

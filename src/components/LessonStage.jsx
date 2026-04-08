@@ -1,4 +1,5 @@
 import EmbedSlide from './EmbedSlide';
+import ErrorBoundary from './ErrorBoundary';
 import GroupBlock from './GroupBlock';
 import GenericSlide from './GenericSlide';
 import RichSlide from './RichSlide';
@@ -30,7 +31,11 @@ function renderStandalone(block, results, onCompleteBlock, onProgressBlock, task
   if (block.type === 'table') return <TableSlide block={block} />;
   if (block.type === 'embed') return <EmbedSlide block={block} />;
   if (!['slide', 'rich', 'structure', 'table', 'group', 'split_group', 'task'].includes(block.type)) return <GenericSlide block={block} />;
-  if (block.type === 'group' || block.type === 'split_group') return <GroupBlock block={block} results={results} onCompleteChild={onCompleteBlock} />;
+  if (block.type === 'group' || block.type === 'split_group') return (
+    <ErrorBoundary message={`Failed to render group: ${block.title || block.ref || 'unknown'}`}>
+      <GroupBlock block={block} results={results} onCompleteChild={onCompleteBlock} onProgressChild={onProgressBlock} taskOptions={taskOptions} />
+    </ErrorBoundary>
+  );
   if (block.type === 'task') {
     const nextBlock = taskOptions?.hideQuestionContent ? hideTaskPrompt(block) : block;
     return (
