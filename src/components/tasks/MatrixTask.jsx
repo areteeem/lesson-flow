@@ -15,7 +15,7 @@ function getCellKey(rowIndex, columnIndex) {
   return `${rowIndex}:${columnIndex}`;
 }
 
-export default function MatrixTask({ block, onComplete }) {
+export default function MatrixTask({ block, onComplete, onProgress, existingResult, showCheckButton = true }) {
   const rows = useMemo(() => normalizeRows(block), [block]);
   const columns = block.columns || [];
   const [values, setValues] = useState(rows.map((row) => row.map(() => '')));

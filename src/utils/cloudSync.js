@@ -28,7 +28,7 @@ export function readCloudSyncStatus() {
 
 export async function testCloudSyncConnection() {
   const availability = getCloudSyncAvailability();
-  const { host } = getSupabaseConfig();
+  const { host, anonKey } = getSupabaseConfig();
 
   if (!availability.available) {
     return {

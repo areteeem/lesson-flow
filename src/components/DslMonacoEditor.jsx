@@ -645,7 +645,7 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(label);
       setTimeout(() => setCopied(null), 1500);
-    });
+    }).catch(() => {});
   };
 
   const classifiedWarnings = useMemo(() => {

@@ -24,7 +24,7 @@ export default class ErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div className="flex min-h-[200px] flex-col items-center justify-center gap-4 p-6 text-center">
-          <div className="text-3xl">⚠️</div>
+          <div className="text-3xl">!</div>
           <p className="text-sm text-zinc-600">
             {this.props.message || 'Something went wrong rendering this section.'}
           </p>

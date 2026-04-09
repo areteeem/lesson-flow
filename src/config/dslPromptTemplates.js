@@ -113,6 +113,12 @@ Quality guardrails:
 - Keep lexical progression coherent: easier recognition tasks first, then production tasks.
 - Prefer concrete context and short authentic examples over abstract filler text.
 - Do not leave placeholders like <question>, <option>, <answer>, TODO, or ... in the final DSL.
+- Vary task types: avoid three or more consecutive tasks of the same type.
+- Each task must be self-contained: do not reference other tasks or slides by number.
+- Explanations should teach, not just restate the answer.
+- Hints should nudge without giving away the answer directly.
+- For gap-fill tasks, blanks should test meaningful language points, not trivial words like articles.
+- Keep slide content under 300 words for readability.
 `.trim();
 
 // ────────────────────────────────────────────────
@@ -378,6 +384,190 @@ enjoy
 HideMode: type
 HideCount: 2
 HideMinLength: 4`,
+
+  long_answer: `
+#TASK: LONG_ANSWER
+Question: <open-ended prompt requiring a paragraph response>
+Hint: <optional guidance>
+Explanation: <sample model answer>`,
+
+  highlight_mistake: `
+#TASK: HIGHLIGHT_MISTAKE
+Question: Find the mistake in the sentence.
+Text: She don't like coffee in the morning.
+Targets:
+don't
+Answer: doesn't`,
+
+  select_and_correct: `
+#TASK: SELECT_AND_CORRECT
+Question: Select the error and type the correction.
+Text: He go to school every day.
+Targets:
+go
+Answer: goes`,
+
+  highlight_differences: `
+#TASK: HIGHLIGHT_DIFFERENCES
+Question: Highlight the differences between these two sentences.
+Text: She walks to school every morning.
+CompareText: She walked to school every evening.
+Targets:
+walks
+morning`,
+
+  keyword_expand: `
+#TASK: KEYWORD_EXPAND
+Question: Expand each keyword into a full sentence.
+Items:
+school / morning / walk
+library / afternoon / study
+park / weekend / play`,
+
+  opinion_survey: `
+#TASK: OPINION_SURVEY
+Question: How do you feel about remote learning?
+Options:
+Strongly agree
+Agree
+Neutral
+Disagree
+Strongly disagree`,
+
+  choose_and_explain: `
+#TASK: CHOOSE_AND_EXPLAIN
+Question: Which option is best and why?
+Options:
+Option A
+Option B
+Option C
+Answer: Option B
+Explanation: <why this answer is best>`,
+
+  scenario_decision: `
+#TASK: SCENARIO_DECISION
+Question: You see a classmate struggling with homework. What do you do?
+Options:
+Offer to help them
+Tell the teacher
+Ignore them
+Answer: Offer to help them
+Explanation: <reasoning>`,
+
+  memory_recall: `
+#TASK: MEMORY_RECALL
+Question: List three things you remember from the text.
+Instruction: Write what you recall without looking back.`,
+
+  flash_response: `
+#TASK: FLASH_RESPONSE
+Question: What is the past tense of "go"?
+Answer: went
+Hint: Think about irregular verbs.`,
+
+  justify_order: `
+#TASK: JUSTIFY_ORDER
+Question: Put these historical events in order and explain why.
+Items:
+World War I begins
+Treaty of Versailles signed
+World War II begins`,
+
+  word_family_builder: `
+#TASK: WORD_FAMILY_BUILDER
+Question: Build the word family from the root word.
+Items:
+act
+Pairs:
+noun => action
+verb => act
+adjective => active
+adverb => actively`,
+
+  emoji_symbol_match: `
+#TASK: EMOJI_SYMBOL_MATCH
+Question: Match each symbol to its meaning.
+Pairs:
+clock => time
+books => study
+sun => morning`,
+
+  puzzle_jigsaw: `
+#TASK: PUZZLE_JIGSAW
+Question: Assemble the paragraph in the correct order.
+Items:
+First, gather your materials.
+Next, follow the instructions carefully.
+Then, check your work.
+Finally, submit your answer.`,
+
+  fill_table_matrix: `
+#TASK: FILL_TABLE_MATRIX
+Question: Complete the table with the correct verb forms.
+Columns:
+Base Form
+Past Simple
+Past Participle
+Rows:
+go | went | gone
+eat | ate | eaten
+HiddenCells:
+0:1
+0:2
+1:1
+1:2`,
+
+  text_linking: `
+#TASK: TEXT_LINKING
+Question: Select important words and add notes.
+Text:
+The Renaissance was a period of cultural rebirth in Europe.
+Targets:
+Renaissance
+cultural rebirth`,
+
+  word_cloud: `
+#TASK: WORD_CLOUD
+Question: What words come to mind when you think about climate change?
+Instruction: Type as many related words as you can.`,
+
+  conditional_branch_questions: `
+#TASK: CONDITIONAL_BRANCH_QUESTIONS
+Question: Answer based on your choice.
+Options:
+Yes
+No
+Branches:
+Yes => Why do you agree? Give an example.
+No => What would change your mind?`,
+
+  peer_review_checklist: `
+#TASK: PEER_REVIEW_CHECKLIST
+Question: Review your partner's writing using this checklist.
+Items:
+Clear topic sentence
+Supporting details included
+Correct grammar
+Proper punctuation
+Logical paragraph structure`,
+
+  image_labeling: `
+#TASK: IMAGE_LABELING
+Question: Label the parts of the diagram.
+Media: https://example.com/diagram.png
+Pairs:
+A => heart
+B => lungs
+C => liver`,
+
+  random_wheel: `
+#TASK: RANDOM_WHEEL
+Question: Spin and discuss the topic.
+Items:
+Describe your weekend
+Talk about your hobby
+Tell us about your family
+What is your favorite food?`,
 };
 
 // ────────────────────────────────────────────────

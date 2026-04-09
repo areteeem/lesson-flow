@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Md } from '../FormattedText';
 
-export default function ScaleTask({ block, onComplete, existingResult, showCheckButton = true }) {
-  const min = Number(block.min ?? 1);
-  const max = Number(block.max ?? 5);
+export default function ScaleTask({ block, onComplete, onProgress, existingResult, showCheckButton = true }) {
+  const min = Number(block.min ?? 1) || 1;
+  const max = Number(block.max ?? 5) || 5;
   const hasAnswerKey = (block.answer ?? block.correct) !== undefined && String(block.answer ?? block.correct).trim() !== '';
   const answer = Number(hasAnswerKey ? (block.answer ?? block.correct) : min);
   const steps = useMemo(() => Array.from({ length: max - min + 1 }, (_, i) => min + i), [min, max]);
@@ -44,7 +44,7 @@ export default function ScaleTask({ block, onComplete, existingResult, showCheck
               <button
                 key={step}
                 type="button"
-                onClick={() => !submitted && setValue(step)}
+                onClick={() => { if (!submitted) { setValue(step); onProgress?.({ submitted: false, response: step }); } }}
                 className={[
                   'flex-1 flex flex-col items-center justify-end transition-all duration-200',
                   !submitted && selected ? 'scale-105' : '',

@@ -646,7 +646,7 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                     <IconActionButton title="Duplicate variant" onClick={(event) => { event.stopPropagation(); onVariantChild(block.id, child.id); }}><span className="text-xs">⋇</span></IconActionButton>
                     <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, -1); }}><ChevronIcon direction="up" /></IconActionButton>
                     <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, 1); }}><ChevronIcon direction="down" /></IconActionButton>
-                    <IconActionButton title="Delete block" onClick={(event) => { event.stopPropagation(); onDeleteChild(child.id); }}><TrashIcon /></IconActionButton>
+                    <IconActionButton title="Delete block" onClick={(event) => { event.stopPropagation(); if (window.confirm('Delete this block?')) onDeleteChild(child.id); }}><TrashIcon /></IconActionButton>
                   </div>
                 </div>
               </div>
@@ -872,6 +872,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const [showUtilityPanels, setShowUtilityPanels] = useState(false);
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(true);
   const [dismissedSuggestionTexts, setDismissedSuggestionTexts] = useState([]);
+  const [blockFilter, setBlockFilter] = useState('');
 
   const [collapsedLibrarySections, setCollapsedLibrarySections] = useState(() => {
     const initial = {};
@@ -892,6 +893,17 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const selected = useMemo(() => findBlockById(blocks, selectedId) || flattenBlocks(blocks)[0] || null, [blocks, selectedId]);
   const flatBlocks = useMemo(() => flattenBlocks(blocks), [blocks]);
   const taskBlocks = useMemo(() => flatBlocks.filter((block) => block.type === 'task'), [flatBlocks]);
+
+  const blockFilterLower = blockFilter.trim().toLowerCase();
+  const blockFilterMatchIds = useMemo(() => {
+    if (!blockFilterLower) return null;
+    const ids = new Set();
+    flatBlocks.forEach((b) => {
+      const text = [b.title, b.question, b.instruction, b.taskType, b.ref, b.type].filter(Boolean).join(' ').toLowerCase();
+      if (text.includes(blockFilterLower)) ids.add(b.id);
+    });
+    return ids;
+  }, [flatBlocks, blockFilterLower]);
 
   const sectionCounts = useMemo(() => {
     const counts = { slides: 0, tasks: 0, groups: 0 };
@@ -939,6 +951,13 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
         : [block.title, block.content, block.instruction, block.text].join(' ')))
       .join(' ');
     return analyzeReadability(sourceText);
+  }, [flatBlocks]);
+
+  const totalWordCount = useMemo(() => {
+    const text = flatBlocks
+      .map((b) => [b.question, b.title, b.content, b.instruction, b.text, b.hint, b.explanation].filter(Boolean).join(' '))
+      .join(' ');
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
   }, [flatBlocks]);
 
   const estimatedMinutes = useMemo(() => {
@@ -1258,7 +1277,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
       // Delete selected block
       if (event.key === 'Delete' && sid) {
         event.preventDefault();
-        delBlock(sid);
+        if (window.confirm('Delete this block?')) delBlock(sid);
         return;
       }
       // Duplicate selected block
@@ -1780,6 +1799,8 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                   <div className="flex flex-wrap items-center justify-between gap-1.5">
                     <div className="flex items-center gap-2">
                       <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-400">{blocks.length} block{blocks.length !== 1 ? 's' : ''}</span>
+                      <span className="hidden border border-zinc-200 bg-white px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-zinc-500 sm:inline">{taskBlocks.length} task{taskBlocks.length !== 1 ? 's' : ''}</span>
+                      <span className="hidden border border-zinc-200 bg-white px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-zinc-500 sm:inline">{new Set(taskBlocks.map(b => b.taskType)).size} type{new Set(taskBlocks.map(b => b.taskType)).size !== 1 ? 's' : ''}</span>
                       <span className="hidden border border-zinc-200 bg-white px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-zinc-500 sm:inline">Est. {estimatedMinutes} min</span>
                       <span className="hidden border border-zinc-200 bg-white px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-zinc-500 sm:inline">Quality {qualityScore}</span>
                     </div>
@@ -1792,8 +1813,16 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                       <button type="button" onClick={() => setShowQuickAdd(true)} className="ml-0.5 border border-zinc-200 px-1.5 py-1 text-[9px] text-zinc-400 transition hover:border-zinc-400 hover:text-zinc-600" title="Quick add (Ctrl+K)">⌘K</button>
                     </div>
                   </div>
-                  <div className="mt-1.5">
-                    <BlockNavigator blocks={blocks} selectedId={selected?.id} onSelect={focusBlock} />
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <input
+                      value={blockFilter}
+                      onChange={(e) => setBlockFilter(e.target.value)}
+                      placeholder="Filter blocks..."
+                      className="w-28 shrink-0 border border-zinc-200 bg-white px-2 py-1 text-[11px] outline-none transition focus:w-40 focus:border-zinc-900 sm:w-32"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <BlockNavigator blocks={blocks} selectedId={selected?.id} onSelect={focusBlock} />
+                    </div>
                   </div>
                 </div>
 
@@ -1855,7 +1884,8 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                       </div>
                       <div className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-700">Score {qualityScore}</div>
                     </div>
-                    <div className="mt-2 grid gap-1 text-[11px] text-zinc-600 sm:grid-cols-3">
+                    <div className="mt-2 grid gap-1 text-[11px] text-zinc-600 sm:grid-cols-4">
+                      <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Words: {totalWordCount}</div>
                       <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Readability: {readability.score === null ? 'n/a' : readability.score}</div>
                       <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Grade level: {readability.gradeLevel === null ? 'n/a' : readability.gradeLevel}</div>
                       <div className="border border-zinc-200 bg-zinc-50 px-2 py-1">Estimate: {estimatedMinutes} min</div>
@@ -1921,6 +1951,12 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
 
                   if (sectionCollapsed && !showSectionHeader) {
                     return null;
+                  }
+
+                  // Block filter: hide blocks that don't match
+                  if (blockFilterMatchIds && !blockFilterMatchIds.has(block.id)) {
+                    const childMatch = (block.children || []).some(c => blockFilterMatchIds.has(c.id));
+                    if (!childMatch) return null;
                   }
 
                   return (

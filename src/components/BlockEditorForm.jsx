@@ -1551,6 +1551,32 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
             </div>
           )}
           {block.taskType === 'random_wheel' && input('timeLimit', 'Time Limit')}
+          {block.taskType === 'web_embed' && (
+            <div className="space-y-3">
+              {mediaInput('media', 'Embed URL', 'The URL to embed (must be HTTPS)')}
+              <div className="grid gap-4 md:grid-cols-2">
+                {input('height', 'Height (px)', 'Default: 480')}
+                <Field label="Allow Fullscreen">
+                  <select value={block.allowFullscreen ? 'true' : 'false'} onChange={(event) => apply(onChange, block, 'allowFullscreen', event.target.value === 'true')} className="w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </Field>
+              </div>
+              {area('embedCode', 'Embed Code (optional)', 3, 'Raw iframe HTML if the URL does not support direct embedding')}
+            </div>
+          )}
+          {block.taskType === 'keyword_expand' && (
+            <div className="space-y-3">
+              <ItemListEditor block={block} onChange={onChange} label="Keywords / Prompts" field="items" />
+            </div>
+          )}
+          {block.taskType === 'conditional_branch_questions' && (
+            <div className="space-y-3">
+              <OptionListEditor block={block} onChange={onChange} multiple={false} allowCorrect={false} />
+              {area('branches', 'Branches', 4, 'One per line: OptionText => Follow-up question')}
+            </div>
+          )}
         </>
       )}
     </div>

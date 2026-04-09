@@ -50,9 +50,11 @@ export default function WordHideTask({ block, onComplete, onProgress, showCheckB
   // Determine mode from taskType or explicit hideMode
   const hideMode = block.hideMode || (block.taskType === 'word_hide_drag' ? 'drag' : block.taskType === 'word_hide_type' ? 'type' : 'reveal');
 
+  const wordsKey = words.join('\x00');
+  const focusKey = focusWords.join('\x00');
   const hiddenSet = useMemo(
     () => computeHiddenIndices(words, focusWords, hideCount, hideMinLength, `${block.id || block.question}-${shuffleSeed}-hide`),
-    [words.length, focusWords.length, hideCount, hideMinLength, block.id, block.question, shuffleSeed],
+    [wordsKey, focusKey, hideCount, hideMinLength, block.id, block.question, shuffleSeed],
   );
 
   const hiddenIndices = useMemo(() => [...hiddenSet].sort((a, b) => a - b), [hiddenSet]);

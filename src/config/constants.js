@@ -38,6 +38,22 @@ export const DIALOGUE_COLORS = [
   { bg: 'bg-rose-50', border: 'border-rose-200', avatar: 'bg-rose-500', text: 'text-rose-700' },
 ];
 
+// Lesson themes — visual presets for the player
+export const LESSON_THEMES = [
+  { id: 'classic',    label: 'Classic',    swatch: '#FAFAF8', group: 'light' },
+  { id: 'ocean',      label: 'Ocean',      swatch: '#E8F4F8', group: 'light' },
+  { id: 'forest',     label: 'Forest',     swatch: '#EDF5EC', group: 'light' },
+  { id: 'sunset',     label: 'Sunset',     swatch: '#FFF3E8', group: 'light' },
+  { id: 'lavender',   label: 'Lavender',   swatch: '#EDE8F5', group: 'light' },
+  { id: 'minimal',    label: 'Minimal',    swatch: '#FFFFFF', group: 'light' },
+  { id: 'pastel',     label: 'Pastel',     swatch: '#F5EEF8', group: 'light' },
+  { id: 'autumn',     label: 'Autumn',     swatch: '#F5EDE0', group: 'light' },
+  { id: 'paper',      label: 'Paper',      swatch: '#F8F5F0', group: 'light' },
+  { id: 'midnight',   label: 'Midnight',   swatch: '#1A1A2E', group: 'dark' },
+  { id: 'chalkboard', label: 'Chalkboard', swatch: '#2D4A3E', group: 'dark' },
+  { id: 'neon',       label: 'Neon',       swatch: '#0D0D1A', group: 'dark' },
+];
+
 // Scoring thresholds — prefer block-level overrides when available
 export const FUZZY_MATCH_THRESHOLD = 0.85;
 export const STRICT_MATCH_THRESHOLD = 0.95;

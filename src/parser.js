@@ -9,7 +9,7 @@ const parseCache = new Map();
 
 function cloneParseResult(value) {
   if (typeof structuredClone === 'function') return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
+  try { return JSON.parse(JSON.stringify(value)); } catch { return value; }
 }
 
 function getCachedParse(dsl) {
@@ -137,7 +137,7 @@ const KNOWN_KEYS = new Set([
   'answer', 'correct', 'ref', 'linkto', 'group', 'enabled', 'shuffle', 'repeat',
   'min', 'max', 'timelimit', 'placeholder', 'multiple', 'lessontopic', 'grammartopic',
   'focus', 'difficulty', 'showhints', 'showexplanations', 'revealmode', 'randomhiddencount',
-  'flexibleorder', 'layout', 'tasktype', 'type', 'points',
+  'flexibleorder', 'layout', 'tasktype', 'type', 'points', 'weight',
   'allowsessionsave', 'allowretryhomework', 'showcheckbutton', 'enablegrading',
   'showtotalgrade', 'showperquestiongrade', 'visibilitypolicy', 'disablebacknavigation',
   'sessiontimelimitminutes', 'liveautoadvanceseconds', 'showleaderboardeachquestionlive',
@@ -145,32 +145,78 @@ const KNOWN_KEYS = new Set([
   'liveautoadvancepolicy', 'liveautoadvancesubmissionthreshold',
   'allowretrylive', 'showcheckbuttonlive', 'lockaftersubmitlive', 'hidequestioncontentlive',
   'livepacemode', 'livegroupmodeenabled', 'livegroupcount', 'livecaptainrotationevery',
-  'embedcode', 'height', 'allowfullscreen',
+  'embedcode', 'height', 'allowfullscreen', 'url', 'src',
   'hidemode', 'hidecount', 'hideminlength', 'focuswords',
+  'theme', 'fontfamily', 'fontsize', 'lineheight',
+  'finishpagemessage', 'description', 'language', 'level', 'tags',
+  'hiddenrows', 'hiddencells',
 ]);
 
 // Common key misspellings / alternative names → canonical key
 const KEY_ALIASES = new Map([
   ['queston', 'question'], ['qestion', 'question'], ['questoin', 'question'],
+  ['quesiton', 'question'], ['quesion', 'question'], ['quetion', 'question'],
   ['anwser', 'answer'], ['anser', 'answer'], ['awnser', 'answer'],
-  ['asnwer', 'answer'], ['corect', 'correct'], ['corrrect', 'correct'],
+  ['asnwer', 'answer'], ['answr', 'answer'], ['answre', 'answer'],
+  ['corect', 'correct'], ['corrrect', 'correct'], ['correc', 'correct'],
   ['instuction', 'instruction'], ['instrution', 'instruction'], ['intruction', 'instruction'],
-  ['instrucción', 'instruction'],
+  ['instrucción', 'instruction'], ['insruction', 'instruction'],
   ['optinos', 'options'], ['opitions', 'options'], ['opitons', 'options'],
-  ['itmes', 'items'], ['ietms', 'items'],
+  ['opions', 'options'], ['optins', 'options'], ['option', 'options'],
+  ['itmes', 'items'], ['ietms', 'items'], ['itemss', 'items'],
   ['catgories', 'categories'], ['categoies', 'categories'], ['categoris', 'categories'],
+  ['catagories', 'categories'], ['categorie', 'categories'],
   ['explanantion', 'explanation'], ['explantion', 'explanation'], ['explaination', 'explanation'],
-  ['tittle', 'title'], ['titel', 'title'],
+  ['explanaton', 'explanation'],
+  ['tittle', 'title'], ['titel', 'title'], ['tite', 'title'],
   ['sentance', 'sentence'], ['sentense', 'sentence'],
   ['refrence', 'ref'], ['reference', 'ref'],
   ['blankes', 'blanks'], ['targest', 'targets'], ['taragets', 'targets'],
-  ['keywods', 'keywords'], ['keywoards', 'keywords'],
-  ['dialoge', 'dialogue'], ['dialog', 'dialogue'],
-  ['contentt', 'content'], ['conent', 'content'],
+  ['blnaks', 'blanks'], ['trargets', 'targets'],
+  ['keywods', 'keywords'], ['keywoards', 'keywords'], ['kewords', 'keywords'],
+  ['dialoge', 'dialogue'], ['dialog', 'dialogue'], ['dialague', 'dialogue'],
+  ['contentt', 'content'], ['conent', 'content'], ['contnet', 'content'],
   ['placholder', 'placeholder'], ['placehloder', 'placeholder'],
-  ['shuflfe', 'shuffle'], ['shuffel', 'shuffle'],
-  ['colums', 'columns'], ['columms', 'columns'],
-  ['hnt', 'hint'], ['hinte', 'hint'],
+  ['shuflfe', 'shuffle'], ['shuffel', 'shuffle'], ['suffle', 'shuffle'],
+  ['colums', 'columns'], ['columms', 'columns'], ['colunms', 'columns'],
+  ['hnt', 'hint'], ['hinte', 'hint'], ['hnit', 'hint'],
+  ['paires', 'pairs'], ['pars', 'pairs'], ['paairs', 'pairs'],
+  ['madia', 'media'], ['meida', 'media'],
+  ['iamge', 'image'], ['imge', 'image'],
+  ['vidoe', 'video'], ['vido', 'video'],
+  ['auido', 'audio'], ['audo', 'audio'],
+  ['thme', 'theme'], ['tehme', 'theme'], ['teme', 'theme'],
+  ['fontfamilly', 'fontfamily'], ['fontszie', 'fontsize'],
+  // AI-generated field names
+  ['choices', 'options'], ['choice', 'options'], ['answers', 'answer'],
+  ['prompt', 'question'], ['task', 'question'], ['body', 'text'],
+  ['paragraph', 'text'], ['passage', 'text'], ['sentence', 'text'],
+  ['desc', 'instruction'], ['description', 'instruction'], ['directions', 'instruction'],
+  ['clue', 'hint'], ['help', 'hint'], ['tips', 'hint'],
+  ['response', 'answer'], ['solution', 'answer'], ['result', 'answer'],
+  ['match', 'pairs'], ['matching', 'pairs'], ['connections', 'pairs'],
+  ['words', 'items'], ['word', 'items'], ['list', 'items'], ['entries', 'items'],
+  ['group', 'categories'], ['groups', 'categories'], ['cats', 'categories'],
+  ['tags', 'keywords'], ['tag', 'keywords'],
+  ['embed', 'embedcode'], ['embedurl', 'embedcode'], ['iframe', 'embedcode'],
+  ['source', 'media'], ['file', 'media'], ['attachment', 'media'],
+  ['pic', 'image'], ['picture', 'image'], ['photo', 'image'], ['img', 'image'],
+  ['clip', 'video'], ['movie', 'video'],
+  ['sound', 'audio'], ['recording', 'audio'],
+  ['link', 'url'], ['href', 'url'], ['webpage', 'url'],
+  ['cols', 'columns'], ['col', 'columns'],
+  ['row', 'rows'],
+  ['explantion', 'explanation'], ['feedback', 'explanation'],
+  ['note', 'notes'], ['comment', 'notes'],
+  ['step', 'steps'], ['procedure', 'steps'],
+  ['target', 'targets'], ['highlight', 'targets'],
+  ['blank', 'blanks'], ['gap', 'blanks'], ['gaps', 'blanks'],
+  ['card', 'cards'], ['flashcard', 'cards'], ['flashcards', 'cards'],
+  ['example', 'examples'], ['sample', 'examples'],
+  // Regional spelling variants
+  ['colour', 'color'], ['behaviour', 'behavior'], ['centre', 'center'],
+  ['favourite', 'favorite'], ['organised', 'organized'],
+  ['categorise', 'categorize'], ['recognise', 'recognize'],
 ]);
 
 function detectBlock(line) {
@@ -549,6 +595,13 @@ function validateBlock(block, warnings) {
   if (block.media && /\[.*?\]\(.*?\)/.test(block.media)) {
     warnings.push(`"${label}" Media field contains a markdown link instead of a raw URL.`);
   }
+  // Warn on media fields that look invalid
+  ['media', 'image', 'video', 'audio'].forEach(field => {
+    const val = block[field];
+    if (val && typeof val === 'string' && val.trim() && !/^(https?:\/\/|data:)/i.test(val.trim())) {
+      warnings.push(`"${label}" ${field} value "${val.length > 60 ? val.slice(0, 57) + '...' : val}" does not look like a valid URL.`);
+    }
+  });
   // --- Group validation ---
   if ((block.type === 'group' || block.type === 'split_group') && block.itemRefs && block.itemRefs.length === 0 && (!block.children || block.children.length === 0)) {
     warnings.push(`Group "${label}" has no child items listed.`);
@@ -1276,6 +1329,7 @@ export function parseLesson(dsl, existingBlocks) {
         showCheckButtonLive: toBoolean(rawData.showcheckbuttonlive, false),
         lockAfterSubmitLive: rawData.lockaftersubmitlive === undefined ? true : toBoolean(rawData.lockaftersubmitlive, true),
         hideQuestionContentLive: toBoolean(rawData.hidequestioncontentlive, false),
+        theme: rawData.theme || '',
       };
     } else {
       try {
@@ -1309,6 +1363,24 @@ export function parseLesson(dsl, existingBlocks) {
   const primaryBlocks = sections.filter((block) => block.type !== 'link');
   attachLinks(primaryBlocks, linkBlocks);
   const blocks = normalizeGroups(primaryBlocks, warnings);
+
+  // Detect circular linkTo references
+  const allFlat = blocks.flatMap(b => b.children ? [b, ...b.children] : [b]);
+  const refMap = {};
+  allFlat.forEach(b => { if (b.ref) refMap[b.ref] = b; });
+  allFlat.forEach(b => {
+    if (!b.linkTo) return;
+    const visited = new Set();
+    let cur = b;
+    while (cur && cur.linkTo) {
+      if (visited.has(cur.ref || cur.id)) {
+        warnings.push(`Circular linkTo detected: "${b.ref || b.title || b.question || 'block'}" eventually links back to itself.`);
+        break;
+      }
+      visited.add(cur.ref || cur.id);
+      cur = refMap[cur.linkTo];
+    }
+  });
 
   // Restore stable IDs from previous parse to prevent selection/focus loss on round-trip
   if (existingBlocks) {
@@ -1378,6 +1450,7 @@ export function generateDSL(lesson) {
   if (lesson.settings?.showCheckButtonLive) lines.push('ShowCheckButtonLive: true');
   if (lesson.settings?.lockAfterSubmitLive === false) lines.push('LockAfterSubmitLive: false');
   if (lesson.settings?.hideQuestionContentLive) lines.push('HideQuestionContentLive: true');
+  if (lesson.settings?.theme && lesson.settings.theme !== 'classic') lines.push(`Theme: ${lesson.settings.theme}`);
   if (lesson.settings?.fontFamily) lines.push(`FontFamily: ${lesson.settings.fontFamily}`);
   if (lesson.settings?.fontSize) lines.push(`FontSize: ${lesson.settings.fontSize}`);
   if (lesson.settings?.lineHeight) lines.push(`LineHeight: ${lesson.settings.lineHeight}`);

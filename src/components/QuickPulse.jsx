@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
 const PULSE_OPTIONS = [
-  { id: 'thumbsup', emoji: '👍', label: 'Got it' },
-  { id: 'thumbsdown', emoji: '👎', label: 'Lost' },
-  { id: 'confused', emoji: '😕', label: 'Confused' },
+  { id: 'thumbsup', emoji: '+1', label: 'Got it' },
+  { id: 'thumbsdown', emoji: '-1', label: 'Lost' },
+  { id: 'confused', emoji: '?', label: 'Confused' },
 ];
 
 const AUTO_DISMISS_MS = 6000;

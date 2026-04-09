@@ -439,7 +439,7 @@ export async function submitAssignmentResult({ assignmentId, studentName, sessio
   }
 
   const cleanAssignmentId = String(assignmentId || '').trim();
-  const cleanStudentName = String(studentName || '').trim() || 'Student';
+  const cleanStudentName = String(studentName || '').trim().replace(/<[^>]*>/g, '').slice(0, 100) || 'Student';
   if (!cleanAssignmentId) return { ok: false, reason: 'invalid_assignment_id', updatedAt: now };
 
   const client = getSupabaseClient();

@@ -118,6 +118,7 @@ function GridRenderer({ block, onComplete }) {
 
 function MediaRenderer({ block, onComplete }) {
   const media = resolveMediaSource(block);
+  const [textValue, setTextValue] = useState('');
   return (
     <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-3 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
@@ -129,8 +130,8 @@ function MediaRenderer({ block, onComplete }) {
           {!media && <div className="flex min-h-48 items-center justify-center text-sm text-zinc-500">Attach `Media`, `Image`, `Video`, or `Audio` in DSL.</div>}
         </div>
         <div className="space-y-3">
-          <textarea rows={8} placeholder="Add notes, labels, answers, or observations" className="w-full resize-y border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
-          <button type="button" onClick={() => onComplete?.({ submitted: true, correct: true, score: 1, response: 'saved', feedback: 'Media response saved.' })} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Save response</button>
+          <textarea rows={8} value={textValue} onChange={(e) => setTextValue(e.target.value)} placeholder="Add notes, labels, answers, or observations" className="w-full resize-y border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" />
+          <button type="button" onClick={() => onComplete?.({ submitted: true, correct: true, score: 1, response: textValue || 'saved', feedback: 'Media response saved.' })} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800">Save response</button>
         </div>
       </div>
     </div>

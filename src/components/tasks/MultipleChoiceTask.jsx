@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { Md } from '../FormattedText';
 
-export default function MultipleChoiceTask({ block, onComplete, existingResult }) {
+export default function MultipleChoiceTask({ block, onComplete, onProgress, existingResult, showCheckButton = true }) {
   const options = block.options || [];
-  const [selected, setSelected] = useState(existingResult?.response != null ? Math.max(0, options.indexOf(existingResult.response)) : null);
+  const [selected, setSelected] = useState(() => {
+    if (existingResult?.response == null) return null;
+    const idx = options.indexOf(existingResult.response);
+    return idx >= 0 ? idx : null;
+  });
   const [submitted, setSubmitted] = useState(!!existingResult?.submitted);
 
   const isCorrect = (opt) => {
@@ -50,7 +54,7 @@ export default function MultipleChoiceTask({ block, onComplete, existingResult }
                 !submitted && active ? 'border-blue-400 bg-blue-50 text-zinc-950' : '',
                 !submitted && !active ? 'border-zinc-200 hover:border-zinc-400 hover:bg-zinc-50 text-zinc-700' : '',
               ].join(' ')}
-              onClick={() => !submitted && setSelected(idx)}
+              onClick={() => { if (!submitted) { setSelected(idx); onProgress?.({ submitted: false, response: options[idx] }); } }}
               disabled={submitted}
             >
               <span className="mr-2 text-zinc-400">{String.fromCharCode(65 + idx)}.</span>
@@ -68,17 +72,20 @@ export default function MultipleChoiceTask({ block, onComplete, existingResult }
             disabled={selected === null}
             className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40"
           >
-            Check
+            {showCheckButton ? 'Check' : 'Save answer'}
           </button>
         )}
       </div>
-      {submitted && (
+      {submitted && showCheckButton && (
         <div className={[
           'mt-4 border px-4 py-3 text-sm',
           isCorrect(block.options[selected]) ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-red-300 bg-red-50 text-red-800',
         ].join(' ')}>
           {isCorrect(block.options[selected]) ? 'Correct!' : `Expected: ${Array.isArray(block.answer) ? block.answer.join(', ') : block.answer}`}
         </div>
+      )}
+      {submitted && !showCheckButton && (
+        <div className="mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Response saved</div>
       )}
       {submitted && block.explanation && (
         <div className="mt-3 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>

@@ -8,6 +8,7 @@ import { addCustomTemplate } from './GuidePanel';
 import { createDefaultBlock, createLessonTemplate, deleteBlockFromTree } from '../utils/builder';
 import { flattenBlocks } from '../utils/lesson';
 import { useAppContext } from '../context/AppContext';
+import { LESSON_THEMES } from '../config/constants';
 import HotkeysModal from './HotkeysModal';
 import MarkdownComposer from './MarkdownComposer';
 import TemplatePicker from './TemplatePicker';
@@ -238,64 +239,88 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
             </div>
           </div>
 
-          {/* Toggles */}
-          <div className="flex flex-wrap gap-3 px-6 pt-5">
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.showHints !== false} onChange={(event) => patchSettings({ showHints: event.target.checked })} />
-              Show hints
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.showExplanations !== false} onChange={(event) => patchSettings({ showExplanations: event.target.checked })} />
-              Show explanations
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.allowSessionSave !== false} onChange={(event) => patchSettings({ allowSessionSave: event.target.checked })} />
-              Allow session saving
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={Boolean(settings.showCheckButton)} onChange={(event) => patchSettings({ showCheckButton: event.target.checked })} />
-              Show check button in homework mode
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={Boolean(settings.allowRetryHomework)} onChange={(event) => patchSettings({ allowRetryHomework: event.target.checked })} />
-              Allow retry in homework mode
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.enableGrading !== false} onChange={(event) => patchSettings({ enableGrading: event.target.checked })} />
-              Enable grading in reports
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.showTotalGrade !== false} onChange={(event) => patchSettings({ showTotalGrade: event.target.checked })} />
-              Show total grade in reports
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.showPerQuestionGrade !== false} onChange={(event) => patchSettings({ showPerQuestionGrade: event.target.checked })} />
-              Show per-question grade
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.disableBackNavigation === true} onChange={(event) => patchSettings({ disableBackNavigation: event.target.checked })} />
-              Disable back button in player
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.allowRetryLive === true} onChange={(event) => patchSettings({ allowRetryLive: event.target.checked })} />
-              Live default: allow retries
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.showCheckButtonLive === true} onChange={(event) => patchSettings({ showCheckButtonLive: event.target.checked })} />
-              Live default: show check button
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.lockAfterSubmitLive !== false} onChange={(event) => patchSettings({ lockAfterSubmitLive: event.target.checked })} />
-              Live default: one attempt per task
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.hideQuestionContentLive === true} onChange={(event) => patchSettings({ hideQuestionContentLive: event.target.checked })} />
-              Live default: hide question text
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
-              <input type="checkbox" checked={settings.showLeaderboardEachQuestionLive === true} onChange={(event) => patchSettings({ showLeaderboardEachQuestionLive: event.target.checked })} />
-              Live default: show leaderboard each question
-            </label>
+          {/* Toggles — grouped by category */}
+          <div className="space-y-4 px-6 pt-5">
+            {/* General */}
+            <div>
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">General</div>
+              <div className="flex flex-wrap gap-3">
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.showHints !== false} onChange={(event) => patchSettings({ showHints: event.target.checked })} />
+                  Show hints
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.showExplanations !== false} onChange={(event) => patchSettings({ showExplanations: event.target.checked })} />
+                  Show explanations
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.allowSessionSave !== false} onChange={(event) => patchSettings({ allowSessionSave: event.target.checked })} />
+                  Allow session saving
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.disableBackNavigation === true} onChange={(event) => patchSettings({ disableBackNavigation: event.target.checked })} />
+                  Disable back button in player
+                </label>
+              </div>
+            </div>
+            {/* Homework */}
+            <div>
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Homework</div>
+              <div className="flex flex-wrap gap-3">
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={Boolean(settings.showCheckButton)} onChange={(event) => patchSettings({ showCheckButton: event.target.checked })} />
+                  Show check button
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={Boolean(settings.allowRetryHomework)} onChange={(event) => patchSettings({ allowRetryHomework: event.target.checked })} />
+                  Allow retry
+                </label>
+              </div>
+            </div>
+            {/* Grading */}
+            <div>
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Grading</div>
+              <div className="flex flex-wrap gap-3">
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.enableGrading !== false} onChange={(event) => patchSettings({ enableGrading: event.target.checked })} />
+                  Enable grading in reports
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.showTotalGrade !== false} onChange={(event) => patchSettings({ showTotalGrade: event.target.checked })} />
+                  Show total grade
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.showPerQuestionGrade !== false} onChange={(event) => patchSettings({ showPerQuestionGrade: event.target.checked })} />
+                  Show per-question grade
+                </label>
+              </div>
+            </div>
+            {/* Live Mode */}
+            <div>
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Live Mode</div>
+              <div className="flex flex-wrap gap-3">
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.allowRetryLive === true} onChange={(event) => patchSettings({ allowRetryLive: event.target.checked })} />
+                  Allow retries
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.showCheckButtonLive === true} onChange={(event) => patchSettings({ showCheckButtonLive: event.target.checked })} />
+                  Show check button
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.lockAfterSubmitLive !== false} onChange={(event) => patchSettings({ lockAfterSubmitLive: event.target.checked })} />
+                  One attempt per task
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.hideQuestionContentLive === true} onChange={(event) => patchSettings({ hideQuestionContentLive: event.target.checked })} />
+                  Hide question text
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 border border-zinc-200 px-3 py-2 text-xs text-zinc-700 transition hover:border-zinc-400">
+                  <input type="checkbox" checked={settings.showLeaderboardEachQuestionLive === true} onChange={(event) => patchSettings({ showLeaderboardEachQuestionLive: event.target.checked })} />
+                  Show leaderboard each question
+                </label>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-4 px-6 pt-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -422,6 +447,32 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
                 </label>
               ))}
             </div>
+          </div>
+
+          {/* Theme Selector */}
+          <div className="px-6 pt-5">
+            <div className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-400">Player Theme</div>
+            {['light', 'dark'].map((group) => (
+              <div key={group} className="mb-2">
+                <div className="mb-1.5 text-[10px] text-zinc-400 capitalize">{group}</div>
+                <div className="flex flex-wrap gap-2">
+                  {LESSON_THEMES.filter((t) => t.group === group).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => patchSettings({ theme: t.id === 'classic' ? '' : t.id })}
+                      className={`flex items-center gap-2 border px-3 py-2 text-xs transition ${(settings.theme || 'classic') === t.id ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-zinc-200 text-zinc-600 hover:border-zinc-400'}`}
+                    >
+                      <span
+                        className="inline-block h-3.5 w-3.5 shrink-0 border border-zinc-300"
+                        style={{ backgroundColor: t.swatch }}
+                      />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Font settings */}

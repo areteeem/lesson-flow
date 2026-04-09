@@ -89,6 +89,13 @@ export async function upgradeToEmailAccount(email, password) {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase not configured' };
 
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: 'Please enter a valid email address' };
+  }
+  if (!password || password.length < 8) {
+    return { ok: false, error: 'Password must be at least 8 characters' };
+  }
+
   const currentUser = getSessionUser();
   if (!currentUser?.isAnonymous) {
     return { ok: false, error: 'Not in anonymous session' };
@@ -123,6 +130,13 @@ export async function signInWithEmail(email, password) {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase not configured' };
 
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: 'Please enter a valid email address' };
+  }
+  if (!password || password.length < 1) {
+    return { ok: false, error: 'Please enter your password' };
+  }
+
   try {
     const { data, error } = await client.auth.signInWithPassword({
       email,
@@ -150,6 +164,13 @@ export async function signInWithEmail(email, password) {
 export async function signUpWithEmail(email, password) {
   const client = getSupabaseClient();
   if (!client) return { ok: false, error: 'Supabase not configured' };
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: 'Please enter a valid email address' };
+  }
+  if (!password || password.length < 8) {
+    return { ok: false, error: 'Password must be at least 8 characters' };
+  }
 
   try {
     const { data, error } = await client.auth.signUp({

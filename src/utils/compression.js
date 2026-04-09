@@ -30,7 +30,11 @@ export function compressJsonPayload(value) {
 
 export function decompressJsonPayload(payload) {
   if (!payload || payload.encoding !== 'deflate-base64' || !payload.data) return null;
-  const bytes = fromBase64(payload.data);
-  const json = inflate(bytes, { to: 'string' });
-  return JSON.parse(json);
+  try {
+    const bytes = fromBase64(payload.data);
+    const json = inflate(bytes, { to: 'string' });
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
 }

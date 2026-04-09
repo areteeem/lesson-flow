@@ -86,7 +86,7 @@ export default function DragMatchTask({ block, onComplete, onProgress, showCheck
       const placedLeftId = placements[target.id];
       if (placedLeftId === undefined) return false;
       const leftItem = leftItems.find((l) => l.id === placedLeftId);
-      return leftItem && leftItem.text === target.expectedLeft;
+      return leftItem && leftItem.text.toLowerCase() === target.expectedLeft.toLowerCase();
     }).length;
     const score = correctCount / Math.max(pairs.length, 1);
     onComplete?.({
@@ -162,8 +162,8 @@ export default function DragMatchTask({ block, onComplete, onProgress, showCheck
             {rightTargets.map((target) => {
               const placedLeftId = placements[target.id];
               const placedItem = placedLeftId !== undefined ? leftItems.find((l) => l.id === placedLeftId) : null;
-              const isCorrect = showVerdict && placedItem && placedItem.text === target.expectedLeft;
-              const isWrong = showVerdict && placedItem && placedItem.text !== target.expectedLeft;
+              const isCorrect = showVerdict && placedItem && placedItem.text.toLowerCase() === target.expectedLeft.toLowerCase();
+              const isWrong = showVerdict && placedItem && placedItem.text.toLowerCase() !== target.expectedLeft.toLowerCase();
               const isEmpty = !placedItem;
               const isDropTarget = (draggedId !== null || selectedId !== null) && isEmpty;
               return (

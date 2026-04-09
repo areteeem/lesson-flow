@@ -66,7 +66,7 @@ export default function LiveJoin({ onExit }) {
   const [pin, setPin] = useState(initialSessionId);
   const [pinDigits, setPinDigits] = useState(() => {
     const id = initialSessionId || '';
-    return [id[0] || '', id[1] || '', id[2] || '', id[3] || ''];
+    return [id[0] || '', id[1] || '', id[2] || '', id[3] || '', id[4] || '', id[5] || ''];
   });
   const pinInputRefs = useRef([]);
   const [name, setName] = useState(() => generateNickname());
@@ -301,7 +301,7 @@ export default function LiveJoin({ onExit }) {
         saveLocalResponses(sessionId, playerId, merged);
         return merged;
       });
-    });
+    }).catch(() => {});
 
     ch.onmessage = (e) => {
       const msg = e.data;
@@ -424,7 +424,7 @@ export default function LiveJoin({ onExit }) {
       next[index] = digit;
       setPinDigits(next);
       setPin(next.join(''));
-      if (digit && index < 3) {
+      if (digit && index < 5) {
         pinInputRefs.current[index + 1]?.focus();
       }
     };
@@ -432,21 +432,21 @@ export default function LiveJoin({ onExit }) {
       if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
         pinInputRefs.current[index - 1]?.focus();
       }
-      if (e.key === 'Enter' && pin.length >= 4 && name.trim()) {
+      if (e.key === 'Enter' && pin.length >= 6 && name.trim()) {
         handleJoin();
       }
     };
     const handlePinPaste = (e) => {
-      const pasted = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 4);
+      const pasted = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 6);
       if (pasted.length >= 1) {
         e.preventDefault();
-        const next = [pasted[0] || '', pasted[1] || '', pasted[2] || '', pasted[3] || ''];
+        const next = [pasted[0] || '', pasted[1] || '', pasted[2] || '', pasted[3] || '', pasted[4] || '', pasted[5] || ''];
         setPinDigits(next);
         setPin(next.join(''));
-        if (pasted.length >= 4) {
-          pinInputRefs.current[3]?.blur();
+        if (pasted.length >= 6) {
+          pinInputRefs.current[5]?.blur();
         } else {
-          pinInputRefs.current[Math.min(pasted.length, 3)]?.focus();
+          pinInputRefs.current[Math.min(pasted.length, 5)]?.focus();
         }
       }
     };
@@ -457,7 +457,7 @@ export default function LiveJoin({ onExit }) {
           <div className="mb-6 text-center text-xl font-bold">Join a live session</div>
           <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">Session PIN</div>
           <div className="mb-4 flex items-center justify-center gap-2" onPaste={handlePinPaste}>
-            {[0, 1, 2, 3].map((i) => (
+            {[0, 1, 2, 3, 4, 5].map((i) => (
               <input
                 key={i}
                 ref={(el) => { pinInputRefs.current[i] = el; }}
@@ -474,7 +474,7 @@ export default function LiveJoin({ onExit }) {
           </div>
           <div className="mb-1 flex items-center justify-between">
             <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">Your name</span>
-            <button type="button" onClick={() => setName(generateNickname())} className="text-[10px] text-zinc-500 hover:text-zinc-300" aria-label="Generate new random nickname">🔄 New name</button>
+            <button type="button" onClick={() => setName(generateNickname())} className="text-[10px] text-zinc-500 hover:text-zinc-300" aria-label="Generate new random nickname">New name</button>
           </div>
           <input
             value={name}
@@ -487,7 +487,7 @@ export default function LiveJoin({ onExit }) {
           />
           <div className="mb-4 text-center text-[10px] text-zinc-500">Your teacher will see this name on the results board.</div>
           {error && <div className="mb-4 border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">{error}</div>}
-          <button type="button" onClick={handleJoin} disabled={pin.length < 4 || !name.trim()} className="action-primary w-full px-4 py-3 text-sm font-bold disabled:opacity-30">
+          <button type="button" onClick={handleJoin} disabled={pin.length < 6 || !name.trim()} className="action-primary w-full px-4 py-3 text-sm font-bold disabled:opacity-30">
             Join Session
           </button>
           <button type="button" onClick={onExit} className="mt-3 w-full text-center text-xs text-zinc-500 hover:text-zinc-300">Cancel</button>
@@ -550,7 +550,7 @@ export default function LiveJoin({ onExit }) {
                   type="button"
                   onClick={() => setLocalIndex((current) => Math.max(0, current - 1))}
                   disabled={effectiveIndex <= 0}
-                  className="border border-zinc-300 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.12em] disabled:opacity-40"
+                  className="min-h-[44px] min-w-[44px] border border-zinc-300 bg-white px-3 py-2 text-sm uppercase tracking-[0.12em] disabled:opacity-40"
                 >
                   Back
                 </button>
@@ -558,7 +558,7 @@ export default function LiveJoin({ onExit }) {
                   type="button"
                   onClick={() => setLocalIndex((current) => Math.min(maxReachableIndex, current + 1))}
                   disabled={effectiveIndex >= maxReachableIndex}
-                  className="border border-zinc-300 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.12em] disabled:opacity-40"
+                  className="min-h-[44px] min-w-[44px] border border-zinc-300 bg-white px-3 py-2 text-sm uppercase tracking-[0.12em] disabled:opacity-40"
                 >
                   Next
                 </button>

@@ -12,7 +12,7 @@ function buildWordLayout(words, containerWidth) {
   return words.map((word, i) => {
     const ratio = maxCount > 1 ? word.count / maxCount : 1;
     const fontSize = minSize + ratio * (maxSize - minSize);
-    const angle = Math.random() > 0.7 ? (Math.random() > 0.5 ? -15 : 15) : 0;
+    const angle = i % 5 === 0 ? (i % 2 === 0 ? -15 : 15) : 0;
     // Distribute in a cloud-like pattern using golden angle
     const goldenAngle = Math.PI * (3 - Math.sqrt(5));
     const r = Math.sqrt(i / words.length) * 0.35;

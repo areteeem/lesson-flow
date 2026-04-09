@@ -9,8 +9,7 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
 
   // Right options as draggable items
   const draggableItems = useMemo(() => {
-    const unique = [...new Set(pairs.map((pair) => pair.right))];
-    const indexed = unique.map((text, i) => ({ id: i, text }));
+    const indexed = pairs.map((pair, i) => ({ id: i, text: pair.right }));
     return block.shuffle === false ? indexed : stableShuffle(indexed, `${block.id || block.question}-${shuffleSeed}-right-options`);
   }, [block.id, block.question, block.shuffle, pairs, shuffleSeed]);
 

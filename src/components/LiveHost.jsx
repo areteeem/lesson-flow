@@ -468,6 +468,8 @@ export default function LiveHost({ lesson, onExit }) {
   };
 
   const finishSession = () => {
+    const participantCount = Object.keys(students).length;
+    if (participantCount > 0 && !window.confirm(`End session for ${participantCount} student${participantCount > 1 ? 's' : ''}? This cannot be undone.`)) return;
     recordDebugEvent('live_host_finish', { pin, lessonId: lesson?.id || null, totalBlocks: blocks.length });
     setAutoAdvancePaused(false);
     setPhase(PHASE.FINISHED);
@@ -1047,7 +1049,7 @@ export default function LiveHost({ lesson, onExit }) {
       if (loaded && Object.keys(loaded).length > 0) {
         setManualPoints((prev) => ({ ...loaded, ...prev }));
       }
-    });
+    }).catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -1128,7 +1130,7 @@ export default function LiveHost({ lesson, onExit }) {
         };
       })
       .sort((left, right) => right.pct - left.pct || right.completed - left.completed)
-      .slice(0, 3);
+      .slice(0, 5);
   }, [students, computeStudentBalance, computeStudentStats]);
 
   const teamLeaderboard = useMemo(() => {
@@ -1684,7 +1686,7 @@ export default function LiveHost({ lesson, onExit }) {
             </div>
             {showPerQuestionLeaderboard && (
               <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3">
-                <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top 3 Leaderboard</div>
+                <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top 5 Leaderboard</div>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {topLeaders.map((leader, index) => (
                     <div key={leader.id} className="leaderboard-row border border-zinc-800 bg-zinc-950/40 px-3 py-2">
@@ -1792,7 +1794,7 @@ export default function LiveHost({ lesson, onExit }) {
               <div className="border border-zinc-700 bg-zinc-900 px-3 py-2"><div className="text-zinc-500">Responses</div><div className="mt-1 text-sm text-white">{classStats.submissions}</div></div>
             </div>
             <div className="mb-4 border border-zinc-800 bg-zinc-900 p-3 text-left">
-              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Final Top 3</div>
+              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Final Top 5</div>
               <div className="grid gap-2">
                 {topLeaders.map((leader, index) => (
                   <div key={leader.id} className="flex flex-wrap items-center justify-between gap-1 border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-300">

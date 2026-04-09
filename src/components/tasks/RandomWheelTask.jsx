@@ -8,6 +8,7 @@ export default function RandomWheelTask({ block, onComplete }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const timerRef = useRef(null);
+  const animFrameRef = useRef(null);
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(null);
@@ -83,6 +84,7 @@ export default function RandomWheelTask({ block, onComplete }) {
 
   useEffect(() => () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
   }, []);
 
   const spin = () => {
@@ -112,7 +114,7 @@ export default function RandomWheelTask({ block, onComplete }) {
       const next = initialRotation + target * eased;
       setRotation(next);
       if (progress < 1) {
-        requestAnimationFrame(animate);
+        animFrameRef.current = requestAnimationFrame(animate);
         return;
       }
       setSpinning(false);
@@ -134,7 +136,7 @@ export default function RandomWheelTask({ block, onComplete }) {
       }
     };
 
-    requestAnimationFrame(animate);
+    animFrameRef.current = requestAnimationFrame(animate);
   };
 
   const allUsed = history.length >= items.length;

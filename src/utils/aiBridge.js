@@ -284,38 +284,55 @@ function createFetchErrorMessage(error) {
 export async function generateAiText(options = {}) {
   const prompt = String(options.prompt || '').trim();
   const model = String(options.model || APIFREELLM_MODEL).trim() || APIFREELLM_MODEL;
+  const maxRetries = Math.max(0, Math.min(4, Number(options.maxRetries) || 2));
 
   if (!prompt) throw new Error('AI prompt is empty.');
 
-  try {
-    const response = await fetch(APIFREELLM_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: prompt,
-        model,
-      }),
-    });
-
-    if (!response.ok) throw new Error(await readErrorMessage(response));
-
-    const payload = await response.json();
-    const text = String(payload?.response || '').trim();
-    if (!payload?.success || !text) {
-      throw new Error('The AI provider returned an empty response.');
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, Math.min(1000 * Math.pow(2, attempt - 1), 8000)));
     }
+    try {
+      const response = await fetch(APIFREELLM_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: prompt,
+          model,
+        }),
+      });
 
-    return {
-      text,
-      provider: 'apifreellm',
-      model,
-      endpoint: APIFREELLM_ENDPOINT,
-      tier: payload?.tier || null,
-      features: payload?.features || null,
-    };
-  } catch (error) {
-    throw new Error(createFetchErrorMessage(error));
+      if (response.status === 429 && attempt < maxRetries) {
+        lastError = new Error('Rate limited — retrying.');
+        continue;
+      }
+
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+
+      const payload = await response.json();
+      const text = String(payload?.response || '').trim();
+      if (!payload?.success || !text) {
+        throw new Error('The AI provider returned an empty response.');
+      }
+
+      return {
+        text,
+        provider: 'apifreellm',
+        model,
+        endpoint: APIFREELLM_ENDPOINT,
+        tier: payload?.tier || null,
+        features: payload?.features || null,
+        attempts: attempt + 1,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxRetries) break;
+      const msg = error?.message || '';
+      if (/rejected|unauthorized|forbidden/i.test(msg)) break;
+    }
   }
+  throw new Error(createFetchErrorMessage(lastError));
 }

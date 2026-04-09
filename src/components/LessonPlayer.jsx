@@ -12,7 +12,7 @@ function useSwipe(onSwipeLeft, onSwipeRight) {
   const handlers = useMemo(() => ({
     onTouchStart: (e) => {
       const t = e.touches[0];
-      touchRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+      touchRef.current = { x: t.clientX, y: t.clientY, time: Date.now(), target: e.target };
     },
     onTouchEnd: (e) => {
       if (!touchRef.current) return;
@@ -20,8 +20,15 @@ function useSwipe(onSwipeLeft, onSwipeRight) {
       const dx = t.clientX - touchRef.current.x;
       const dy = t.clientY - touchRef.current.y;
       const dt = Date.now() - touchRef.current.time;
+      const origin = touchRef.current.target;
       touchRef.current = null;
       if (dt > 500 || Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx) * 0.7) return;
+      // Skip swipe if originated inside a horizontally scrollable container
+      let el = origin;
+      while (el && el !== document.body) {
+        if (el.scrollWidth > el.clientWidth + 4) return;
+        el = el.parentElement;
+      }
       if (dx < 0) onSwipeLeft();
       else onSwipeRight();
     },
@@ -318,7 +325,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
 
   useEffect(() => {
     if (modeConfig.copyPasteRestricted) {
-      setPolicyNotice('📋 Activity is monitored in this session.');
+      setPolicyNotice('Activity is monitored in this session.');
     }
   }, [modeConfig.copyPasteRestricted]);
 
@@ -496,6 +503,8 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
       return;
     }
     if (currentIndex >= blocks.length - 1) {
+      const unanswered = blocks.filter((b) => (b.type === 'task' || b.type === 'group') && !isComplete(b)).length;
+      if (unanswered > 0 && !window.confirm(`You have ${unanswered} unanswered question${unanswered > 1 ? 's' : ''}. Finish anyway?`)) return;
       recordDebugEvent('lesson_complete', {
         lessonId: lesson?.id || null,
         totalBlocks: blocks.length,
@@ -516,7 +525,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
 
   useEffect(() => {
     const onKeyDown = (event) => {
-      if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT') return;
+      if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT' || event.target.isContentEditable) return;
       if (event.key === 'ArrowLeft' && !modeConfig.disableBackNavigation) setCurrentIndex((value) => Math.max(0, value - 1));
       if (event.key === 'ArrowRight' && canAdvanceCurrent) {
         setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
@@ -657,7 +666,8 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
   const taskBlocks = blocks.filter((b) => b.type === 'task' || b.type === 'group');
   const completedTaskCount = taskBlocks.filter(isComplete).length;
   const completedCount = blocks.filter(isComplete).length;
-  const progressWidth = taskBlocks.length > 0 ? `${(completedTaskCount / taskBlocks.length) * 100}%` : '0%';
+  const viewedOrCompleted = Math.max(currentIndex + 1, completedCount);
+  const progressWidth = blocks.length > 0 ? `${(viewedOrCompleted / blocks.length) * 100}%` : '0%';
   const requiredTasks = getRequiredTaskBlocks(blocks);
   const requiredCompleted = requiredTasks.filter((task) => Boolean(results[task.id])).length;
   const progressTimelineEntries = useMemo(() => {
@@ -739,8 +749,9 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
   return (
     <div
       ref={shellRef}
+      data-lesson-theme={lesson?.settings?.theme || 'classic'}
       className={[
-        'player-shell flex min-h-screen bg-[#f7f7f5]',
+        'player-shell flex min-h-screen',
         studentExperience.highContrastMode ? 'player-high-contrast' : '',
         studentExperience.dyslexiaMode ? 'player-dyslexia-mode' : '',
         studentExperience.reducedMotionMode ? 'player-reduced-motion' : '',
@@ -842,7 +853,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
                   </>
                 )}
               </div>
-              <button type="button" onClick={toggleFullscreen} className="hidden border border-zinc-200 px-2.5 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50 sm:block" title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>{isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}</button>
+              <button type="button" onClick={toggleFullscreen} className="border border-zinc-200 px-2.5 py-2 text-sm text-zinc-600 transition hover:bg-zinc-50" title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>{isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}</button>
             </div>
           </div>
         </header>
@@ -950,6 +961,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
             </div>
           )}
           <div className="player-frame mx-auto flex items-center justify-center gap-3 md:gap-4">
+            {!modeConfig.disableBackNavigation && <button type="button" onClick={goPrev} disabled={!canGoBack} className="player-nav-button border border-zinc-200 px-4 py-2.5 text-sm text-zinc-600 transition hover:bg-zinc-50 disabled:opacity-30">← Back</button>}
             <button type="button" onClick={goNext} disabled={!canAdvanceCurrent} className="action-primary player-nav-button px-6 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40">{currentIndex === blocks.length - 1 ? 'Finish ✓' : 'Next →'}</button>
           </div>
           <div className="player-frame mx-auto mt-2">

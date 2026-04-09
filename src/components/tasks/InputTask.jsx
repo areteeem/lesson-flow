@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Md } from '../FormattedText';
 
-export default function InputTask({ block, onComplete }) {
-  const [value, setValue] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+export default function InputTask({ block, onComplete, onProgress, existingResult, showCheckButton = true }) {
+  const [value, setValue] = useState(existingResult?.response || '');
+  const [submitted, setSubmitted] = useState(!!existingResult?.submitted);
 
   const checkAnswer = () => {
     const answers = Array.isArray(block.answer) ? block.answer : [block.answer];
@@ -42,7 +42,7 @@ export default function InputTask({ block, onComplete }) {
       <input
         type="text"
         value={value}
-        onChange={(e) => !submitted && setValue(e.target.value)}
+        onChange={(e) => { if (!submitted) { setValue(e.target.value); onProgress?.({ submitted: false, response: e.target.value }); } }}
         onKeyDown={handleKeyDown}
         placeholder={block.placeholder || 'Type your answer…'}
         disabled={submitted}
@@ -60,16 +60,19 @@ export default function InputTask({ block, onComplete }) {
           disabled={!value.trim()}
           className="mt-4 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40"
         >
-          Check
+          {showCheckButton ? 'Check' : 'Save answer'}
         </button>
       )}
-      {submitted && (
+      {submitted && showCheckButton && (
         <div className={[
           'mt-4 border px-4 py-3 text-sm',
           correct ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-red-300 bg-red-50 text-red-800',
         ].join(' ')}>
           {correct ? 'Correct!' : `Expected: ${Array.isArray(block.answer) ? block.answer.join(' / ') : block.answer}`}
         </div>
+      )}
+      {submitted && !showCheckButton && (
+        <div className="mt-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Response saved</div>
       )}
       {submitted && block.explanation && (
         <div className="mt-3 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>

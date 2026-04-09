@@ -321,7 +321,7 @@ const TASK_PRESETS = {
   },
   emoji_symbol_match: {
     question: 'Match the symbol to the meaning.',
-    pairs: [{ left: '⏰', right: 'daily routine' }, { left: '📚', right: 'study' }],
+    pairs: [{ left: 'clock', right: 'daily routine' }, { left: 'books', right: 'study' }],
   },
   conditional_branch_questions: {
     question: 'If the learner chooses the wrong form, what follow-up do they get?',
