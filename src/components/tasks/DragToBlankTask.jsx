@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { BLANK_MARKER_RE } from '../../utils/patterns';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
+import { useSmoothDrag } from '../../hooks/useSmoothDrag';
+import { AnimatedBlankSlot, AnimatedBankItem, VerdictIcon, DragHint } from '../dnd/DndAnimations';
 
 export default function DragToBlankTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const sentence = block.text || block.sentence || '';
@@ -13,7 +16,6 @@ export default function DragToBlankTask({ block, onComplete, onProgress, showChe
   const shuffleSeed = useShuffleSeed();
   const [values, setValues] = useState(Array(Math.max(blankCount, 1)).fill(''));
 
-  // Build pool as indexed items so duplicates are tracked independently
   const indexedPool = useMemo(() => {
     const source = block.options?.length ? [...answers, ...block.options.filter((o) => !answers.includes(o))] : [...answers];
     const indexed = source.map((word, i) => ({ id: i, word }));
@@ -22,27 +24,31 @@ export default function DragToBlankTask({ block, onComplete, onProgress, showChe
 
   const [pool, setPool] = useState(indexedPool);
   const [placedIds, setPlacedIds] = useState(Array(Math.max(blankCount, 1)).fill(null));
-  const [draggedItem, setDraggedItem] = useState(null);
-  const [selectedItemId, setSelectedItemId] = useState(null);
-  const [preferTapPlacement, setPreferTapPlacement] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [hoveredBlank, setHoveredBlank] = useState(null);
+  const [showHint, setShowHint] = useState(false);
+  const hasInteracted = useRef(false);
   const showVerdict = submitted && showCheckButton;
 
-  useEffect(() => {
-    const query = window.matchMedia('(pointer: coarse)');
-    const update = () => setPreferTapPlacement(query.matches);
-    update();
-    query.addEventListener?.('change', update);
-    return () => query.removeEventListener?.('change', update);
-  }, []);
+  const { preferTap, reducedMotion, setupMediaListeners, springConfig, gentleSpring, draggedItem, selectedItem, setDraggedItem, setSelectedItem, clearSelection } = useSmoothDrag({ disabled: submitted });
 
-  const selectedItem = useMemo(() => pool.find((item) => item.id === selectedItemId) || null, [pool, selectedItemId]);
+  useEffect(() => setupMediaListeners(), [setupMediaListeners]);
+
+  useEffect(() => {
+    if (!submitted && !hasInteracted.current && pool.length > 0) {
+      const timer = setTimeout(() => { if (!hasInteracted.current) setShowHint(true); }, 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [submitted, pool.length]);
+
+  const dismissHint = useCallback(() => { setShowHint(false); hasInteracted.current = true; }, []);
 
   const fillBlank = (blankIdx, item) => {
     if (!item || submitted) return;
+    hasInteracted.current = true;
+    setShowHint(false);
     setValues((current) => {
       const next = [...current];
-      // If blank already has a word, return that pool item
       if (next[blankIdx]) {
         const oldId = placedIds[blankIdx];
         if (oldId !== null) {
@@ -60,8 +66,8 @@ export default function DragToBlankTask({ block, onComplete, onProgress, showChe
       return next;
     });
     setPool((p) => p.filter((entry) => entry.id !== item.id));
-    setDraggedItem(null);
-    setSelectedItemId(null);
+    clearSelection();
+    setHoveredBlank(null);
   };
 
   const releaseBlank = (blankIdx) => {
@@ -79,8 +85,10 @@ export default function DragToBlankTask({ block, onComplete, onProgress, showChe
 
   const handlePoolItemPress = (item) => {
     if (submitted) return;
-    if (preferTapPlacement) {
-      setSelectedItemId((current) => current === item.id ? null : item.id);
+    hasInteracted.current = true;
+    setShowHint(false);
+    if (preferTap) {
+      setSelectedItem((current) => current?.id === item.id ? null : item);
       return;
     }
     const firstEmpty = values.findIndex((value) => !value);
@@ -88,7 +96,7 @@ export default function DragToBlankTask({ block, onComplete, onProgress, showChe
       fillBlank(firstEmpty, item);
       return;
     }
-    setSelectedItemId((current) => current === item.id ? null : item.id);
+    setSelectedItem((current) => current?.id === item.id ? null : item);
   };
 
   const submit = () => {
@@ -97,7 +105,6 @@ export default function DragToBlankTask({ block, onComplete, onProgress, showChe
     onComplete?.({ submitted: true, correct: score === 1, score, response: values, correctAnswer: answers });
   };
 
-  // If no blanks in sentence text, show a fallback message
   if (blankCount === 0) {
     return (
       <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
@@ -112,21 +119,31 @@ export default function DragToBlankTask({ block, onComplete, onProgress, showChe
     if (/(\{\}|_{3,}|\[blank\]|\[\d+\])/i.test(token)) acc[i] = Object.keys(acc).length;
     return acc;
   }, {});
+
   return (
-    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+    <div className="relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+      <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <div className="mb-3 text-xs text-zinc-500">{block.hint}</div>}
-      {preferTapPlacement && !submitted && (
-        <div className="mb-4 border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+      {preferTap && !submitted && (
+        <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={gentleSpring} className="mb-4 border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
           Tap a word in the bank, then tap a blank to place it. Tap a filled blank to remove its word.
-        </div>
+        </motion.div>
       )}
-      {selectedItem && !submitted && (
-        <div className="mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
-          <span>Selected word: <strong>{selectedItem.word}</strong></span>
-          <button type="button" onClick={() => setSelectedItemId(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Clear</button>
-        </div>
-      )}
+      <AnimatePresence>
+        {selectedItem && !submitted && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            transition={springConfig}
+            className="mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white"
+          >
+            <span>Selected word: <strong>{selectedItem.word}</strong></span>
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={() => setSelectedItem(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Clear</motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="mb-5 border border-zinc-200 bg-zinc-50 p-4 md:p-5 text-base leading-8 md:leading-9 text-zinc-800">
         {tokens.map((token, index) => {
           if (!/(\{\}|_{3,}|\[blank\]|\[\d+\])/i.test(token)) {
@@ -136,84 +153,81 @@ export default function DragToBlankTask({ block, onComplete, onProgress, showChe
           const value = values[currentBlank];
           const correct = showVerdict && value.trim().toLowerCase() === (answers[currentBlank] || '').trim().toLowerCase();
           const wrong = showVerdict && value && !correct;
+          const isHovered = hoveredBlank === currentBlank && !submitted;
           return (
-            <button
+            <AnimatedBlankSlot
               key={index}
-              type="button"
+              value={value}
+              ghostPreview={selectedItem?.word || draggedItem?.word || null}
+              isHovered={isHovered}
+              isCorrect={correct}
+              isWrong={wrong}
+              submitted={submitted}
               onDrop={(event) => {
                 event.preventDefault();
+                setHoveredBlank(null);
                 const data = readDropData(event, 'application/json');
-                if (data) {
-                  try {
-                    fillBlank(currentBlank, JSON.parse(data));
-                  } catch {
-                    /* ignore */
-                  }
-                }
+                if (data) { try { fillBlank(currentBlank, JSON.parse(data)); } catch { /* ignore */ } }
               }}
-              onDragOver={normalizeDragOver}
+              onDragOver={(e) => { normalizeDragOver(e); setHoveredBlank(currentBlank); }}
+              onDragLeave={() => setHoveredBlank(null)}
               onClick={() => {
-                if (selectedItem) {
-                  fillBlank(currentBlank, selectedItem);
-                  return;
-                }
+                if (selectedItem) { fillBlank(currentBlank, selectedItem); return; }
                 releaseBlank(currentBlank);
               }}
-              className={[
-                'mx-1 my-1 inline-flex min-h-12 min-w-28 items-center justify-center border border-dashed px-3 py-2 text-sm font-medium transition-all duration-200 md:min-h-14 md:min-w-32',
-                correct ? 'border-emerald-400 bg-emerald-50 text-emerald-900 scale-105' : '',
-                wrong ? 'border-red-400 bg-red-50 text-red-900' : '',
-                !submitted && value ? 'border-zinc-900 bg-white text-zinc-900 shadow-[0_10px_30px_rgba(0,0,0,0.06)] animate-[pop_0.2s_ease-out]' : '',
-                !submitted && !value ? 'border-zinc-300 bg-zinc-50 text-zinc-400' : '',
-                !submitted && selectedItem && !value ? 'border-zinc-900 bg-white text-zinc-900' : '',
-              ].join(' ')}
-            >
-              {value || 'Drop here'}
-            </button>
+            />
           );
         })}
       </div>
-      {showVerdict && (
-        <div className="mb-4 space-y-1">
-          {values.map((value, idx) => {
-            const isCorrect = value.trim().toLowerCase() === (answers[idx] || '').trim().toLowerCase();
-            return !isCorrect ? (
-              <div key={idx} className="text-xs text-red-600">Blank {idx + 1}: expected <strong>{answers[idx]}</strong>, got <strong>{value || '(empty)'}</strong></div>
-            ) : null;
-          })}
-          {block.explanation && <div className="mt-2 text-sm text-zinc-600"><Md text={block.explanation} /></div>}
-        </div>
-      )}
+      <AnimatePresence>
+        {showVerdict && (
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={gentleSpring} className="mb-4 space-y-1">
+            {values.map((value, idx) => {
+              const isCorrect = value.trim().toLowerCase() === (answers[idx] || '').trim().toLowerCase();
+              return !isCorrect ? (
+                <motion.div key={idx} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ ...springConfig, delay: idx * 0.05 }} className="flex items-center gap-2 text-xs text-red-600">
+                  <VerdictIcon isWrong />
+                  <span>Blank {idx + 1}: expected <strong>{answers[idx]}</strong>, got <strong>{value || '(empty)'}</strong></span>
+                </motion.div>
+              ) : null;
+            })}
+            {block.explanation && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mt-2 text-sm text-zinc-600"><Md text={block.explanation} /></motion.div>}
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="mb-2 flex items-center justify-between gap-3 text-xs uppercase tracking-[0.18em] text-zinc-500">
         <span>Word bank</span>
-        <span>{preferTapPlacement ? 'Tap to place' : 'Drag or tap'}</span>
+        <span>{preferTap ? 'Tap to place' : 'Drag or tap'}</span>
       </div>
       <div className="mb-5 flex flex-wrap gap-2 border border-zinc-200 bg-white p-4">
-        {pool.length === 0 && !submitted && <span className="text-sm text-zinc-400">All words placed</span>}
-        {pool.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            draggable
-            onDragStart={(event) => {
-              setDraggedItem(item);
-              setSelectedItemId(item.id);
-              configureDragStart(event, JSON.stringify(item), 'application/json');
-            }}
-            onDragEnd={() => setDraggedItem(null)}
-            onClick={() => handlePoolItemPress(item)}
-            className={[
-              'min-h-11 border px-4 py-2 text-sm font-medium transition-all duration-200 md:min-h-12',
-              selectedItemId === item.id || draggedItem?.id === item.id ? 'border-zinc-900 bg-zinc-900 text-white scale-105' : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:-translate-y-0.5 hover:border-zinc-900 hover:bg-white',
-            ].join(' ')}
-          >
-            {item.word}
-          </button>
-        ))}
+        <AnimatePresence>
+          {pool.length === 0 && !submitted && (
+            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-zinc-400">All words placed</motion.span>
+          )}
+          {pool.map((item) => (
+            <AnimatedBankItem
+              key={item.id}
+              item={item}
+              isSelected={selectedItem?.id === item.id}
+              isDragging={draggedItem?.id === item.id}
+              disabled={submitted}
+              onDragStart={(event) => {
+                setDraggedItem(item);
+                setSelectedItem(item);
+                configureDragStart(event, JSON.stringify(item), 'application/json');
+              }}
+              onDragEnd={() => setDraggedItem(null)}
+              onClick={() => handlePoolItemPress(item)}
+              className="min-h-11 border px-4 py-2 text-sm font-medium md:min-h-12"
+            >
+              {item.word}
+            </AnimatedBankItem>
+          ))}
+        </AnimatePresence>
       </div>
-      <button type="button" onClick={submit} disabled={values.some((v) => !v)} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
+      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" onClick={submit} disabled={values.some((v) => !v)} className="border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">
         {showCheckButton ? 'Check' : 'Save answer'}
-      </button>
+      </motion.button>
     </div>
   );
 }

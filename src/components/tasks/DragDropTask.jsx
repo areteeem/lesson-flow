@@ -1,52 +1,58 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
+import { useSmoothDrag } from '../../hooks/useSmoothDrag';
+import { AnimatedBankItem, VerdictIcon, DragHint } from '../dnd/DndAnimations';
 
 export default function DragDropTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const pairs = block.pairs || [];
   const shuffleSeed = useShuffleSeed();
 
-  // Right options as draggable items
   const draggableItems = useMemo(() => {
     const indexed = pairs.map((pair, i) => ({ id: i, text: pair.right }));
     return block.shuffle === false ? indexed : stableShuffle(indexed, `${block.id || block.question}-${shuffleSeed}-right-options`);
   }, [block.id, block.question, block.shuffle, pairs, shuffleSeed]);
 
-  // Track placements: { leftValue: draggableItemId }
   const [placements, setPlacements] = useState({});
-  const [draggedItem, setDraggedItem] = useState(null);
-  const [selectedItem, setSelectedItem] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const [hoveredTarget, setHoveredTarget] = useState(null);
+  const [showHint, setShowHint] = useState(false);
+  const hasInteracted = useRef(false);
   const showVerdict = submitted && showCheckButton;
-  const [preferTap, setPreferTap] = useState(false);
+
+  const { preferTap, reducedMotion, setupMediaListeners, springConfig, gentleSpring, draggedItem, selectedItem, setDraggedItem, setSelectedItem, clearSelection } = useSmoothDrag({ disabled: submitted });
+
+  useEffect(() => setupMediaListeners(), [setupMediaListeners]);
 
   useEffect(() => {
-    const query = window.matchMedia('(pointer: coarse)');
-    const update = () => setPreferTap(query.matches);
-    update();
-    query.addEventListener?.('change', update);
-    return () => query.removeEventListener?.('change', update);
-  }, []);
+    if (!submitted && !hasInteracted.current && pairs.length > 0) {
+      const timer = setTimeout(() => { if (!hasInteracted.current) setShowHint(true); }, 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [submitted, pairs.length]);
+
+  const dismissHint = useCallback(() => { setShowHint(false); hasInteracted.current = true; }, []);
 
   const placedItemIds = new Set(Object.values(placements));
   const bank = draggableItems.filter((item) => !placedItemIds.has(item.id));
 
   const placeOnTarget = (leftValue, item) => {
     if (submitted || !item) return;
+    hasInteracted.current = true;
+    setShowHint(false);
     setPlacements((prev) => {
       const next = { ...prev };
-      // Remove this item from any other target
       for (const [key, val] of Object.entries(next)) {
         if (val === item.id) delete next[key];
       }
-      // If target already has an item, it goes back to bank
       next[leftValue] = item.id;
       onProgress?.({ submitted: false, response: next });
       return next;
     });
-    setDraggedItem(null);
-    setSelectedItem(null);
+    clearSelection();
+    setHoveredTarget(null);
   };
 
   const releaseFromTarget = (leftValue) => {
@@ -61,6 +67,8 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
 
   const handleBankPress = (item) => {
     if (submitted) return;
+    hasInteracted.current = true;
+    setShowHint(false);
     setSelectedItem((prev) => (prev?.id === item.id ? null : item));
   };
 
@@ -86,108 +94,142 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
   };
 
   return (
-    <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+    <div className="relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+      <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <div className="mb-3 text-xs text-zinc-500">{block.hint}</div>}
       {pairs.length === 0 && (
         <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no pairs to match.</div>
       )}
       {!submitted && (
-        <div className="mb-3 text-xs text-zinc-500">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-3 text-xs text-zinc-500">
           {preferTap ? 'Tap an answer, then tap a target to place it.' : 'Drag answers to their matching targets, or tap to select and place.'}
-        </div>
+        </motion.div>
       )}
 
       {/* Answer bank */}
-      {bank.length > 0 && !submitted && (
-        <div className="mb-5">
-          <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Answer bank</div>
-          <div className="flex flex-wrap gap-2 border border-zinc-200 bg-zinc-50 p-3">
-            {bank.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                draggable
-                onDragStart={(e) => {
-                  setDraggedItem(item);
-                  e.dataTransfer.setData('application/json', JSON.stringify(item));
-                  e.dataTransfer.effectAllowed = 'move';
-                }}
-                onDragEnd={() => setDraggedItem(null)}
-                onClick={() => handleBankPress(item)}
-                className={[
-                  'min-h-10 border px-3 py-2 text-sm font-medium transition',
-                  selectedItem?.id === item.id || draggedItem?.id === item.id
-                    ? 'border-zinc-900 bg-zinc-900 text-white'
-                    : 'border-zinc-200 bg-white text-zinc-700 hover:-translate-y-0.5 hover:border-zinc-900 cursor-grab active:cursor-grabbing',
-                ].join(' ')}
-              >
-                {item.text}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {selectedItem && !submitted && (
-        <div className="mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white">
-          <span>Selected: <strong>{selectedItem.text}</strong></span>
-          <button type="button" onClick={() => setSelectedItem(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</button>
-        </div>
-      )}
+      <AnimatePresence>
+        {bank.length > 0 && !submitted && (
+          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }} transition={gentleSpring} className="mb-5">
+            <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Answer bank</div>
+            <div className="flex flex-wrap gap-2 border border-zinc-200 bg-zinc-50 p-3">
+              <AnimatePresence>
+                {bank.map((item) => (
+                  <AnimatedBankItem
+                    key={item.id}
+                    item={item}
+                    isSelected={selectedItem?.id === item.id}
+                    isDragging={draggedItem?.id === item.id}
+                    disabled={submitted}
+                    onDragStart={(e) => {
+                      setDraggedItem(item);
+                      setSelectedItem(item);
+                      e.dataTransfer.setData('application/json', JSON.stringify(item));
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragEnd={() => setDraggedItem(null)}
+                    onClick={() => handleBankPress(item)}
+                    className="min-h-10 border px-3 py-2 text-sm font-medium"
+                  >
+                    {item.text}
+                  </AnimatedBankItem>
+                ))}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {selectedItem && !submitted && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            transition={springConfig}
+            className="mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white"
+          >
+            <span>Selected: <strong>{selectedItem.text}</strong></span>
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={() => setSelectedItem(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Match targets */}
       <div className="space-y-2">
-        {pairs.map((pair) => {
-          const placedId = placements[pair.left];
-          const placedItem = placedId !== undefined ? draggableItems.find((d) => d.id === placedId) : null;
-          const isCorrect = showVerdict && placedItem && placedItem.text === pair.right;
-          const isWrong = showVerdict && placedItem && placedItem.text !== pair.right;
-          const isEmpty = !placedItem;
-          const isDropTarget = draggedItem && isEmpty;
-          return (
-            <div
-              key={pair.left}
-              onDrop={(e) => {
-                e.preventDefault();
-                try { placeOnTarget(pair.left, JSON.parse(e.dataTransfer.getData('application/json'))); } catch { /* ignore */ }
-              }}
-              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-              onClick={() => handleTargetClick(pair.left)}
-              className={[
-                'flex items-center gap-3 border px-4 py-3 transition',
-                isCorrect ? 'border-emerald-400 bg-emerald-50' : '',
-                isWrong ? 'border-red-400 bg-red-50' : '',
-                !submitted && placedItem ? 'border-zinc-900 bg-zinc-50' : '',
-                !submitted && isEmpty && isDropTarget ? 'border-dashed border-zinc-900 bg-zinc-50' : '',
-                !submitted && isEmpty && !isDropTarget ? 'border-dashed border-zinc-300 bg-zinc-50' : '',
-                !submitted && selectedItem && isEmpty ? 'cursor-pointer' : '',
-              ].join(' ')}
-            >
-              <div className="min-w-0 flex-1 text-sm font-medium text-zinc-800">{pair.left}</div>
-              <div className="shrink-0">
-                {placedItem ? (
-                  <span className={[
-                    'inline-flex items-center gap-1 border px-3 py-1 text-sm',
-                    isCorrect ? 'border-emerald-300 text-emerald-800' : '',
-                    isWrong ? 'border-red-300 text-red-800' : '',
-                    !submitted ? 'border-zinc-300 text-zinc-900' : '',
-                  ].join(' ')}>
-                    {placedItem.text}
-                    {!submitted && <button type="button" onClick={(e) => { e.stopPropagation(); releaseFromTarget(pair.left); }} className="text-zinc-400 hover:text-zinc-900">&times;</button>}
-                  </span>
-                ) : (
-                  <span className="text-xs text-zinc-400">{isDropTarget ? 'Drop here' : '—'}</span>
-                )}
-              </div>
-              {showVerdict && isWrong && <div className="text-xs text-red-600">Expected: <strong>{pair.right}</strong></div>}
-            </div>
-          );
-        })}
+        <AnimatePresence>
+          {pairs.map((pair, pairIdx) => {
+            const placedId = placements[pair.left];
+            const placedItem = placedId !== undefined ? draggableItems.find((d) => d.id === placedId) : null;
+            const isCorrect = showVerdict && placedItem && placedItem.text === pair.right;
+            const isWrong = showVerdict && placedItem && placedItem.text !== pair.right;
+            const isEmpty = !placedItem;
+            const isHovered = hoveredTarget === pair.left;
+            const isDropTarget = draggedItem && isEmpty;
+            return (
+              <motion.div
+                key={pair.left}
+                layout={!reducedMotion}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  scale: isHovered && isEmpty ? 1.01 : 1,
+                  x: isWrong ? [0, -4, 4, -2, 2, 0] : 0,
+                }}
+                transition={{ ...springConfig, delay: pairIdx * 0.03 }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setHoveredTarget(null);
+                  try { placeOnTarget(pair.left, JSON.parse(e.dataTransfer.getData('application/json'))); } catch { /* ignore */ }
+                }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setHoveredTarget(pair.left); }}
+                onDragLeave={() => setHoveredTarget(null)}
+                onClick={() => handleTargetClick(pair.left)}
+                className={[
+                  'flex items-center gap-3 border px-4 py-3 transition-colors',
+                  isCorrect ? 'border-emerald-400 bg-emerald-50' : '',
+                  isWrong ? 'border-red-400 bg-red-50' : '',
+                  !submitted && placedItem ? 'border-zinc-900 bg-zinc-50' : '',
+                  !submitted && isEmpty && isHovered ? 'border-solid border-zinc-900 bg-zinc-50' : '',
+                  !submitted && isEmpty && isDropTarget && !isHovered ? 'border-dashed border-zinc-600 bg-zinc-50' : '',
+                  !submitted && isEmpty && !isDropTarget ? 'border-dashed border-zinc-300 bg-zinc-50' : '',
+                  !submitted && selectedItem && isEmpty ? 'cursor-pointer' : '',
+                ].join(' ')}
+              >
+                <div className="min-w-0 flex-1 text-sm font-medium text-zinc-800">{pair.left}</div>
+                <div className="shrink-0">
+                  {placedItem ? (
+                    <motion.span
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={springConfig}
+                      className={[
+                        'inline-flex items-center gap-1 border px-3 py-1 text-sm',
+                        isCorrect ? 'border-emerald-300 text-emerald-800' : '',
+                        isWrong ? 'border-red-300 text-red-800' : '',
+                        !submitted ? 'border-zinc-300 text-zinc-900' : '',
+                      ].join(' ')}
+                    >
+                      {placedItem.text}
+                      {!submitted && (
+                        <motion.button whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }} type="button" onClick={(e) => { e.stopPropagation(); releaseFromTarget(pair.left); }} className="text-zinc-400 hover:text-zinc-900">&times;</motion.button>
+                      )}
+                    </motion.span>
+                  ) : (
+                    <span className="text-xs text-zinc-400">{isHovered || isDropTarget ? 'Drop here' : '—'}</span>
+                  )}
+                </div>
+                {showVerdict && <VerdictIcon isCorrect={isCorrect} isWrong={isWrong} />}
+                {showVerdict && isWrong && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-red-600">Expected: <strong>{pair.right}</strong></motion.div>}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
-      <button type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</button>
+      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</motion.button>
       {submitted && block.explanation && (
-        <div className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></div>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={gentleSpring} className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></motion.div>
       )}
     </div>
   );

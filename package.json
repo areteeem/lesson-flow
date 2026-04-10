@@ -13,10 +13,16 @@
     "ci:check": "npm run build && npm run dsl:validate && npm run live:smoke"
   },
   "dependencies": {
+    "@dnd-kit/abstract": "^0.3.2",
+    "@dnd-kit/dom": "^0.3.2",
+    "@dnd-kit/helpers": "^0.3.2",
+    "@dnd-kit/react": "^0.3.2",
+    "@dnd-kit/state": "^0.3.2",
     "@monaco-editor/react": "^4.7.0",
     "@supabase/supabase-js": "^2.56.0",
     "dompurify": "^3.3.3",
     "mobile-drag-drop": "^3.0.0-rc.0",
+    "motion": "^12.38.0",
     "pako": "^2.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
