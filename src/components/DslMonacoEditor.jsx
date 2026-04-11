@@ -5,6 +5,7 @@ import { generateDSL, parseLesson } from '../parser';
 import { getSlideTemplate, getTaskTemplate } from '../config/dslPromptTemplates';
 import { TASK_REGISTRY } from '../config/taskRegistry';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
+import { useAppDialogs } from '../context/DialogContext';
 import { AlertTriangleIcon, CheckIcon, CircleXIcon, CopyIcon, DslIcon, ExportIcon, GridIcon, InfoCircleIcon, QuestionIcon, RefreshIcon, SaveIcon, SearchIcon, SparkIcon, TemplateIcon } from './Icons';
 
 // Use locally installed monaco-editor instead of CDN (CDN is blocked by CSP)
@@ -617,6 +618,7 @@ function StatusChip({ icon, label, value, tone = 'neutral' }) {
 }
 
 export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
+  const { prompt } = useAppDialogs();
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const timerRef = useRef(null);
@@ -777,8 +779,13 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
     downloadTextFile(csv, 'dsl-warnings.csv', 'text/csv;charset=utf-8');
   };
 
-  const saveCurrentLintProfile = () => {
-    const proposedName = typeof window !== 'undefined' ? window.prompt('Profile name for this workspace?', selectedProfile || 'custom-profile') : '';
+  const saveCurrentLintProfile = async () => {
+    const proposedName = typeof window !== 'undefined' ? await prompt('Profile name for this workspace?', {
+      title: 'Save lint profile',
+      placeholder: 'custom-profile',
+      defaultValue: selectedProfile || 'custom-profile',
+      confirmLabel: 'Save profile',
+    }) : '';
     const profileName = String(proposedName || '').trim();
     if (!profileName) return;
 

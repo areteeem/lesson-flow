@@ -143,6 +143,80 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.app-surface {
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-subtle);
+}
+
+.app-menu-surface {
+  background: color-mix(in srgb, var(--color-bg-card) 96%, var(--color-bg-secondary) 4%);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
+.task-shell {
+  background: color-mix(in srgb, var(--color-bg-card) 96%, transparent);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-subtle);
+  box-shadow: var(--shadow-depth-1);
+}
+
+.task-muted-panel {
+  background: color-mix(in srgb, var(--color-bg-secondary) 88%, transparent);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border-subtle);
+}
+
+.task-bank-panel {
+  background: color-mix(in srgb, var(--color-bg-card) 92%, var(--color-bg-secondary) 8%);
+  border-color: var(--color-border-subtle);
+}
+
+.task-inverse-banner {
+  background: color-mix(in srgb, var(--color-bg-tertiary) 92%, var(--color-bg-card) 8%);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
+.task-primary-button {
+  background: var(--color-text-primary);
+  color: var(--color-text-inverse);
+  border-color: var(--color-text-primary);
+}
+
+.task-primary-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text-primary) 88%, var(--color-bg-primary) 12%);
+}
+
+.task-secondary-button {
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border-default);
+}
+
+.task-secondary-button:hover:not(:disabled) {
+  border-color: var(--color-border-hover);
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.task-helper-text {
+  color: var(--color-text-secondary);
+}
+
+.task-empty-state {
+  color: var(--color-text-tertiary);
+}
+
+.player-shell.player-high-contrast .task-shell,
+.player-shell.player-high-contrast .task-muted-panel,
+.player-shell.player-high-contrast .task-bank-panel,
+.player-shell.player-high-contrast .task-inverse-banner {
+  border-color: currentColor !important;
+  box-shadow: none;
+}
+
 .kodak-canvas {
   background: radial-gradient(circle at 5% 0%, color-mix(in srgb, var(--bg-cream) 82%, white 18%) 0%, var(--bg-cream) 52%, var(--bg-cream-strong) 100%);
 }

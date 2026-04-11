@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { generateDSL, parseLesson } from '../parser';
 import { exportLesson, importDsl, importLesson, printLessonReport, printStudentLesson } from '../storage';
 import { loadAppSettings } from '../utils/appSettings';
@@ -521,6 +522,7 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
   const dslInputRef = useRef(null);
   const autoSaveRef = useRef(null);
   const dslParseTimer = useRef(null);
+  const menuButtonRef = useRef(null);
   const [mode, setMode] = useState(routeMode || 'builder');
   const editorModes = useMemo(() => ['dsl', 'builder', 'preview', 'grading', 'ai'], []);
   const initialState = useMemo(() => createStateFromLesson(lesson), [lesson]);
@@ -529,6 +531,7 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
   const [selectedBlockId, setSelectedBlockId] = useState(() => initialState.parsed.blocks[0]?.id || null);
   const [showHotkeys, setShowHotkeys] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 16 });
   const [showLessonSettings, setShowLessonSettings] = useState(false);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [templatePromptOpen, setTemplatePromptOpen] = useState(false);
@@ -919,6 +922,27 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
     setTemplateMenuOpen((currentValue) => (currentValue === shouldOpen ? currentValue : shouldOpen));
   }, [requestedOverlay]);
 
+  useEffect(() => {
+    if (!menuOpen || typeof window === 'undefined' || !menuButtonRef.current) return undefined;
+
+    const updateMenuPosition = () => {
+      const rect = menuButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPosition({
+        top: rect.bottom + 6,
+        right: Math.max(window.innerWidth - rect.right, 12),
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [menuOpen]);
+
   const editorSessions = useMemo(() => {
     const lessonId = lesson?.id || null;
     const lessonTitle = parsed.title || '';
@@ -1068,11 +1092,15 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
             </IconButton>
 
             <div className="relative">
+              <div ref={menuButtonRef}>
               <IconButton title="Import or export" onClick={() => setMenuOpen((v) => !v)}>
                 <MenuIcon />
               </IconButton>
-              {menuOpen && (
-                <div className="absolute right-0 top-full z-30 mt-1 min-w-48 border border-zinc-200 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
+              </div>
+              {menuOpen && typeof document !== 'undefined' && createPortal(
+                <>
+                  <button type="button" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-[55] cursor-default bg-transparent" aria-label="Close import and export menu" />
+                  <div style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }} className="app-menu-surface fixed z-[56] min-w-48 border border-zinc-200 bg-white shadow-[0_18px_48px_rgba(0,0,0,0.16)]">
                   <button type="button" onClick={() => { setShowQuizImport(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50"><ClipboardIcon className="h-3.5 w-3.5 text-zinc-400" /> Import Quiz</button>
                   <button type="button" onClick={() => dslInputRef.current?.click()} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Import DSL</button>
                   <button type="button" onClick={() => inputRef.current?.click()} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Import JSON</button>
@@ -1080,7 +1108,9 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
                   <button type="button" onClick={() => { printStudentLesson(payload); setMenuOpen(false); }} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Student PDF</button>
                   <button type="button" onClick={() => { printLessonReport(payload); setMenuOpen(false); }} className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Teacher PDF</button>
                   <button type="button" onClick={() => { setTemplatePromptOpen(true); setMenuOpen(false); }} className="block w-full px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50">Save as Template</button>
-                </div>
+                  </div>
+                </>,
+                document.body,
               )}
             </div>
 

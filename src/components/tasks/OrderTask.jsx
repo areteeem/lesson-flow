@@ -206,10 +206,10 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   /* ─── Sentence Builder: horizontal chips ─── */
   if (taskType === 'sentence_builder') {
     return (
-      <div className="relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+      <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
-        {!submitted && <div className="mb-3 text-xs text-zinc-500">Drag the words into the correct order to build a sentence.</div>}
+        {!submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">Drag the words into the correct order to build a sentence.</div>}
         <LayoutGroup>
           <div ref={listRef} className="flex flex-wrap gap-2">
             {items.map((item, index) => {
@@ -260,10 +260,10 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   /* ─── Timeline Order: vertical timeline with markers ─── */
   if (taskType === 'timeline_order') {
     return (
-      <div className="relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+      <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
-        {!submitted && <div className="mb-3 text-xs text-zinc-500">Arrange events in chronological order along the timeline.</div>}
+        {!submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">Arrange events in chronological order along the timeline.</div>}
         <div ref={listRef} className="relative ml-6 border-l-2 border-zinc-300 pl-6">
           <AnimatePresence>
             {items.map((item, index) => {
@@ -343,10 +343,10 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   /* ─── Story Reconstruction: paragraph cards ─── */
   if (taskType === 'story_reconstruction') {
     return (
-      <div className="relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+      <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
         <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
-        {!submitted && <div className="mb-3 text-xs text-zinc-500">Rearrange the paragraphs to rebuild the story.</div>}
+        {!submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">Rearrange the paragraphs to rebuild the story.</div>}
         <div ref={listRef} className="space-y-3">
           <AnimatePresence>
             {items.map((item, index) => {
@@ -435,14 +435,14 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
 
   /* ─── Default: vertical list (order, justify_order, etc.) ─── */
   return (
-    <div className="relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+    <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {items.length === 0 && (
         <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no items to order.</div>
       )}
       {!submitted && items.length > 0 && (
-        <div className="mb-3 text-xs text-zinc-500">
+        <div className="task-helper-text mb-3 text-xs text-zinc-500">
           {preferTap ? 'Hold and drag, or use the arrows to reorder.' : 'Drag items to reorder, or use the arrows.'}
         </div>
       )}
@@ -541,9 +541,9 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
           })}
         </AnimatePresence>
       </div>
-      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" onClick={submit} disabled={submitted} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</motion.button>
+      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" onClick={submit} disabled={submitted} className="task-primary-button mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</motion.button>
       {submitted && block.explanation && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={gentleSpring} className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></motion.div>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={gentleSpring} className="task-muted-panel mt-4 border p-4 text-sm text-blue-900"><Md text={block.explanation} /></motion.div>
       )}
     </div>
   );

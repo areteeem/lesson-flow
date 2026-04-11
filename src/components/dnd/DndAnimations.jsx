@@ -274,27 +274,24 @@ export function InsertionIndicator({ horizontal = false, className = '' }) {
 }
 
 /**
- * Drag hint overlay — shows animated hand icon on first interaction.
+ * Drag hint overlay — lightweight guidance that stays anchored instead of
+ * animating across the task surface.
  */
-export function DragHint({ show = false, onDismiss }) {
+export function DragHint({ show = false, onDismiss, message = 'Drag or tap an item to place it.' }) {
   return (
     <AnimatePresence>
       {show && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center"
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          onAnimationComplete={onDismiss}
+          className="pointer-events-none absolute left-4 right-4 top-4 z-40 flex justify-end"
         >
-          <motion.div
-            animate={{ x: [0, 30, 30, 0], y: [0, 10, 10, 0] }}
-            transition={{ repeat: 2, duration: 1.5, ease: 'easeInOut' }}
-            onAnimationComplete={onDismiss}
-            className="text-4xl opacity-60 drop-shadow-lg"
-          >
-            👆
-          </motion.div>
+          <div className="task-muted-panel max-w-[18rem] border border-zinc-300 bg-white/92 px-3 py-2 text-[11px] font-medium text-zinc-600 shadow-[0_8px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm">
+            {message}
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

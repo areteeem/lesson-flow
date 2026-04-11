@@ -11,6 +11,7 @@ import { deleteManualScores, fetchManualScores, fetchSessionResponses, persistMa
 import { ensureSession } from '../utils/accountAuth';
 import { saveSession } from '../storage';
 import { syncSessionGradeToCloud } from '../utils/gradingCloud';
+import { useAppDialogs } from '../context/DialogContext';
 
 const PHASE = { LOBBY: 'lobby', RUNNING: 'running', FINISHED: 'finished' };
 const AUTO_ADVANCE_POLICY = {
@@ -80,6 +81,7 @@ function formatSecondsToClock(totalSeconds) {
 }
 
 export default function LiveHost({ lesson, onExit }) {
+  const { confirm, prompt } = useAppDialogs();
   const hostPlayerId = useMemo(() => {
     let stored = '';
     try {
@@ -467,9 +469,12 @@ export default function LiveHost({ lesson, onExit }) {
     setPhase(PHASE.RUNNING);
   };
 
-  const finishSession = () => {
+  const finishSession = async () => {
     const participantCount = Object.keys(students).length;
-    if (participantCount > 0 && !window.confirm(`End session for ${participantCount} student${participantCount > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    if (participantCount > 0 && !await confirm(`End session for ${participantCount} student${participantCount > 1 ? 's' : ''}? This cannot be undone.`, {
+      title: 'End live session',
+      confirmLabel: 'End session',
+    })) return;
     recordDebugEvent('live_host_finish', { pin, lessonId: lesson?.id || null, totalBlocks: blocks.length });
     setAutoAdvancePaused(false);
     setPhase(PHASE.FINISHED);
@@ -477,17 +482,21 @@ export default function LiveHost({ lesson, onExit }) {
 
   const advanceToNextBlock = useCallback(() => {
     if (currentIndex >= blocks.length - 1) {
-      finishSession();
+      void finishSession();
       return;
     }
     setCurrentIndex((value) => Math.min(blocks.length - 1, value + 1));
   }, [blocks.length, currentIndex, finishSession]);
 
-  const skipCurrentQuestion = useCallback(() => {
+  const skipCurrentQuestion = useCallback(async () => {
     if (phase !== PHASE.RUNNING || !currentBlock) return;
-    const inputReason = typeof window !== 'undefined'
-      ? window.prompt('Reason for skipping this question?', 'Time is up')
-      : 'No reason provided';
+    const inputReason = await prompt('Reason for skipping this question?', {
+      title: 'Skip question',
+      placeholder: 'Time is up',
+      defaultValue: 'Time is up',
+      confirmLabel: 'Skip question',
+      allowEmpty: true,
+    });
     if (inputReason === null) return;
 
     const reason = String(inputReason || '').trim() || 'No reason provided';
@@ -515,16 +524,20 @@ export default function LiveHost({ lesson, onExit }) {
       ...event,
     });
     advanceToNextBlock();
-  }, [advanceToNextBlock, broadcast, currentBlock, currentIndex, phase, pin, sessionId]);
+  }, [advanceToNextBlock, broadcast, currentBlock, currentIndex, phase, pin, prompt, sessionId]);
 
-  const reopenPreviousQuestion = useCallback(() => {
+  const reopenPreviousQuestion = useCallback(async () => {
     if (phase !== PHASE.RUNNING || currentIndex <= 0) return;
 
     const targetIndex = currentIndex - 1;
     const targetBlock = blocks[targetIndex] || null;
-    const inputReason = typeof window !== 'undefined'
-      ? window.prompt('Reason for re-opening the previous question?', 'Need to review answers')
-      : 'No reason provided';
+    const inputReason = await prompt('Reason for re-opening the previous question?', {
+      title: 'Re-open question',
+      placeholder: 'Need to review answers',
+      defaultValue: 'Need to review answers',
+      confirmLabel: 'Re-open question',
+      allowEmpty: true,
+    });
     if (inputReason === null) return;
 
     const reason = String(inputReason || '').trim() || 'No reason provided';
@@ -555,7 +568,7 @@ export default function LiveHost({ lesson, onExit }) {
       ...event,
     });
     setCurrentIndex(targetIndex);
-  }, [blocks, broadcast, currentIndex, phase, pin, sessionId]);
+  }, [blocks, broadcast, currentIndex, phase, pin, prompt, sessionId]);
 
   const spotlightStudentAnswer = useCallback((studentId) => {
     if (!currentBlock || currentBlock.type !== 'task') return;

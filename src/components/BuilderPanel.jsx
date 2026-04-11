@@ -5,6 +5,7 @@ import { addBlockToGroup, cloneBlockTree, createDefaultBlock, deleteBlockFromTre
 import { createRephraseVariants, hasAiBridgeToken } from '../utils/aiBridge';
 import { flattenBlocks, getBlockLabel } from '../utils/lesson';
 import useFavorites from '../hooks/useFavorites';
+import { useAppDialogs } from '../context/DialogContext';
 import { Md } from './FormattedText';
 import AddTaskModal from './AddTaskModal';
 import BlockEditorForm from './BlockEditorForm';
@@ -571,6 +572,8 @@ const BlockNavigator = memo(function BlockNavigator({ blocks, selectedId, onSele
 });
 
 const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenModalForGroup, onDropBuilder, onDragOverTarget, onDragLeaveTarget, onCombineHover, onCombineLeave, onCombineDrop, dropTarget, onDeleteChild, onMoveChild, onUngroupChild, onVariantChild, onBeginMobileDrag, onEndMobileDragPress, onMobileDropGroup, mobileDragItem, level = 0 }) {
+  const { confirm } = useAppDialogs();
+
   return (
     <div className="space-y-2 border border-zinc-200 bg-zinc-50 p-2 sm:space-y-3 sm:p-4" style={{ marginLeft: level > 0 ? `${level * 12}px` : 0 }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -646,7 +649,10 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                     <IconActionButton title="Duplicate variant" onClick={(event) => { event.stopPropagation(); onVariantChild(block.id, child.id); }}><span className="text-xs">⋇</span></IconActionButton>
                     <IconActionButton title="Move up" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, -1); }}><ChevronIcon direction="up" /></IconActionButton>
                     <IconActionButton title="Move down" onClick={(event) => { event.stopPropagation(); onMoveChild(block.id, child.id, 1); }}><ChevronIcon direction="down" /></IconActionButton>
-                    <IconActionButton title="Delete block" onClick={(event) => { event.stopPropagation(); if (window.confirm('Delete this block?')) onDeleteChild(child.id); }}><TrashIcon /></IconActionButton>
+                    <IconActionButton title="Delete block" onClick={async (event) => {
+                      event.stopPropagation();
+                      if (await confirm('Delete this block?', { title: 'Delete block', confirmLabel: 'Delete' })) onDeleteChild(child.id);
+                    }}><TrashIcon /></IconActionButton>
                   </div>
                 </div>
               </div>
@@ -854,6 +860,7 @@ function findTopLevelContainerId(blocks = [], targetId = '') {
 
 export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLesson, onAddBlock, onDeleteBlock, onOpenGuide }) {
   const { favorites, toggle: toggleFavorite, isFavorite } = useFavorites();
+  const { confirm } = useAppDialogs();
   const aiEnabled = hasAiBridgeToken();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
@@ -1259,14 +1266,14 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   };
 
   const stableRef = useRef({});
-  stableRef.current = { selectedId, onDeleteBlock, blocks, onSelect, lesson, onReplaceLesson };
+  stableRef.current = { selectedId, onDeleteBlock, blocks, onSelect, lesson, onReplaceLesson, confirm };
 
   useEffect(() => {
     const onKeyDown = (event) => {
       // Don't intercept keystrokes inside inputs/textareas
       const tag = event.target?.tagName;
       const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable;
-      const { selectedId: sid, onDeleteBlock: delBlock, blocks: blks, onSelect: sel, lesson: lsn, onReplaceLesson: replaceLsn } = stableRef.current;
+      const { selectedId: sid, onDeleteBlock: delBlock, blocks: blks, onSelect: sel, lesson: lsn, onReplaceLesson: replaceLsn, confirm: confirmDialog } = stableRef.current;
 
       if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
         event.preventDefault();
@@ -1277,7 +1284,9 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
       // Delete selected block
       if (event.key === 'Delete' && sid) {
         event.preventDefault();
-        if (window.confirm('Delete this block?')) delBlock(sid);
+        void (async () => {
+          if (await confirmDialog('Delete this block?', { title: 'Delete block', confirmLabel: 'Delete' })) delBlock(sid);
+        })();
         return;
       }
       // Duplicate selected block

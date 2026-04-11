@@ -6,6 +6,7 @@ import PrivacyDot from './PrivacyDot';
 import { HamburgerIcon, FullscreenIcon, ExitFullscreenIcon } from './Icons';
 import FontSettingsPanel, { loadFontSettings, getFontCSSVars } from './FontSettingsPanel';
 import { recordDebugEvent } from '../utils/debug';
+import { useAppDialogs } from '../context/DialogContext';
 
 function useSwipe(onSwipeLeft, onSwipeRight) {
   const touchRef = useRef(null);
@@ -130,6 +131,7 @@ const PLAYER_SHORTCUTS = [
 ];
 
 export default function LessonPlayer({ lesson, onExit, mode = 'default', sessionMeta = null, onSubmitted = null }) {
+  const { confirm } = useAppDialogs();
   const SIDEBAR_ITEM_HEIGHT = 76;
   const SIDEBAR_OVERSCAN = 6;
   const validation = useMemo(() => validateLessonStructure(lesson), [lesson]);
@@ -496,7 +498,7 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
   const canAdvanceCurrent = canAdvance && !currentRequiredBlocked;
   const canGoBack = !modeConfig.disableBackNavigation && currentIndex > 0;
 
-  const goNext = () => {
+  const goNext = async () => {
     if (!canAdvanceCurrent) return;
     if (blocks.length === 0) {
       setShowGrading(true);
@@ -504,7 +506,10 @@ export default function LessonPlayer({ lesson, onExit, mode = 'default', session
     }
     if (currentIndex >= blocks.length - 1) {
       const unanswered = blocks.filter((b) => (b.type === 'task' || b.type === 'group') && !isComplete(b)).length;
-      if (unanswered > 0 && !window.confirm(`You have ${unanswered} unanswered question${unanswered > 1 ? 's' : ''}. Finish anyway?`)) return;
+      if (unanswered > 0 && !await confirm(`You have ${unanswered} unanswered question${unanswered > 1 ? 's' : ''}. Finish anyway?`, {
+        title: 'Finish lesson',
+        confirmLabel: 'Finish anyway',
+      })) return;
       recordDebugEvent('lesson_complete', {
         lessonId: lesson?.id || null,
         totalBlocks: blocks.length,

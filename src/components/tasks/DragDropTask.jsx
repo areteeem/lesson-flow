@@ -94,15 +94,15 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
   };
 
   return (
-    <div className="relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+    <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
-      {block.hint && !submitted && <div className="mb-3 text-xs text-zinc-500">{block.hint}</div>}
+      {block.hint && !submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">{block.hint}</div>}
       {pairs.length === 0 && (
         <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no pairs to match.</div>
       )}
       {!submitted && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-3 text-xs text-zinc-500">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="task-helper-text mb-3 text-xs text-zinc-500">
           {preferTap ? 'Tap an answer, then tap a target to place it.' : 'Drag answers to their matching targets, or tap to select and place.'}
         </motion.div>
       )}
@@ -111,8 +111,8 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
       <AnimatePresence>
         {bank.length > 0 && !submitted && (
           <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }} transition={gentleSpring} className="mb-5">
-            <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Answer bank</div>
-            <div className="flex flex-wrap gap-2 border border-zinc-200 bg-zinc-50 p-3">
+            <div className="task-helper-text mb-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Answer bank</div>
+            <div className="task-bank-panel flex flex-wrap gap-2 border border-zinc-200 bg-zinc-50 p-3">
               <AnimatePresence>
                 {bank.map((item) => (
                   <AnimatedBankItem
@@ -146,7 +146,7 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: -8, height: 0 }}
             transition={springConfig}
-            className="mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white"
+            className="task-inverse-banner mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white"
           >
             <span>Selected: <strong>{selectedItem.text}</strong></span>
             <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={() => setSelectedItem(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</motion.button>
@@ -227,9 +227,9 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
         </AnimatePresence>
       </div>
 
-      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</motion.button>
+      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="button" onClick={submit} disabled={Object.keys(placements).length < pairs.length} className="task-primary-button mt-5 border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-40">{showCheckButton ? 'Check' : 'Save answer'}</motion.button>
       {submitted && block.explanation && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={gentleSpring} className="mt-4 bg-blue-50 p-4 text-sm text-blue-900"><Md text={block.explanation} /></motion.div>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={gentleSpring} className="task-muted-panel mt-4 border p-4 text-sm text-blue-900"><Md text={block.explanation} /></motion.div>
       )}
     </div>
   );
