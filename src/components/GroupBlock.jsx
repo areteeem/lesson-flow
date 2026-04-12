@@ -60,7 +60,18 @@ export default function GroupBlock({ block, results, onCompleteChild, onProgress
 
   const [rightIndex, setRightIndex] = useState(1);
 
+  if (children.length === 0) {
+    return (
+      <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+        <div className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">{isSplit ? 'Split View' : 'Multi-task Screen'}</div>
+        <h2 className="mt-2 text-2xl font-semibold text-zinc-950">{block.title || 'Practice Set'}</h2>
+        <div className="mt-4 text-sm text-zinc-400">No tasks in this group yet. Add tasks in the builder.</div>
+      </div>
+    );
+  }
+
   if (isSplit && children.length >= 2) {
+    const safeRightIndex = Math.min(rightIndex, children.length - 1);
     const extraChildren = children.slice(2);
     return (
       <div className="space-y-4">
@@ -93,7 +104,7 @@ export default function GroupBlock({ block, results, onCompleteChild, onProgress
         </div>
         <SplitView
           left={<div className="p-2">{renderChild(children[0], results, onCompleteChild, onProgressChild, taskOptions)}</div>}
-          right={<div className="p-2">{renderChild(children[rightIndex], results, onCompleteChild, onProgressChild, taskOptions)}</div>}
+          right={<div className="p-2">{renderChild(children[safeRightIndex], results, onCompleteChild, onProgressChild, taskOptions)}</div>}
         />
       </div>
     );

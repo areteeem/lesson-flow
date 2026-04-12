@@ -29,6 +29,7 @@ import HighlightGlossaryTask from './tasks/HighlightGlossaryTask';
 import TextLinkingTask from './tasks/TextLinkingTask';
 import WebEmbedTask from './tasks/WebEmbedTask';
 import WordHideTask from './tasks/WordHideTask';
+import GridSelectTask from './tasks/GridSelectTask';
 
 const MAP = {
   multiple_choice: ChoiceTask,
@@ -100,6 +101,7 @@ const MAP = {
   word_hide_reveal: WordHideTask,
   word_hide_drag: WordHideTask,
   word_hide_type: WordHideTask,
+  grid_select: GridSelectTask,
 };
 
 export default function TaskRenderer({ block, onComplete, onProgress, existingResult, allowRetry = true, showCheckButton = true, lockAfterSubmit = false, forceLocked = false, lockMessage = 'Responses are closed for this task.' }) {

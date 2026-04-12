@@ -405,6 +405,16 @@ const TASK_PRESETS = {
     hideCount: 2,
     hideMinLength: 3,
   },
+  grid_select: {
+    question: 'Rate each statement.',
+    columns: ['Agree', 'Neutral', 'Disagree'],
+    rows: [['I enjoy reading.'], ['I prefer group work.'], ['Homework helps me learn.']],
+    pairs: [
+      { left: 'I enjoy reading.', right: 'Agree' },
+      { left: 'I prefer group work.', right: 'Neutral' },
+      { left: 'Homework helps me learn.', right: 'Agree' },
+    ],
+  },
 };
 
 export function createDefaultBlock(type, { blank = false } = {}) {
@@ -701,7 +711,8 @@ export function getTaskCategories() {
 
 export function createCatalogLesson() {
   const slideBlocks = SLIDE_REGISTRY.map((entry) => createDefaultBlock(entry.type));
-  const taskBlocks = TASK_REGISTRY.map((entry) => createDefaultBlock(entry.type));
+  const canonicalTasks = TASK_REGISTRY.filter((entry) => !entry.hiddenFromLibrary);
+  const taskBlocks = canonicalTasks.map((entry) => createDefaultBlock(entry.type));
   const nestedGroup = {
     ...createDefaultBlock('group'),
     title: 'Nested Group Example',

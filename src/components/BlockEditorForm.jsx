@@ -1494,6 +1494,8 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
             return <PairsEditor block={block} onChange={onChange} label={labels.label} leftLabel={labels.left} rightLabel={labels.right} />;
           })()}
           {['cards'].includes(block.taskType) && <PairsEditor block={block} onChange={onChange} label="Cards" leftLabel="Front" rightLabel="Back" />}
+          {block.taskType === 'grid_select' && <PairsEditor block={block} onChange={onChange} label="Correct answers" leftLabel="Row text" rightLabel="Correct column" />}
+          {block.taskType === 'grid_select' && <Toggle label="Allow multiple selections per row" checked={Boolean(block.multiple)} onChange={(value) => apply(onChange, block, 'multiple', value)} />}
           {['order', 'random_wheel', 'timeline_order', 'sentence_builder', 'peer_review_checklist', 'story_reconstruction', 'justify_order', 'word_family_builder', 'word_cloud'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label={block.taskType === 'sentence_builder' ? 'Words / Chunks' : block.taskType === 'word_family_builder' ? 'Word Forms' : block.taskType === 'peer_review_checklist' ? 'Checklist Items' : block.taskType === 'random_wheel' ? 'Wheel Segments' : block.taskType === 'word_cloud' ? 'Seed Words' : 'Items (correct order)'} />}
           {['categorize', 'categorize_grammar'].includes(block.taskType) && <CategorizeEditor block={block} onChange={onChange} />}
           {['reading_highlight', 'highlight_differences', 'highlight_glossary', 'text_linking'].includes(block.taskType) && <HighlightEditor block={block} onChange={onChange} />}
@@ -1517,7 +1519,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
           )}
           {['image_labeling', 'audio_transcription', 'video_questions', 'map_geography_label', 'hotspot_selection', 'image_compare_spot', 'pronunciation_shadowing', 'youtube'].includes(block.taskType) && mediaInput('media', 'Media URL', 'Direct link to image, audio, or video')}
           {['image_labeling', 'map_geography_label', 'image_compare_spot'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label="Clickable targets" field="items" />}
-          {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && <Field label="Table editor"><TableGridEditor block={block} onChange={onChange} revealMode={block.taskType === 'table_reveal'} /></Field>}
+          {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal', 'grid_select'].includes(block.taskType) && <Field label="Table editor"><TableGridEditor block={block} onChange={onChange} revealMode={block.taskType === 'table_reveal'} /></Field>}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && area('rowsText', 'Rows', 5)}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && area('columnsText', 'Columns', 2)}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && (

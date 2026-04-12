@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
 import { useSmoothDrag } from '../../hooks/useSmoothDrag';
-import { AnimatedBlankSlot, AnimatedBankItem, VerdictIcon, DragHint } from '../dnd/DndAnimations';
+import { AnimatedBlankSlot, AnimatedBankItem, VerdictIcon } from '../dnd/DndAnimations';
 
 const WORD_RE = /(\s+)/;
 const PUNCTUATION_RE = /^[.,!?;:'"()[\]{}—–-]+$/;
@@ -76,7 +76,6 @@ export default function WordHideTask({ block, onComplete, onProgress, showCheckB
   const [dragValues, setDragValues] = useState(() => Array(hiddenIndices.length).fill(''));
   const [placedIds, setPlacedIds] = useState(() => Array(hiddenIndices.length).fill(null));
   const [hoveredSlot, setHoveredSlot] = useState(null);
-  const [showHint, setShowHint] = useState(false);
   const hasInteracted = useRef(false);
 
   // === Type mode state ===
@@ -89,20 +88,12 @@ export default function WordHideTask({ block, onComplete, onProgress, showCheckB
 
   useEffect(() => setupMediaListeners(), [setupMediaListeners]);
 
-  useEffect(() => {
-    if (!submitted && !hasInteracted.current && hideMode === 'drag' && pool.length > 0) {
-      const timer = setTimeout(() => { if (!hasInteracted.current) setShowHint(true); }, 1800);
-      return () => clearTimeout(timer);
-    }
-  }, [submitted, hideMode, pool.length]);
 
-  const dismissHint = useCallback(() => { setShowHint(false); hasInteracted.current = true; }, []);
 
   // === Drag helpers ===
   const fillBlank = (slotIdx, item) => {
     if (!item || submitted) return;
     hasInteracted.current = true;
-    setShowHint(false);
     setDragValues((current) => {
       const next = [...current];
       if (next[slotIdx]) {
@@ -142,7 +133,6 @@ export default function WordHideTask({ block, onComplete, onProgress, showCheckB
   const handlePoolItemPress = (item) => {
     if (submitted) return;
     hasInteracted.current = true;
-    setShowHint(false);
     if (preferTap) {
       setSelectedItem((current) => (current?.id === item.id ? null : item));
       return;
@@ -192,15 +182,9 @@ export default function WordHideTask({ block, onComplete, onProgress, showCheckB
 
   return (
     <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
-      {hideMode === 'drag' && <DragHint show={showHint && !submitted} onDismiss={dismissHint} />}
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">{block.hint}</div>}
 
-      {hideMode === 'drag' && preferTap && !submitted && (
-        <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={gentleSpring} className="task-muted-panel mb-4 border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-          Tap a word in the bank, then tap a blank to place it. Tap a filled blank to remove its word.
-        </motion.div>
-      )}
       {hideMode === 'reveal' && !submitted && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={gentleSpring} className="task-muted-panel mb-4 border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
           {hiddenIndices.length} word{hiddenIndices.length !== 1 ? 's are' : ' is'} hidden. Click each hidden word to reveal it.
@@ -210,14 +194,17 @@ export default function WordHideTask({ block, onComplete, onProgress, showCheckB
       <AnimatePresence>
         {hideMode === 'drag' && selectedItem && !submitted && (
           <motion.div
-            initial={{ opacity: 0, y: -8, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: 'auto' }}
-            exit={{ opacity: 0, y: -8, height: 0 }}
-            transition={springConfig}
-            className="task-inverse-banner mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mb-3 flex items-center gap-2 text-xs text-zinc-500"
           >
-            <span>Selected word: <strong>{selectedItem.word}</strong></span>
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={() => setSelectedItem(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white transition hover:bg-white/10">Clear</motion.button>
+            <span className="inline-flex items-center gap-1.5 border border-zinc-300 bg-zinc-50 px-2.5 py-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-zinc-900" />
+              <strong className="text-zinc-900">{selectedItem.word}</strong> — tap a blank to place
+            </span>
+            <button type="button" onClick={() => setSelectedItem(null)} className="text-zinc-400 hover:text-zinc-700">✕</button>
           </motion.div>
         )}
       </AnimatePresence>

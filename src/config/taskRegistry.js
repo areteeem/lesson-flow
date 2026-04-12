@@ -66,6 +66,7 @@ export const TASK_REGISTRY = [
   defineTask('word_hide_reveal', 'Word Hide — Reveal', 'text', 'Reading', ['word hide', 'reveal', 'click', 'reading', 'cloze'], 'Hide words in a passage — students click to reveal them.'),
   defineTask('word_hide_drag', 'Word Hide — Drag', 'text', 'Reading', ['word hide', 'drag', 'bank', 'cloze', 'gap fill'], 'Hide words in a passage — students drag them from a word bank.'),
   defineTask('word_hide_type', 'Word Hide — Type', 'text', 'Input', ['word hide', 'type', 'cloze', 'gap fill', 'typing'], 'Hide words in a passage — students type the missing words.'),
+  defineTask('grid_select', 'Grid Select', 'grid', 'Core Practice', ['grid', 'matrix', 'multiple choice grid', 'table choice', 'likert'], 'Multiple-choice grid — one or more answers per row.'),
 ];
 
 export const TASK_TYPE_MAP = Object.fromEntries(TASK_REGISTRY.map((entry) => [entry.type, entry]));

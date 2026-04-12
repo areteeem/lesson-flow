@@ -1,10 +1,10 @@
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 import { useSmoothDrag } from '../../hooks/useSmoothDrag';
-import { AnimatedBankItem, VerdictIcon, DragHint } from '../dnd/DndAnimations';
+import { AnimatedBankItem, VerdictIcon } from '../dnd/DndAnimations';
 
 export default function DragDropTask({ block, onComplete, onProgress, showCheckButton = true }) {
   const pairs = block.pairs || [];
@@ -18,7 +18,6 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
   const [placements, setPlacements] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [hoveredTarget, setHoveredTarget] = useState(null);
-  const [showHint, setShowHint] = useState(false);
   const hasInteracted = useRef(false);
   const showVerdict = submitted && showCheckButton;
 
@@ -26,22 +25,12 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
 
   useEffect(() => setupMediaListeners(), [setupMediaListeners]);
 
-  useEffect(() => {
-    if (!submitted && !hasInteracted.current && pairs.length > 0) {
-      const timer = setTimeout(() => { if (!hasInteracted.current) setShowHint(true); }, 1800);
-      return () => clearTimeout(timer);
-    }
-  }, [submitted, pairs.length]);
-
-  const dismissHint = useCallback(() => { setShowHint(false); hasInteracted.current = true; }, []);
-
   const placedItemIds = new Set(Object.values(placements));
   const bank = draggableItems.filter((item) => !placedItemIds.has(item.id));
 
   const placeOnTarget = (leftValue, item) => {
     if (submitted || !item) return;
     hasInteracted.current = true;
-    setShowHint(false);
     setPlacements((prev) => {
       const next = { ...prev };
       for (const [key, val] of Object.entries(next)) {
@@ -68,7 +57,6 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
   const handleBankPress = (item) => {
     if (submitted) return;
     hasInteracted.current = true;
-    setShowHint(false);
     setSelectedItem((prev) => (prev?.id === item.id ? null : item));
   };
 
@@ -95,16 +83,10 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
 
   return (
     <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
-      <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">{block.hint}</div>}
       {pairs.length === 0 && (
         <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no pairs to match.</div>
-      )}
-      {!submitted && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="task-helper-text mb-3 text-xs text-zinc-500">
-          {preferTap ? 'Tap an answer, then tap a target to place it.' : 'Drag answers to their matching targets, or tap to select and place.'}
-        </motion.div>
       )}
 
       {/* Answer bank */}
@@ -142,14 +124,17 @@ export default function DragDropTask({ block, onComplete, onProgress, showCheckB
       <AnimatePresence>
         {selectedItem && !submitted && (
           <motion.div
-            initial={{ opacity: 0, y: -8, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: 'auto' }}
-            exit={{ opacity: 0, y: -8, height: 0 }}
-            transition={springConfig}
-            className="task-inverse-banner mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mb-3 flex items-center gap-2 text-xs text-zinc-500"
           >
-            <span>Selected: <strong>{selectedItem.text}</strong></span>
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={() => setSelectedItem(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</motion.button>
+            <span className="inline-flex items-center gap-1.5 border border-zinc-300 bg-zinc-50 px-2.5 py-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-zinc-900" />
+              <strong className="text-zinc-900">{selectedItem.text}</strong> — tap a target
+            </span>
+            <button type="button" onClick={() => setSelectedItem(null)} className="text-zinc-400 hover:text-zinc-700">✕</button>
           </motion.div>
         )}
       </AnimatePresence>

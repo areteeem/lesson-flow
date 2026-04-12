@@ -115,7 +115,7 @@ export default function MediaPromptTask({ block, onComplete, existingResult }) {
     <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
       <div className="mb-2 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.text && <FormattedText text={block.text} className="mb-4 text-sm leading-7 text-zinc-700" />}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_340px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(240px,340px)]">
         <div className="space-y-3 border border-zinc-200 bg-[#fafaf9] p-3">
           {isInteractiveImage ? (
             <div className="relative">
@@ -125,7 +125,7 @@ export default function MediaPromptTask({ block, onComplete, existingResult }) {
                   alt={block.question || block.taskType}
                   onClick={onImageClick}
                   loading="lazy"
-                  className="max-h-[60vh] w-full cursor-crosshair border border-zinc-200 object-contain"
+                  className="max-h-[60vh] w-full cursor-crosshair border border-zinc-200 object-contain touch-manipulation"
                 />
               ) : <div className="flex min-h-56 items-center justify-center border border-zinc-200 bg-zinc-50 text-sm text-zinc-500">Attach media in DSL or the builder.</div>}
               {points.map((point, index) => (
@@ -133,7 +133,7 @@ export default function MediaPromptTask({ block, onComplete, existingResult }) {
                   key={`${point.id}-${index}`}
                   type="button"
                   onClick={() => !submitted && setPoints((current) => current.filter((entry, entryIndex) => entryIndex !== index))}
-                  className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center border-2 border-red-500 bg-white text-[10px] font-semibold text-red-600"
+                  className="absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center border-2 border-red-500 bg-white text-xs font-semibold text-red-600 shadow-md sm:h-7 sm:w-7 sm:text-[10px]"
                   style={{ left: `${point.x}%`, top: `${point.y}%` }}
                   title={submitted ? point.label : `${point.label} (click marker to remove)`}
                 >
@@ -193,6 +193,21 @@ export default function MediaPromptTask({ block, onComplete, existingResult }) {
             </div>
           )}
 
+          {isInteractiveImage && targets.length === 0 && points.length > 0 && !submitted && (
+            <div className="border border-zinc-200 p-3 text-sm text-zinc-700">
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Placed markers</div>
+              <div className="space-y-1.5">
+                {points.map((point, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center border border-red-300 bg-red-50 text-[10px] font-semibold text-red-600">{index + 1}</span>
+                    <span className="text-xs text-zinc-500">({Math.round(point.x)}%, {Math.round(point.y)}%)</span>
+                    <button type="button" onClick={() => setPoints((c) => c.filter((_, i) => i !== index))} className="ml-auto text-[10px] text-zinc-400 hover:text-red-500">remove</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!isInteractiveImage && block.items?.length > 0 && (
             <div className="border border-zinc-200 p-3 text-sm text-zinc-700">
               <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Targets</div>
@@ -200,7 +215,7 @@ export default function MediaPromptTask({ block, onComplete, existingResult }) {
             </div>
           )}
           {(!isVideoChoice || options.length === 0) && !isInteractiveImage && (
-            <textarea rows={10} value={notes} onChange={(event) => !submitted && setNotes(event.target.value)} readOnly={submitted} placeholder="Add labels, observations, transcript text, or your answer." className={`w-full border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-zinc-900 ${submitted ? 'bg-zinc-50 text-zinc-500' : ''}`} />
+            <textarea rows={6} value={notes} onChange={(event) => !submitted && setNotes(event.target.value)} readOnly={submitted} placeholder="Add labels, observations, transcript text, or your answer." className={`w-full border border-zinc-200 px-4 py-3 text-sm outline-none focus:border-zinc-900 lg:min-h-[15rem] ${submitted ? 'bg-zinc-50 text-zinc-500' : ''}`} />
           )}
           {!submitted ? (
             <button

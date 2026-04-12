@@ -1,11 +1,11 @@
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 import { configureDragStart, normalizeDragOver, readDropData } from '../../utils/dragDropSupport';
 import { useSmoothDrag } from '../../hooks/useSmoothDrag';
-import { AnimatedBankItem, VerdictIcon, DragHint } from '../dnd/DndAnimations';
+import { AnimatedBankItem, VerdictIcon } from '../dnd/DndAnimations';
 
 const CATEGORY_COLORS = ['bg-blue-50 border-blue-200', 'bg-emerald-50 border-emerald-200', 'bg-amber-50 border-amber-200', 'bg-violet-50 border-violet-200', 'bg-rose-50 border-rose-200', 'bg-cyan-50 border-cyan-200', 'bg-orange-50 border-orange-200', 'bg-zinc-100 border-zinc-300'];
 const HEADER_COLORS = ['text-blue-800', 'text-emerald-800', 'text-amber-800', 'text-violet-800', 'text-rose-800', 'text-cyan-800', 'text-orange-800', 'text-zinc-700'];
@@ -25,22 +25,12 @@ export default function CategorizeTask({ block, onComplete, onProgress, showChec
   const [buckets, setBuckets] = useState(() => Object.fromEntries(categories.map((c) => [c, []])));
   const [submitted, setSubmitted] = useState(false);
   const [hoveredCategory, setHoveredCategory] = useState(null);
-  const [showHint, setShowHint] = useState(false);
   const hasInteracted = useRef(false);
   const showVerdict = submitted && showCheckButton;
 
   const { preferTap, reducedMotion, setupMediaListeners, springConfig, gentleSpring, draggedItem, selectedItem, setDraggedItem, setSelectedItem, clearSelection } = useSmoothDrag({ disabled: submitted });
 
   useEffect(() => setupMediaListeners(), [setupMediaListeners]);
-
-  useEffect(() => {
-    if (!submitted && !hasInteracted.current && bank.length > 0) {
-      const timer = setTimeout(() => { if (!hasInteracted.current) setShowHint(true); }, 1800);
-      return () => clearTimeout(timer);
-    }
-  }, [submitted, bank.length]);
-
-  const dismissHint = useCallback(() => { setShowHint(false); hasInteracted.current = true; }, []);
 
   const answerMap = useMemo(() => {
     const fromPairs = Object.fromEntries((block.pairs || []).map((pair) => [pair.left, pair.right]));
@@ -58,7 +48,6 @@ export default function CategorizeTask({ block, onComplete, onProgress, showChec
   const placeItem = (item, category) => {
     if (submitted) return;
     hasInteracted.current = true;
-    setShowHint(false);
     setBank((prev) => prev.filter((b) => b.id !== item.id));
     setBuckets((prev) => {
       const next = {};
@@ -86,7 +75,6 @@ export default function CategorizeTask({ block, onComplete, onProgress, showChec
   const handleBankPress = (item) => {
     if (submitted) return;
     hasInteracted.current = true;
-    setShowHint(false);
     setSelectedItem((prev) => (prev?.id === item.id ? null : item));
   };
 
@@ -120,14 +108,8 @@ export default function CategorizeTask({ block, onComplete, onProgress, showChec
 
   return (
     <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
-      <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {block.hint && !submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">{block.hint}</div>}
-      {!submitted && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="task-helper-text mb-4 text-xs text-zinc-500">
-          {preferTap ? 'Tap an item, then tap a category to place it.' : 'Drag items from the bank into categories, or tap to select and place.'}
-        </motion.div>
-      )}
 
       {/* Item bank */}
       <AnimatePresence>
@@ -163,14 +145,17 @@ export default function CategorizeTask({ block, onComplete, onProgress, showChec
       <AnimatePresence>
         {selectedItem && !submitted && (
           <motion.div
-            initial={{ opacity: 0, y: -8, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: 'auto' }}
-            exit={{ opacity: 0, y: -8, height: 0 }}
-            transition={springConfig}
-            className="task-inverse-banner mb-4 flex items-center justify-between gap-3 border border-zinc-900 bg-zinc-900 px-4 py-3 text-sm text-white"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mb-3 flex items-center gap-2 text-xs text-zinc-500"
           >
-            <span>Selected: <strong>{selectedItem.text}</strong> — tap a category below</span>
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} type="button" onClick={() => setSelectedItem(null)} className="border border-white/30 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-white hover:bg-white/10">Clear</motion.button>
+            <span className="inline-flex items-center gap-1.5 border border-zinc-300 bg-zinc-50 px-2.5 py-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-zinc-900" />
+              <strong className="text-zinc-900">{selectedItem.text}</strong> — tap a category
+            </span>
+            <button type="button" onClick={() => setSelectedItem(null)} className="text-zinc-400 hover:text-zinc-700">✕</button>
           </motion.div>
         )}
       </AnimatePresence>

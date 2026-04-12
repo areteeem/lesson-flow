@@ -340,6 +340,14 @@ export const TASK_SCHEMAS = {
     ...TASK_BASE,
     rows: { ...R(), required: true },
   },
+  grid_select: {
+    ...TASK_BASE,
+    columns: { ...L(), required: true },
+    rows: { ...R(), required: true },
+    pairs: { ...P(), required: false },
+    multiple: { ...B(false), required: false },
+    requireAll: { ...B(false), required: false },
+  },
   choose_and_explain: {
     ...TASK_BASE,
     question: { ...S(), required: true },

@@ -1,10 +1,10 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { stableShuffle } from '../../utils/shuffle';
 import { Md } from '../FormattedText';
 import { useShuffleSeed } from '../../hooks/useShuffleSeed';
 import { useSmoothDrag } from '../../hooks/useSmoothDrag';
-import { InsertionIndicator, VerdictIcon, DragHint } from '../dnd/DndAnimations';
+import { InsertionIndicator, VerdictIcon } from '../dnd/DndAnimations';
 
 function toList(value, taskType = 'order') {
   if (Array.isArray(value)) return value.filter((item) => item !== null && item !== undefined).map((item) => String(item));
@@ -39,7 +39,6 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   const [submitted, setSubmitted] = useState(() => Boolean(existingResult?.submitted));
   const [dragIndex, setDragIndex] = useState(null);
   const [insertBeforeIndex, setInsertBeforeIndex] = useState(null);
-  const [showHint, setShowHint] = useState(false);
   const listRef = useRef(null);
   const touchDrag = useRef(null);
   const hasInteracted = useRef(false);
@@ -48,25 +47,9 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
 
   useEffect(() => setupMediaListeners(), [setupMediaListeners]);
 
-  // Show drag hint for first-time users
-  useEffect(() => {
-    if (!submitted && !hasInteracted.current && items.length > 1) {
-      const timer = setTimeout(() => {
-        if (!hasInteracted.current) setShowHint(true);
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [submitted, items.length]);
-
-  const dismissHint = useCallback(() => {
-    setShowHint(false);
-    hasInteracted.current = true;
-  }, []);
-
   const move = (index, direction) => {
     if (submitted) return;
     hasInteracted.current = true;
-    setShowHint(false);
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= items.length) return;
     setItems((current) => {
@@ -79,7 +62,6 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   const handleDragStart = (e, index) => {
     if (submitted) return;
     hasInteracted.current = true;
-    setShowHint(false);
     setDragIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     try { const c = document.createElement('canvas'); c.width = 1; c.height = 1; e.dataTransfer.setDragImage(c, 0, 0); } catch { /* ok */ }
@@ -128,7 +110,6 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
     if (dy > 8 || dx > 8) {
       touchDrag.current.moved = true;
       hasInteracted.current = true;
-      setShowHint(false);
       e.preventDefault();
     }
     if (!touchDrag.current.moved) return;
@@ -207,7 +188,6 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   if (taskType === 'sentence_builder') {
     return (
       <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
-        <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
         {!submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">Drag the words into the correct order to build a sentence.</div>}
         <LayoutGroup>
@@ -261,7 +241,6 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   if (taskType === 'timeline_order') {
     return (
       <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
-        <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
         {!submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">Arrange events in chronological order along the timeline.</div>}
         <div ref={listRef} className="relative ml-6 border-l-2 border-zinc-300 pl-6">
@@ -344,7 +323,6 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   if (taskType === 'story_reconstruction') {
     return (
       <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
-        <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
         <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
         {!submitted && <div className="task-helper-text mb-3 text-xs text-zinc-500">Rearrange the paragraphs to rebuild the story.</div>}
         <div ref={listRef} className="space-y-3">
@@ -436,7 +414,6 @@ export default function OrderTask({ block, onComplete, existingResult, showCheck
   /* ─── Default: vertical list (order, justify_order, etc.) ─── */
   return (
     <div className="task-shell relative border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
-      <DragHint show={showHint && !submitted} onDismiss={dismissHint} />
       <div className="mb-4 text-xl font-semibold text-zinc-950"><Md text={block.question || block.instruction} /></div>
       {items.length === 0 && (
         <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">This task has no items to order.</div>

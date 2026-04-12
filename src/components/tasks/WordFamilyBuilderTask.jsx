@@ -29,12 +29,19 @@ function highlightAffixes(word, root) {
   );
 }
 
-export default function WordFamilyBuilderTask({ block, onComplete }) {
+export default function WordFamilyBuilderTask({ block, onComplete, existingResult }) {
   const rootWord = block.question || block.instruction || 'word';
-  const fields = useMemo(() => block.categories || DEFAULT_FIELDS, [block.categories]);
+  const fields = useMemo(() => {
+    const raw = block.categories;
+    return Array.isArray(raw) && raw.length > 0 ? raw : DEFAULT_FIELDS;
+  }, [block.categories]);
   const answers = useMemo(() => {
     if (block.pairs?.length) {
-      return Object.fromEntries(block.pairs.map((p) => [p.left?.toLowerCase(), p.right]));
+      return Object.fromEntries(
+        block.pairs
+          .filter((p) => p.left != null)
+          .map((p) => [String(p.left).toLowerCase(), p.right])
+      );
     }
     if (block.items?.length) {
       return Object.fromEntries(fields.map((f, i) => [f, block.items[i] || '']));
@@ -42,8 +49,13 @@ export default function WordFamilyBuilderTask({ block, onComplete }) {
     return {};
   }, [block.items, block.pairs, fields]);
 
-  const [revealed, setRevealed] = useState({});
-  const [done, setDone] = useState(false);
+  const [revealed, setRevealed] = useState(() => {
+    if (existingResult?.response) {
+      return Object.fromEntries(fields.map((f) => [f, true]));
+    }
+    return {};
+  });
+  const [done, setDone] = useState(!!existingResult?.submitted);
 
   const root = (rootWord.match(/\b\w{3,}\b/) || [''])[0];
   const allRevealed = fields.every((f) => revealed[f]);

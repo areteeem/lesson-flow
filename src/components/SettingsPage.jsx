@@ -243,7 +243,7 @@ export default function SettingsPage({ onBack }) {
                 </select>
               </label>
               <label className="block">
-                <span className="text-xs text-zinc-600">Default Category</span>
+                <span className="text-xs text-zinc-600">Default Category<Hint text="Lesson category for organization. Applied when creating new lessons." /></span>
                 <select value={settings.defaultCategory || ''} onChange={(e) => update('defaultCategory', e.target.value)} className="mt-1 w-full border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-900">
                   <option value="">None</option>
                   {LESSON_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -302,7 +302,7 @@ export default function SettingsPage({ onBack }) {
               </label>
               {settings.autoSave !== false && (
                 <label className="ml-6 block">
-                  <span className="text-xs text-zinc-600">Auto-save interval</span>
+                  <span className="text-xs text-zinc-600">Auto-save interval<Hint text="How often your lesson is saved automatically. Shorter intervals reduce data loss risk." /></span>
                   <select value={settings.autoSaveInterval || 5} onChange={(e) => update('autoSaveInterval', Number(e.target.value))} className="ml-2 border border-zinc-200 px-2 py-1 text-sm outline-none focus:border-zinc-900">
                     {[2, 5, 10, 15, 30].map((s) => <option key={s} value={s}>{s} seconds</option>)}
                   </select>

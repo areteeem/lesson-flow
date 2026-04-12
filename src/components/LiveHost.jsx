@@ -119,8 +119,11 @@ export default function LiveHost({ lesson, onExit }) {
     spotlight: null,
   });
   const hasPersistedLiveResultsRef = useRef(false);
+  const finishSessionRef = useRef(null);
 
   const blocks = validation.blocks;
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
   const [liveSettings, setLiveSettings] = useState(() => ({
     allowRetry: lesson?.settings?.allowRetryLive === true,
     showCheckButton: lesson?.settings?.showCheckButtonLive === true,
@@ -413,7 +416,7 @@ export default function LiveHost({ lesson, onExit }) {
       }
       if (msg.type === 'response_update' && msg.playerId && msg.blockId) {
         const snapshot = stateRef.current;
-        const snapshotBlockId = blocks[snapshot.currentIndex]?.id || null;
+        const snapshotBlockId = blocksRef.current[snapshot.currentIndex]?.id || null;
         const deadlineReached = Number(snapshot.questionDeadlineRemainingSeconds) === 0;
         if (deadlineReached && snapshot.phase === PHASE.RUNNING && snapshotBlockId && msg.blockId === snapshotBlockId) {
           ch.postMessage({
@@ -479,6 +482,7 @@ export default function LiveHost({ lesson, onExit }) {
     setAutoAdvancePaused(false);
     setPhase(PHASE.FINISHED);
   };
+  finishSessionRef.current = finishSession;
 
   const advanceToNextBlock = useCallback(() => {
     if (currentIndex >= blocks.length - 1) {
@@ -892,7 +896,7 @@ export default function LiveHost({ lesson, onExit }) {
     if (phase !== PHASE.RUNNING || autoModeRemainingSeconds === null || autoAdvancePaused) return undefined;
 
     if (autoModeRemainingSeconds <= 0) {
-      finishSession();
+      finishSessionRef.current?.();
       return undefined;
     }
 

@@ -571,8 +571,9 @@ const BlockNavigator = memo(function BlockNavigator({ blocks, selectedId, onSele
   );
 });
 
-const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenModalForGroup, onDropBuilder, onDragOverTarget, onDragLeaveTarget, onCombineHover, onCombineLeave, onCombineDrop, dropTarget, onDeleteChild, onMoveChild, onUngroupChild, onVariantChild, onBeginMobileDrag, onEndMobileDragPress, onMobileDropGroup, mobileDragItem, level = 0 }) {
+const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSelect, onUpdateChild, onOpenModalForGroup, onDropBuilder, onDragOverTarget, onDragLeaveTarget, onCombineHover, onCombineLeave, onCombineDrop, dropTarget, onDeleteChild, onMoveChild, onUngroupChild, onVariantChild, onBeginMobileDrag, onEndMobileDragPress, onMobileDropGroup, mobileDragItem, onRephraseTask, level = 0 }) {
   const { confirm } = useAppDialogs();
+  const aiEnabled = hasAiBridgeToken();
 
   return (
     <div className="space-y-2 border border-zinc-200 bg-zinc-50 p-2 sm:space-y-3 sm:p-4" style={{ marginLeft: level > 0 ? `${level * 12}px` : 0 }}>
@@ -642,7 +643,7 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                       </IconActionButton>
                     )}
                     {aiEnabled && child.type === 'task' && (
-                      <IconActionButton title="AI Rephrase" onClick={(event) => { event.stopPropagation(); rephraseTaskBlock(child); }}>
+                      <IconActionButton title="AI Rephrase" onClick={(event) => { event.stopPropagation(); onRephraseTask?.(child); }}>
                         <span className="text-[10px]">AI</span>
                       </IconActionButton>
                     )}
@@ -688,6 +689,7 @@ const GroupNodeEditor = memo(function GroupNodeEditor({ block, selectedId, onSel
                   onEndMobileDragPress={onEndMobileDragPress}
                   onMobileDropGroup={onMobileDropGroup}
                   mobileDragItem={mobileDragItem}
+                  onRephraseTask={onRephraseTask}
                   level={level + 1}
                 />
               )}
@@ -2048,6 +2050,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                                 {catMeta.icon} {definition?.category || block.type}
                               </span>
                               {!block.enabled && <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-400">Disabled</span>}
+                              {block.type === 'task' && definition?.label && <span className="text-[9px] font-medium text-zinc-400">{definition.label}</span>}
                               {blockHasDuplicateQuestion && <span className="border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-amber-700">Duplicate prompt</span>}
                             </div>
                             <div className={selectedTopLevel ? 'hidden' : 'mt-1 text-sm font-semibold text-zinc-800'}>
@@ -2118,6 +2121,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                           onEndMobileDragPress={endMobileDragPress}
                           onMobileDropGroup={moveMobileItemToGroup}
                           mobileDragItem={mobileDragItem}
+                          onRephraseTask={rephraseTaskBlock}
                         />
                       )}
                         </div>
