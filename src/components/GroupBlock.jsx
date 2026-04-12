@@ -62,8 +62,8 @@ export default function GroupBlock({ block, results, onCompleteChild, onProgress
 
   if (children.length === 0) {
     return (
-      <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
-        <div className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">{isSplit ? 'Split View' : 'Multi-task Screen'}</div>
+      <div className="rounded-2xl border border-zinc-200/80 bg-gradient-to-b from-white to-zinc-50/50 p-5 shadow-sm md:p-6 xl:p-8">
+        <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-zinc-400">{isSplit ? 'Split View' : 'Multi-task Screen'}</div>
         <h2 className="mt-2 text-2xl font-semibold text-zinc-950">{block.title || 'Practice Set'}</h2>
         <div className="mt-4 text-sm text-zinc-400">No tasks in this group yet. Add tasks in the builder.</div>
       </div>
@@ -74,26 +74,26 @@ export default function GroupBlock({ block, results, onCompleteChild, onProgress
     const safeRightIndex = Math.min(rightIndex, children.length - 1);
     const extraChildren = children.slice(2);
     return (
-      <div className="space-y-4">
-        <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-zinc-200/80 bg-gradient-to-b from-white to-zinc-50/50 p-5 shadow-sm md:p-6 xl:p-8">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">Split View</div>
-              <h2 className="mt-2 text-2xl font-semibold text-zinc-950">{block.title || 'Side by Side'}</h2>
-              {block.instruction && <p className="mt-2 text-sm text-zinc-500">{block.instruction}</p>}
+              <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-zinc-400">Split View</div>
+              <h2 className="mt-2 text-xl font-semibold text-zinc-950">{block.title || 'Side by Side'}</h2>
+              {block.instruction && <p className="mt-2 text-sm leading-relaxed text-zinc-500">{block.instruction}</p>}
             </div>
-            <div className="border border-zinc-200 px-3 py-1 text-xs text-zinc-500">{children.length} tasks</div>
+            <div className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[10px] font-medium text-zinc-500">{children.length} tasks</div>
           </div>
           {extraChildren.length > 0 && (
-            <div className="mt-3 flex gap-1">
+            <div className="mt-4 flex gap-1.5">
               {children.slice(1).map((child, i) => (
                 <button
                   key={child.id}
                   type="button"
                   onClick={() => setRightIndex(i + 1)}
-                  className={rightIndex === i + 1
-                    ? 'border border-zinc-900 bg-zinc-900 px-3 py-1.5 text-xs text-white'
-                    : 'border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 hover:border-zinc-400'}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${rightIndex === i + 1
+                    ? 'bg-zinc-900 text-white shadow-sm'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}
                 >
                   {child.question || child.title || `Task ${i + 2}`}
                   {results?.[child.id] ? ' ✓' : ''}
@@ -111,63 +111,66 @@ export default function GroupBlock({ block, results, onCompleteChild, onProgress
   }
 
   return (
-    <div className="space-y-4">
-      <div className="border border-zinc-200 bg-white p-5 md:p-6 xl:p-8">
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-zinc-200/80 bg-gradient-to-b from-white to-zinc-50/50 p-5 shadow-sm md:p-6 xl:p-8">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">Multi-task Screen</div>
-            <h2 className="mt-2 text-2xl font-semibold text-zinc-950">{block.title || 'Practice Set'}</h2>
-            {block.instruction && <p className="mt-2 text-sm text-zinc-500">{block.instruction}</p>}
+            <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-zinc-400">Multi-task Screen</div>
+            <h2 className="mt-2 text-xl font-semibold text-zinc-950">{block.title || 'Practice Set'}</h2>
+            {block.instruction && <p className="mt-2 text-sm leading-relaxed text-zinc-500">{block.instruction}</p>}
           </div>
-          <div className="border border-zinc-200 px-3 py-1 text-xs text-zinc-500">{children.length} tasks</div>
+          <div className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[10px] font-medium text-zinc-500">{children.length} tasks</div>
         </div>
       </div>
       {children.length > 0 && (
-        <div className="space-y-4">
-          {/* Horizontal numbered tabs for small groups on mobile, grid on desktop */}
+        <div className="space-y-3">
           {children.length < 5 ? (
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none md:grid md:grid-cols-2 xl:grid-cols-3 md:gap-3 md:overflow-visible md:pb-0">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none md:grid md:grid-cols-2 xl:grid-cols-3 md:gap-2 md:overflow-visible md:pb-0">
               {children.map((child, index) => (
                 <button
                   key={child.id}
                   type="button"
                   onClick={() => setActiveIndex(index)}
-                  className={activeIndex === index
-                    ? 'flex shrink-0 items-center gap-2 border border-zinc-900 bg-zinc-900 px-4 py-2.5 text-left text-white md:min-h-24 md:flex-col md:items-start md:gap-0 md:p-4'
-                    : 'flex shrink-0 items-center gap-2 border border-zinc-200 bg-white px-4 py-2.5 text-left text-zinc-700 md:min-h-24 md:flex-col md:items-start md:gap-0 md:p-4'}
+                  className={`rounded-xl px-4 py-3 text-left transition-all ${activeIndex === index
+                    ? 'bg-zinc-900 text-white shadow-md md:min-h-20 md:p-4'
+                    : 'border border-zinc-200/80 bg-white text-zinc-700 shadow-sm hover:shadow-md hover:border-zinc-300 md:min-h-20 md:p-4'}`}
                 >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center border border-current text-xs font-semibold md:mb-2">{index + 1}</span>
-                  <span className="truncate text-sm font-medium">{child.question || child.title || `Task ${index + 1}`}</span>
-                  <span className="ml-auto text-[10px] opacity-60 md:ml-0 md:mt-2">{results?.[child.id] ? '✓' : '○'}</span>
+                  <div className="flex items-center gap-3 md:flex-col md:items-start md:gap-0">
+                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-semibold md:mb-2 ${activeIndex === index ? 'bg-white/20' : 'bg-zinc-100'}`}>{index + 1}</span>
+                    <span className="truncate text-sm font-medium">{child.question || child.title || `Task ${index + 1}`}</span>
+                    <span className="ml-auto text-[10px] opacity-60 md:ml-0 md:mt-1">{results?.[child.id] ? '✓ done' : '○ pending'}</span>
+                  </div>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {children.map((child, index) => (
                 <button
                   key={child.id}
                   type="button"
                   onClick={() => setActiveIndex(index)}
-                  className={activeIndex === index ? 'min-h-24 border border-zinc-900 bg-zinc-900 p-4 text-left text-white' : 'min-h-24 border border-zinc-200 bg-white p-4 text-left text-zinc-700'}
+                  className={`min-h-20 rounded-xl p-4 text-left transition-all ${activeIndex === index
+                    ? 'bg-zinc-900 text-white shadow-md'
+                    : 'border border-zinc-200/80 bg-white text-zinc-700 shadow-sm hover:shadow-md hover:border-zinc-300'}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-[10px] uppercase tracking-[0.18em] opacity-70">{child.type === 'task' ? getTaskDefinition(child.taskType).category : child.type}</div>
-                      <div className="mt-2 text-sm font-medium">{child.question || child.title || `Task ${index + 1}`}</div>
+                      <div className="text-[10px] uppercase tracking-[0.18em] opacity-60">{child.type === 'task' ? getTaskDefinition(child.taskType).category : child.type}</div>
+                      <div className="mt-1.5 text-sm font-medium">{child.question || child.title || `Task ${index + 1}`}</div>
                     </div>
-                    <span className="border border-current px-2 py-0.5 text-[10px] uppercase">{index + 1}</span>
+                    <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-semibold ${activeIndex === index ? 'bg-white/20' : 'bg-zinc-100'}`}>{index + 1}</span>
                   </div>
-                  <div className="mt-3 text-xs opacity-75">{results?.[child.id] ? (results[child.id].correct === true ? 'Completed correctly' : results[child.id].correct === false ? 'Needs review' : 'Saved') : 'Not started'}</div>
+                  <div className="mt-2 text-xs opacity-60">{results?.[child.id] ? (results[child.id].correct === true ? '✓ Completed correctly' : results[child.id].correct === false ? '✗ Needs review' : '● Saved') : '○ Not started'}</div>
                 </button>
               ))}
             </div>
           )}
           {activeChild && (
             <div className="relative">
-              <div className="mb-2 flex items-center justify-between px-1 text-xs uppercase tracking-[0.2em] text-zinc-400">
-                <span>Task {activeIndex + 1}</span>
-                {results?.[activeChild.id] && <span>{results[activeChild.id].correct === true ? 'Correct' : results[activeChild.id].correct === false ? 'Review' : 'Saved'}</span>}
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                <span>Task {activeIndex + 1} of {children.length}</span>
+                {results?.[activeChild.id] && <span className={results[activeChild.id].correct === true ? 'text-emerald-600' : results[activeChild.id].correct === false ? 'text-amber-600' : 'text-zinc-500'}>{results[activeChild.id].correct === true ? '✓ Correct' : results[activeChild.id].correct === false ? '✗ Review' : '● Saved'}</span>}
               </div>
               {renderChild(activeChild, results, onCompleteChild, onProgressChild, taskOptions)}
             </div>

@@ -74,6 +74,10 @@ export function AppProvider({ children }) {
     return saved;
   }, []);
 
+  const saveLessonSilent = useCallback((lesson) => {
+    return storageSave(lesson);
+  }, []);
+
   const deleteLessonAction = useCallback((id) => {
     dispatch({ type: 'DELETE_LESSON', id });
   }, []);
@@ -93,6 +97,7 @@ export function AppProvider({ children }) {
     folders: state.folders,
     refresh,
     saveLesson: saveLessonAction,
+    saveLessonSilent,
     deleteLesson: deleteLessonAction,
     deleteSession: deleteSessionAction,
     saveFolders: saveFoldersAction,

@@ -153,7 +153,7 @@ function HomePage() {
 }
 
 function EditorPage({ forcedMode = '' }) {
-  const { lessons, saveLesson, refresh } = useAppContext();
+  const { lessons, saveLesson, saveLessonSilent, refresh } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const { lessonId, editorMode, lessonRef } = useParams();
@@ -196,6 +196,17 @@ function EditorPage({ forcedMode = '' }) {
     return saved;
   }, [routeMode, saveLesson, syncEditorLocation]);
 
+  const handleSaveSilent = useCallback((lesson) => {
+    const saved = saveLessonSilent(lesson);
+    setCurrentLesson(saved);
+    try {
+      sessionStorage.setItem('lf_current_lesson', JSON.stringify(saved));
+    } catch {
+      // Ignore session storage write failures.
+    }
+    return saved;
+  }, [saveLessonSilent]);
+
   const handlePlay = useCallback((lesson) => {
     const saved = saveLesson(lesson);
     setCurrentLesson(saved);
@@ -236,6 +247,7 @@ function EditorPage({ forcedMode = '' }) {
           onNavigateMode={handleNavigateMode}
           onNavigateOverlay={handleNavigateOverlay}
           onSave={handleSave}
+          onSaveSilent={handleSaveSilent}
           onPlay={handlePlay}
           onGoLive={(lesson) => {
             const saved = saveLesson(lesson);

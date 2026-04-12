@@ -516,7 +516,7 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
   );
 }
 
-export default function Editor({ lesson, routeMode = 'builder', requestedOverlay = '', onNavigateMode, onNavigateOverlay, onSave, onPlay, onGoLive, onBack, onOpenGuide }) {
+export default function Editor({ lesson, routeMode = 'builder', requestedOverlay = '', onNavigateMode, onNavigateOverlay, onSave, onSaveSilent, onPlay, onGoLive, onBack, onOpenGuide }) {
   const { sessions } = useAppContext();
   const inputRef = useRef(null);
   const dslInputRef = useRef(null);
@@ -628,7 +628,8 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
 
     const job = (async () => {
       try {
-        const saved = await Promise.resolve(onSave(payload));
+        const saveFn = (source === 'auto' || source === 'background') && onSaveSilent ? onSaveSilent : onSave;
+        const saved = await Promise.resolve(saveFn(payload));
         const localSavedAt = saved?.updatedAt || Date.now();
         setSaveState((currentValue) => ({
           ...currentValue,
@@ -692,7 +693,7 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
     })();
 
     return job;
-  }, [onSave]);
+  }, [onSave, onSaveSilent]);
 
   // Auto-save: debounced save (configurable interval from settings)
   const scheduleAutoSave = () => {

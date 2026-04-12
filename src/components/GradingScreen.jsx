@@ -180,6 +180,86 @@ function toCanonicalBreakdown(breakdown = []) {
   });
 }
 
+function BreakdownEntry({ entry, expanded, toggleExpanded, showPerQuestionGrade, showCorrectness, showStudentAnswers, showCorrectAnswers, showFeedback, visibilityPolicy }) {
+  return (
+    <div className={`border ${statusTone(entry)}`}>
+      <button
+        type="button"
+        onClick={() => toggleExpanded(entry.id)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+      >
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.18em] opacity-70">{entry.taskType}</div>
+          <div className="mt-1 text-sm font-medium">{entry.label}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          {showPerQuestionGrade && showCorrectness && (
+            <div className="rounded-full border border-current px-3 py-1 text-xs">{Math.round((entry.score || 0) * 100)}%</div>
+          )}
+          <span className="text-xs opacity-70">{expanded ? 'Hide' : 'Show'}</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t border-current/20 px-4 pb-4 pt-2">
+          {visibilityPolicy === 'correctness_only' && (
+            <div className="text-xs opacity-75">{entry.correct === true ? 'Correct' : entry.correct === false ? 'Incorrect' : 'Submitted'}</div>
+          )}
+          {visibilityPolicy !== 'correctness_only' && (
+            <>
+              {showStudentAnswers && (
+                <div className="text-xs opacity-80">
+                  <span className="font-medium">Student answer:</span>
+                  <div className="mt-1 whitespace-pre-wrap">{entry.result?.studentAnswerText || 'No answer submitted'}</div>
+                </div>
+              )}
+              {showCorrectAnswers && entry.result?.correctAnswerText && (
+                <div className="mt-2 text-xs opacity-80">
+                  <span className="font-medium">Correct answer:</span>
+                  <div className="mt-1 whitespace-pre-wrap">{entry.result.correctAnswerText}</div>
+                </div>
+              )}
+              {showCorrectness && !showFeedback && (
+                <div className="text-xs opacity-75">{entry.correct === true ? 'Correct' : entry.correct === false ? 'Incorrect' : 'Submitted'}</div>
+              )}
+              {showFeedback && (
+                entry.result?.feedback
+                  ? <div className="text-xs opacity-75">{entry.result.feedback}</div>
+                  : <div className="text-xs opacity-60">No additional feedback.</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BreakdownList({ entries, expandedTasks, toggleExpanded, shouldCollapseByDefault, showPerQuestionGrade, showCorrectness, showStudentAnswers, showCorrectAnswers, showFeedback, visibilityPolicy, limit }) {
+  const visibleEntries = limit ? entries.slice(0, limit) : entries;
+  return (
+    <div className="mt-5 space-y-3">
+      {entries.length === 0 && <div className="border border-dashed border-zinc-200 px-4 py-4 text-sm text-zinc-500">No gradable tasks were completed. This lesson ended safely and the session can still be saved or restarted.</div>}
+      {visibleEntries.map((entry) => {
+        const expanded = !shouldCollapseByDefault || expandedTasks.has(entry.id);
+        return (
+          <BreakdownEntry
+            key={entry.id}
+            entry={entry}
+            expanded={expanded}
+            toggleExpanded={toggleExpanded}
+            showPerQuestionGrade={showPerQuestionGrade}
+            showCorrectness={showCorrectness}
+            showStudentAnswers={showStudentAnswers}
+            showCorrectAnswers={showCorrectAnswers}
+            showFeedback={showFeedback}
+            visibilityPolicy={visibilityPolicy}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function GradingScreen({ lesson, blocks, results, studentName, onStudentNameChange, onRestart, onExit, mode = 'default', allowRestart = true, sessionMeta = null, onSubmitted = null }) {
   const [saved, setSaved] = useState(false);
   const [cloudStatus, setCloudStatus] = useState('idle');
@@ -187,6 +267,7 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
   const [queuedSubmissionCount, setQueuedSubmissionCount] = useState(() => loadOfflineSubmissionQueue().length);
   const [replayMessage, setReplayMessage] = useState('');
   const [expandedTasks, setExpandedTasks] = useState(() => new Set());
+  const [showAllBreakdown, setShowAllBreakdown] = useState(false);
   const [resultShareLink, setResultShareLink] = useState('');
   const [resultShareState, setResultShareState] = useState('idle');
   const replayInFlightRef = useRef(false);
@@ -616,74 +697,61 @@ export default function GradingScreen({ lesson, blocks, results, studentName, on
               <h2 className="mt-1 text-2xl font-semibold text-zinc-950">Per-task results</h2>
             </div>
             <div className="flex items-center gap-2">
-              {shouldCollapseByDefault && (
-                <>
-                  <button type="button" onClick={expandAll} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900">Expand all</button>
-                  <button type="button" onClick={collapseAll} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900">Collapse all</button>
-                </>
-              )}
               <div className="rounded-full border border-zinc-200 px-3 py-2 text-xs text-zinc-500">
-                {showTotalGrade ? `${summary.earned} / ${summary.total} graded correct` : `${sessionPayload.completedCount} submitted tasks`}
+                {showTotalGrade ? `${Math.round(summary.earned * 100) / 100} / ${summary.total} graded correct` : `${sessionPayload.completedCount} submitted tasks`}
               </div>
             </div>
           </div>
-          <div className="mt-5 space-y-3">
-            {summary.breakdown.length === 0 && <div className="border border-dashed border-zinc-200 px-4 py-4 text-sm text-zinc-500">No gradable tasks were completed. This lesson ended safely and the session can still be saved or restarted.</div>}
-            {summary.breakdown.map((entry) => {
-              const expanded = !shouldCollapseByDefault || expandedTasks.has(entry.id);
-              return (
-                <div key={entry.id} className={`border ${statusTone(entry)}`}>
-                  <button
-                    type="button"
-                    onClick={() => toggleExpanded(entry.id)}
-                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                  >
-                    <div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.18em] opacity-70">{entry.taskType}</div>
-                      <div className="mt-1 text-sm font-medium">{entry.label}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {showPerQuestionGrade && showCorrectness && (
-                        <div className="rounded-full border border-current px-3 py-1 text-xs">{Math.round((entry.score || 0) * 100)}%</div>
-                      )}
-                      <span className="text-xs opacity-70">{expanded ? 'Hide' : 'Show'}</span>
-                    </div>
-                  </button>
-                  {expanded && (
-                    <div className="border-t border-current/20 px-4 pb-4 pt-2">
-                      {visibilityPolicy === 'correctness_only' && (
-                        <div className="text-xs opacity-75">{entry.correct === true ? 'Correct' : entry.correct === false ? 'Incorrect' : 'Submitted'}</div>
-                      )}
-                      {visibilityPolicy !== 'correctness_only' && (
-                        <>
-                          {showStudentAnswers && (
-                            <div className="text-xs opacity-80">
-                              <span className="font-medium">Student answer:</span>
-                              <div className="mt-1 whitespace-pre-wrap">{entry.result?.studentAnswerText || 'No answer submitted'}</div>
-                            </div>
-                          )}
-                          {showCorrectAnswers && entry.result?.correctAnswerText && (
-                            <div className="mt-2 text-xs opacity-80">
-                              <span className="font-medium">Correct answer:</span>
-                              <div className="mt-1 whitespace-pre-wrap">{entry.result.correctAnswerText}</div>
-                            </div>
-                          )}
-                          {showCorrectness && !showFeedback && (
-                            <div className="text-xs opacity-75">{entry.correct === true ? 'Correct' : entry.correct === false ? 'Incorrect' : 'Submitted'}</div>
-                          )}
-                          {showFeedback && (
-                            entry.result?.feedback
-                              ? <div className="text-xs opacity-75">{entry.result.feedback}</div>
-                              : <div className="text-xs opacity-60">No additional feedback.</div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
+          <BreakdownList
+            entries={summary.breakdown}
+            expandedTasks={expandedTasks}
+            toggleExpanded={toggleExpanded}
+            shouldCollapseByDefault={shouldCollapseByDefault}
+            showPerQuestionGrade={showPerQuestionGrade}
+            showCorrectness={showCorrectness}
+            showStudentAnswers={showStudentAnswers}
+            showCorrectAnswers={showCorrectAnswers}
+            showFeedback={showFeedback}
+            visibilityPolicy={visibilityPolicy}
+            limit={3}
+          />
+          {summary.breakdown.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowAllBreakdown(true)}
+              className="mt-4 w-full border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
+            >
+              See all {summary.breakdown.length} questions
+            </button>
+          )}
+          {showAllBreakdown && (
+            <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-12 pb-12" onClick={() => setShowAllBreakdown(false)}>
+              <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl md:p-6" onClick={(e) => e.stopPropagation()}>
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-zinc-950">All questions — {summary.breakdown.length} total</h3>
+                  <button type="button" onClick={() => setShowAllBreakdown(false)} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900">Close</button>
                 </div>
-              );
-            })}
-          </div>
+                {shouldCollapseByDefault && (
+                  <div className="mb-3 flex gap-2">
+                    <button type="button" onClick={expandAll} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900">Expand all</button>
+                    <button type="button" onClick={collapseAll} className="border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-900">Collapse all</button>
+                  </div>
+                )}
+                <BreakdownList
+                  entries={summary.breakdown}
+                  expandedTasks={expandedTasks}
+                  toggleExpanded={toggleExpanded}
+                  shouldCollapseByDefault={shouldCollapseByDefault}
+                  showPerQuestionGrade={showPerQuestionGrade}
+                  showCorrectness={showCorrectness}
+                  showStudentAnswers={showStudentAnswers}
+                  showCorrectAnswers={showCorrectAnswers}
+                  showFeedback={showFeedback}
+                  visibilityPolicy={visibilityPolicy}
+                />
+              </div>
+            </div>
+          )}
         </section>
         )}
       </div>

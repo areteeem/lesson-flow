@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { serializeBlockField, updateBlockField } from '../utils/builder';
 import { CATEGORY_COLORS, DIALOGUE_COLORS } from '../config/constants';
 import MarkdownComposer from './MarkdownComposer';
@@ -690,6 +690,169 @@ function StepListEditor({ block, onChange }) {
           </div>
         ))}
         {steps.length === 0 && <div className="border border-dashed border-zinc-300 px-3 py-4 text-sm text-zinc-500">No steps yet. Add one to build a carousel or step-by-step slide.</div>}
+      </div>
+    </div>
+  );
+}
+
+function GradingZonesEditor({ block, onChange }) {
+  const zones = Array.isArray(block.gradingZones) ? block.gradingZones : [];
+  const items = Array.isArray(block.items) ? block.items.filter((it) => String(it || '').trim()) : [];
+
+  const updateZones = (next) => onChange({ ...block, gradingZones: next });
+
+  const addZone = () => {
+    const label = items[zones.length] || `Zone ${zones.length + 1}`;
+    updateZones([...zones, { x: 50, y: 50, radius: 5, label }]);
+  };
+
+  const updateZone = (index, patch) => updateZones(zones.map((z, i) => i === index ? { ...z, ...patch } : z));
+  const removeZone = (index) => updateZones(zones.filter((_, i) => i !== index));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">Grading zones — define expected answer areas</div>
+        <button type="button" onClick={addZone} className="border border-zinc-200 px-2 py-1 text-[10px] text-zinc-600 hover:border-zinc-400">+ Zone</button>
+      </div>
+      {zones.length === 0 && (
+        <div className="border border-dashed border-zinc-200 px-4 py-3 text-center text-xs text-zinc-400">No grading zones. Student answers will be accepted without position checking.</div>
+      )}
+      {zones.map((zone, i) => (
+        <div key={i} className="grid grid-cols-[1fr_60px_60px_60px_auto] items-center gap-2 border border-zinc-200 bg-zinc-50 px-3 py-2">
+          <input
+            value={zone.label || ''}
+            onChange={(e) => updateZone(i, { label: e.target.value })}
+            placeholder={`Zone ${i + 1}`}
+            className="border border-zinc-200 px-2 py-1.5 text-xs outline-none focus:border-zinc-900"
+          />
+          <div className="text-center">
+            <div className="text-[9px] uppercase text-zinc-400">X%</div>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={zone.x}
+              onChange={(e) => updateZone(i, { x: Number(e.target.value) || 0 })}
+              className="w-full border border-zinc-200 px-1 py-1 text-center text-xs outline-none focus:border-zinc-900"
+            />
+          </div>
+          <div className="text-center">
+            <div className="text-[9px] uppercase text-zinc-400">Y%</div>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={zone.y}
+              onChange={(e) => updateZone(i, { y: Number(e.target.value) || 0 })}
+              className="w-full border border-zinc-200 px-1 py-1 text-center text-xs outline-none focus:border-zinc-900"
+            />
+          </div>
+          <div className="text-center">
+            <div className="text-[9px] uppercase text-zinc-400">Radius</div>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={zone.radius}
+              onChange={(e) => updateZone(i, { radius: Number(e.target.value) || 5 })}
+              className="w-full border border-zinc-200 px-1 py-1 text-center text-xs outline-none focus:border-zinc-900"
+            />
+          </div>
+          <button type="button" onClick={() => removeZone(i)} className="px-1 text-zinc-300 hover:text-red-500">×</button>
+        </div>
+      ))}
+      {zones.length > 0 && (
+        <div className="text-[10px] text-zinc-400">Coordinates as % of image dimensions. Radius is % of image width.</div>
+      )}
+    </div>
+  );
+}
+
+function GridSelectAnswerEditor({ block, onChange }) {
+  const rows = normalizeRows(block);
+  const rowLabels = rows.map((row) => (Array.isArray(row) ? row[0] : String(row).split('|')[0]) || '');
+  const columns = block.columns?.length ? block.columns : ['1', '2', '3', '4'];
+  const allowMultiple = Boolean(block.multiple);
+
+  const correctSet = useMemo(() => {
+    const set = new Set();
+    if (Array.isArray(block.pairs)) {
+      block.pairs.forEach((pair) => {
+        const key = String(pair.left || '').trim();
+        String(pair.right || '').split(',').map((v) => v.trim()).filter(Boolean).forEach((col) => set.add(`${key}::${col}`));
+      });
+    }
+    return set;
+  }, [block.pairs]);
+
+  const toggle = (rowLabel, col) => {
+    const next = new Set(correctSet);
+    const key = `${rowLabel}::${col}`;
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      if (!allowMultiple) {
+        for (const existing of next) {
+          if (existing.startsWith(`${rowLabel}::`)) next.delete(existing);
+        }
+      }
+      next.add(key);
+    }
+    const pairMap = {};
+    for (const entry of next) {
+      const sep = entry.indexOf('::');
+      const r = entry.slice(0, sep);
+      const c = entry.slice(sep + 2);
+      if (!pairMap[r]) pairMap[r] = [];
+      pairMap[r].push(c);
+    }
+    const pairs = Object.entries(pairMap).map(([left, cols]) => ({ left, right: cols.join(',') }));
+    onChange({ ...block, pairs });
+  };
+
+  const isCorrect = (rowLabel, col) => correctSet.has(`${rowLabel}::${col}`);
+  const hasAnyCorrect = correctSet.size > 0;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">Correct answers — click cells to mark</div>
+        {!hasAnyCorrect && <div className="text-[10px] text-amber-600">No correct answers marked yet</div>}
+      </div>
+      <div className="overflow-auto border border-zinc-200">
+        <table className="min-w-full border-collapse text-sm">
+          <thead className="bg-zinc-50">
+            <tr>
+              <th className="border border-zinc-200 px-3 py-2 text-left text-[10px] uppercase tracking-[0.18em] text-zinc-500">Row</th>
+              {columns.map((col, ci) => (
+                <th key={ci} className="border border-zinc-200 px-3 py-2 text-center text-xs font-medium text-zinc-600">{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rowLabels.map((rowLabel, ri) => (
+              <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-zinc-50/50'}>
+                <td className="border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-800">{rowLabel || `Row ${ri + 1}`}</td>
+                {columns.map((col, ci) => {
+                  const active = isCorrect(rowLabel, col);
+                  return (
+                    <td key={ci} className="border border-zinc-200 p-0 text-center">
+                      <button
+                        type="button"
+                        onClick={() => toggle(rowLabel, col)}
+                        className={`flex h-10 w-full items-center justify-center transition-colors ${active ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'text-zinc-300 hover:bg-zinc-100 hover:text-zinc-500'}`}
+                        title={active ? `Unmark "${rowLabel}" → "${col}"` : `Mark "${rowLabel}" → "${col}" as correct`}
+                      >
+                        {active ? '✓' : '○'}
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -1494,7 +1657,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
             return <PairsEditor block={block} onChange={onChange} label={labels.label} leftLabel={labels.left} rightLabel={labels.right} />;
           })()}
           {['cards'].includes(block.taskType) && <PairsEditor block={block} onChange={onChange} label="Cards" leftLabel="Front" rightLabel="Back" />}
-          {block.taskType === 'grid_select' && <PairsEditor block={block} onChange={onChange} label="Correct answers" leftLabel="Row text" rightLabel="Correct column" />}
+          {block.taskType === 'grid_select' && <GridSelectAnswerEditor block={block} onChange={onChange} />}
           {block.taskType === 'grid_select' && <Toggle label="Allow multiple selections per row" checked={Boolean(block.multiple)} onChange={(value) => apply(onChange, block, 'multiple', value)} />}
           {['order', 'random_wheel', 'timeline_order', 'sentence_builder', 'peer_review_checklist', 'story_reconstruction', 'justify_order', 'word_family_builder', 'word_cloud'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label={block.taskType === 'sentence_builder' ? 'Words / Chunks' : block.taskType === 'word_family_builder' ? 'Word Forms' : block.taskType === 'peer_review_checklist' ? 'Checklist Items' : block.taskType === 'random_wheel' ? 'Wheel Segments' : block.taskType === 'word_cloud' ? 'Seed Words' : 'Items (correct order)'} />}
           {['categorize', 'categorize_grammar'].includes(block.taskType) && <CategorizeEditor block={block} onChange={onChange} />}
@@ -1519,6 +1682,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
           )}
           {['image_labeling', 'audio_transcription', 'video_questions', 'map_geography_label', 'hotspot_selection', 'image_compare_spot', 'pronunciation_shadowing', 'youtube'].includes(block.taskType) && mediaInput('media', 'Media URL', 'Direct link to image, audio, or video')}
           {['image_labeling', 'map_geography_label', 'image_compare_spot'].includes(block.taskType) && <ItemListEditor block={block} onChange={onChange} label="Clickable targets" field="items" />}
+          {['image_labeling', 'map_geography_label', 'hotspot_selection'].includes(block.taskType) && <GradingZonesEditor block={block} onChange={onChange} />}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal', 'grid_select'].includes(block.taskType) && <Field label="Table editor"><TableGridEditor block={block} onChange={onChange} revealMode={block.taskType === 'table_reveal'} /></Field>}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && area('rowsText', 'Rows', 5)}
           {['fill_grid', 'fill_table_matrix', 'puzzle_jigsaw', 'compare_contrast_table', 'table_reveal'].includes(block.taskType) && area('columnsText', 'Columns', 2)}

@@ -98,6 +98,29 @@ export default function MediaPromptTask({ block, onComplete, existingResult }) {
 
     if (isInteractiveImage) {
       const hasPlacement = points.length > 0;
+      const zones = Array.isArray(block.gradingZones) ? block.gradingZones : [];
+      if (zones.length > 0 && hasPlacement) {
+        let matched = 0;
+        zones.forEach((zone) => {
+          const r = zone.radius || 5;
+          const hit = points.some((p) => {
+            const dx = p.x - zone.x;
+            const dy = p.y - zone.y;
+            return Math.sqrt(dx * dx + dy * dy) <= r;
+          });
+          if (hit) matched++;
+        });
+        const score = matched / zones.length;
+        onComplete?.({
+          submitted: true,
+          correct: score === 1,
+          score,
+          response: { points },
+          correctAnswer: zones,
+          feedback: score === 1 ? 'All zones matched!' : `${matched}/${zones.length} zones matched.`,
+        });
+        return;
+      }
       onComplete?.({
         submitted: true,
         correct: hasPlacement,
@@ -139,6 +162,14 @@ export default function MediaPromptTask({ block, onComplete, existingResult }) {
                 >
                   {index + 1}
                 </button>
+              ))}
+              {submitted && Array.isArray(block.gradingZones) && block.gradingZones.map((zone, zi) => (
+                <div
+                  key={`zone-${zi}`}
+                  className="absolute rounded-full border-2 border-dashed border-emerald-500/50 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${(zone.radius || 5) * 2}%`, height: `${(zone.radius || 5) * 2}%` }}
+                  title={zone.label || `Zone ${zi + 1}`}
+                />
               ))}
             </div>
           ) : (
