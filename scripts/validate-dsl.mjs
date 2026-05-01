@@ -160,6 +160,50 @@ function validatePromptSpecText() {
 
 let hasFailure = false;
 
+function validateDslMetadataRoundTripContract() {
+  const parserSource = fs.readFileSync(path.join(root, 'src', 'parser.js'), 'utf8');
+  const aiBridgeSource = fs.readFileSync(path.join(root, 'src', 'utils', 'aiBridge.js'), 'utf8');
+  const errors = [];
+
+  if (!parserSource.includes('parseInlineSettingList(rawData.focus)')) {
+    errors.push('parser.js must normalize Focus with parseInlineSettingList().');
+  }
+
+  if (!parserSource.includes('parseInlineSettingList(rawData.difficulty)')) {
+    errors.push('parser.js must normalize Difficulty with parseInlineSettingList().');
+  }
+
+  if (!aiBridgeSource.includes("Focus: ${focus.join(', ')}")) {
+    errors.push('aiBridge.js must serialize Focus using comma-delimited lesson metadata.');
+  }
+
+  if (!aiBridgeSource.includes("Difficulty: ${difficulty.join(', ')}")) {
+    errors.push('aiBridge.js must serialize Difficulty using comma-delimited lesson metadata.');
+  }
+
+  return errors;
+}
+
+function validatePromptValidationHooks() {
+  const apiSource = fs.readFileSync(path.join(root, 'api', 'ai.js'), 'utf8');
+  const bridgeSource = fs.readFileSync(path.join(root, 'src', 'utils', 'aiBridge.js'), 'utf8');
+  const errors = [];
+
+  if (!apiSource.includes('validateAiPromptRequest')) {
+    errors.push('api/ai.js must validate prompt requests before proxying upstream.');
+  }
+
+  if (!bridgeSource.includes('validateAiPromptRequest')) {
+    errors.push('src/utils/aiBridge.js must validate prompt requests before sending them.');
+  }
+
+  if (!bridgeSource.includes('getBlockingDslIssues')) {
+    errors.push('src/utils/aiBridge.js must reject AI DSL with blocking parser issues.');
+  }
+
+  return errors;
+}
+
 for (const fixture of fixtures) {
   const errors = validateFixture(fixture);
   if (errors.length > 0) {
@@ -176,6 +220,24 @@ if (missingSnippets.length > 0) {
   hasFailure = true;
   console.error('[dsl:validate] Prompt spec is missing required rules:');
   for (const item of missingSnippets) {
+    console.error(`  - ${item}`);
+  }
+}
+
+const metadataContractErrors = validateDslMetadataRoundTripContract();
+if (metadataContractErrors.length > 0) {
+  hasFailure = true;
+  console.error('[dsl:validate] Metadata round-trip contract failed:');
+  for (const item of metadataContractErrors) {
+    console.error(`  - ${item}`);
+  }
+}
+
+const promptValidationErrors = validatePromptValidationHooks();
+if (promptValidationErrors.length > 0) {
+  hasFailure = true;
+  console.error('[dsl:validate] Prompt validation hooks failed:');
+  for (const item of promptValidationErrors) {
     console.error(`  - ${item}`);
   }
 }

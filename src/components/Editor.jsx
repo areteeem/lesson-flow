@@ -5,7 +5,8 @@ import { exportLesson, importDsl, importLesson, printLessonReport, printStudentL
 import { loadAppSettings } from '../utils/appSettings';
 import { mergeGeneratedDslIntoLesson } from '../utils/aiBridge';
 import { syncLessonToCloud } from '../utils/cloudSync';
-import { addCustomTemplate } from './GuidePanel';
+import { getBlockingDslIssues, summarizeDslIssues } from '../utils/dslDiagnostics.js';
+import { addCustomTemplate } from '../utils/customTemplates';
 import { createDefaultBlock, createLessonTemplate, deleteBlockFromTree } from '../utils/builder';
 import { flattenBlocks } from '../utils/lesson';
 import { useAppContext } from '../context/AppContext';
@@ -23,12 +24,58 @@ const BlockPreview = lazy(() => import('./BlockPreview'));
 const GradingConsole = lazy(() => import('./GradingConsole'));
 const AiPanel = lazy(() => import('./AiPanel'));
 const HISTORY_LIMIT = 50;
+const EDITOR_HISTORY_STORAGE_PREFIX = 'lesson-flow:editor-history:';
 
 function createStateFromLesson(sourceLesson, existingBlocks) {
   const baseLesson = sourceLesson || createLessonTemplate('blank');
   const dsl = baseLesson.dsl || generateDSL(baseLesson);
   const parsed = parseLesson(dsl, existingBlocks);
   return { dsl, parsed };
+}
+
+function getEditorHistoryStorageKey(lessonId) {
+  return `${EDITOR_HISTORY_STORAGE_PREFIX}${lessonId || 'draft'}`;
+}
+
+function restoreEditorHistory(storageKey, fallbackState) {
+  if (typeof window === 'undefined') return { entries: [fallbackState], index: 0 };
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return { entries: [fallbackState], index: 0 };
+
+    const parsed = JSON.parse(raw);
+    const entries = Array.isArray(parsed?.entries)
+      ? parsed.entries
+        .filter((entry) => entry && typeof entry.dsl === 'string' && entry.parsed && typeof entry.parsed === 'object')
+        .slice(-HISTORY_LIMIT)
+      : [];
+
+    if (entries.length === 0) {
+      return { entries: [fallbackState], index: 0 };
+    }
+
+    const index = Number.isInteger(parsed?.index)
+      ? Math.min(Math.max(parsed.index, 0), entries.length - 1)
+      : entries.length - 1;
+
+    return { entries, index };
+  } catch {
+    return { entries: [fallbackState], index: 0 };
+  }
+}
+
+function persistEditorHistory(storageKey, historyState) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify({
+      entries: historyState.entries.slice(-HISTORY_LIMIT),
+      index: historyState.index,
+    }));
+  } catch {
+    // Ignore quota and serialization failures and keep the in-memory history working.
+  }
 }
 
 function IconButton({ title, onClick, children, className = '', variant }) {
@@ -140,7 +187,7 @@ function CommandPalette({ commands, onClose }) {
     return commands.filter((c) => c.label.toLowerCase().includes(q) || (c.group || '').toLowerCase().includes(q));
   }, [search, commands]);
 
-  useEffect(() => { setActiveIndex(0); }, [filtered]);
+  const resolvedActiveIndex = filtered.length === 0 ? 0 : Math.min(activeIndex, filtered.length - 1);
 
   const run = (cmd) => { onClose(); cmd.action(); };
 
@@ -148,21 +195,21 @@ function CommandPalette({ commands, onClose }) {
     if (e.key === 'Escape') { onClose(); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex((i) => Math.min(filtered.length - 1, i + 1)); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex((i) => Math.max(0, i - 1)); return; }
-    if (e.key === 'Enter' && filtered[activeIndex]) { run(filtered[activeIndex]); }
+    if (e.key === 'Enter' && filtered[resolvedActiveIndex]) { run(filtered[resolvedActiveIndex]); }
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-center bg-black/20 pt-[15vh] backdrop-blur-[1px]" onClick={onClose}>
       <div className="h-fit w-full max-w-sm md:max-w-lg border border-zinc-900 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.18)]" onClick={(e) => e.stopPropagation()}>
         <div className="border-b border-zinc-200 px-4 py-3">
-          <input ref={inputRef} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={onKeyDown} placeholder="Type a command…" className="w-full text-sm outline-none placeholder:text-zinc-400" />
+          <input ref={inputRef} value={search} onChange={(e) => { setSearch(e.target.value); setActiveIndex(0); }} onKeyDown={onKeyDown} placeholder="Type a command…" className="w-full text-sm outline-none placeholder:text-zinc-400" />
         </div>
         <div className="max-h-72 overflow-auto">
           {filtered.length === 0 && <div className="px-4 py-6 text-center text-xs text-zinc-400">No matching commands</div>}
           {filtered.map((cmd, i) => (
-            <button key={cmd.id} type="button" onClick={() => run(cmd)} className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition ${i === activeIndex ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-50'}`}>
+            <button key={cmd.id} type="button" onClick={() => run(cmd)} className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition ${i === resolvedActiveIndex ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-50'}`}>
               <span>{cmd.label}</span>
-              {cmd.shortcut && <span className={`text-[10px] ${i === activeIndex ? 'text-zinc-400' : 'text-zinc-400'}`}>{cmd.shortcut}</span>}
+              {cmd.shortcut && <span className={`text-[10px] ${i === resolvedActiveIndex ? 'text-zinc-400' : 'text-zinc-400'}`}>{cmd.shortcut}</span>}
             </button>
           ))}
         </div>
@@ -516,6 +563,78 @@ function LessonSettingsModal({ lesson, onClose, onSave }) {
   );
 }
 
+function AiMergePreviewModal({ preview, onClose, onConfirm }) {
+  if (!preview) return null;
+
+  const generatedBlocks = flattenBlocks(preview.generatedParsed?.blocks || []);
+  const warningCount = preview.generatedParsed?.warnings?.length || 0;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 px-4 py-6" role="dialog" aria-modal="true" aria-label="AI merge preview">
+      <div className="flex max-h-[min(86vh,900px)] w-full max-w-5xl flex-col overflow-hidden border border-zinc-200 bg-[#f7f7f5] shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-zinc-200 bg-white px-5 py-4">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">AI merge preview</div>
+            <h2 className="mt-1 text-lg font-semibold text-zinc-900">Review generated blocks before adding them</h2>
+            <p className="mt-1 text-sm text-zinc-600">
+              {preview.merged.insertedBlockCount} block{preview.merged.insertedBlockCount === 1 ? '' : 's'} will be appended to the current lesson.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-sm text-zinc-500 transition hover:text-zinc-900" aria-label="Close AI merge preview">Close</button>
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)]">
+          <section className="min-h-0 overflow-auto border border-zinc-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Incoming blocks</div>
+                <div className="mt-1 text-xs text-zinc-500">Titles and types parsed from the AI result.</div>
+              </div>
+              {warningCount > 0 && (
+                <div className="border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-700">
+                  {warningCount} warning{warningCount === 1 ? '' : 's'}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {generatedBlocks.length === 0 && (
+                <div className="border border-dashed border-zinc-200 px-3 py-4 text-sm text-zinc-500">No blocks were parsed from this AI response.</div>
+              )}
+              {generatedBlocks.map((block, index) => (
+                <div key={block.id || `${block.type}-${index}`} className="border border-zinc-200 px-3 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 text-sm font-medium text-zinc-900">{block.title || block.question || block.instruction || `Block ${index + 1}`}</div>
+                    <div className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">{block.type || 'block'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {warningCount > 0 && (
+              <div className="mt-4 border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                {preview.generatedParsed.warnings.slice(0, 4).map((warning) => (
+                  <div key={warning}>{warning}</div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="min-h-0 overflow-auto border border-zinc-200 bg-white p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Normalized DSL to merge</div>
+            <pre className="mt-3 max-h-full overflow-auto bg-zinc-50 p-3 text-[11px] leading-relaxed text-zinc-700">{preview.generatedDsl}</pre>
+          </section>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-zinc-200 bg-white px-5 py-4">
+          <button type="button" onClick={onClose} className="border border-zinc-300 px-3 py-2 text-sm text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900">Cancel</button>
+          <button type="button" onClick={onConfirm} className="border border-emerald-600 bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700">Insert blocks</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Editor({ lesson, routeMode = 'builder', requestedOverlay = '', onNavigateMode, onNavigateOverlay, onSave, onSaveSilent, onPlay, onGoLive, onBack, onOpenGuide }) {
   const { sessions } = useAppContext();
   const inputRef = useRef(null);
@@ -526,8 +645,9 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
   const [mode, setMode] = useState(routeMode || 'builder');
   const editorModes = useMemo(() => ['dsl', 'builder', 'preview', 'grading', 'ai'], []);
   const initialState = useMemo(() => createStateFromLesson(lesson), [lesson]);
+  const historyStorageKey = useMemo(() => getEditorHistoryStorageKey(lesson?.id), [lesson?.id]);
   // Combined history state — eliminates stale-closure bugs on fast edits
-  const [hist, setHist] = useState(() => ({ entries: [initialState], index: 0 }));
+  const [hist, setHist] = useState(() => restoreEditorHistory(historyStorageKey, initialState));
   const [selectedBlockId, setSelectedBlockId] = useState(() => initialState.parsed.blocks[0]?.id || null);
   const [showHotkeys, setShowHotkeys] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -539,6 +659,7 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showQuizImport, setShowQuizImport] = useState(false);
+  const [aiMergePreview, setAiMergePreview] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [saveState, setSaveState] = useState({
     status: 'idle',
@@ -573,14 +694,20 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
   }, []);
 
   useEffect(() => {
-    const next = initialState;
-    setHist({ entries: [next], index: 0 });
+    const restored = restoreEditorHistory(historyStorageKey, initialState);
+    setHist(restored);
+    const next = restored.entries[restored.index] || restored.entries[restored.entries.length - 1] || initialState;
     setSelectedBlockId(next.parsed.blocks[0]?.id || null);
-  }, [initialState]);
+    setAiMergePreview(null);
+  }, [historyStorageKey, initialState]);
 
   useEffect(() => {
     setMode(routeMode || 'builder');
   }, [routeMode]);
+
+  useEffect(() => {
+    persistEditorHistory(historyStorageKey, hist);
+  }, [hist, historyStorageKey]);
 
   const current = hist.entries[hist.index] || hist.entries[hist.entries.length - 1] || createStateFromLesson(lesson);
   const parsed = current.parsed;
@@ -596,6 +723,7 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
 
   // Build current payload for auto-save
   const payloadRef = useRef(null);
+  const blockingDslIssues = useMemo(() => getBlockingDslIssues(parsed.warnings || []), [parsed.warnings]);
 
   const buildPayload = useCallback(() => ({
     ...(lesson || {}),
@@ -792,6 +920,21 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
     }, 180);
   }, [parsed.blocks]);
 
+  const guardValidatedLaunch = useCallback((callback) => {
+    if (blockingDslIssues.length === 0) {
+      callback(payload);
+      return;
+    }
+
+    setMode('dsl');
+    pushToast({
+      tone: 'error',
+      title: 'Fix DSL issues first',
+      message: summarizeDslIssues(blockingDslIssues, 2),
+      duration: 5200,
+    });
+  }, [blockingDslIssues, payload, pushToast]);
+
   // Builder edits: generate DSL for persistence but keep original blocks
   // (avoids round-trip through parser which can corrupt IDs and dialogue text).
   const syncFromModel = (nextModel) => {
@@ -853,6 +996,10 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
         return;
       }
       if (event.key === 'Escape') {
+        if (aiMergePreview) {
+          setAiMergePreview(null);
+          return;
+        }
         if (focusMode) { setFocusMode(false); return; }
         setShowHotkeys(false);
         setMenuOpen(false);
@@ -896,7 +1043,7 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [allBlocks, focusMode, isMobile, mode, selectedBlockId, syncTemplateMenuOpen]);
+  }, [aiMergePreview, allBlocks, focusMode, isMobile, mode, selectedBlockId, syncTemplateMenuOpen]);
 
   const handleAddBlock = (block) => {
     const nextModel = { ...parsed, blocks: [...parsed.blocks, block] };
@@ -917,6 +1064,38 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
       onNavigateMode?.(nextMode, payloadRef.current || buildPayload());
     }
   }, [buildPayload, mode, onNavigateMode, routeMode]);
+
+  const previewAiMerge = useCallback((generatedDsl) => {
+    try {
+      const generatedParsed = parseLesson(generatedDsl);
+      const merged = mergeGeneratedDslIntoLesson({
+        title: parsed.title,
+        settings: parsed.settings,
+        blocks: parsed.blocks,
+        lesson: parsed.lesson,
+      }, generatedDsl);
+      setAiMergePreview({ generatedDsl, generatedParsed, merged });
+    } catch (error) {
+      pushToast({
+        tone: 'error',
+        title: 'AI insert failed',
+        message: error?.message || 'The generated content could not be parsed into lesson blocks.',
+      });
+    }
+  }, [parsed.blocks, parsed.lesson, parsed.settings, parsed.title, pushToast]);
+
+  const confirmAiMerge = useCallback(() => {
+    if (!aiMergePreview) return;
+
+    syncFromDsl(aiMergePreview.merged.dsl);
+    pushToast({
+      tone: 'success',
+      title: 'AI blocks inserted',
+      message: `${aiMergePreview.merged.insertedBlockCount} block${aiMergePreview.merged.insertedBlockCount === 1 ? '' : 's'} added to the lesson.`,
+    });
+    setAiMergePreview(null);
+    setModeAndSync('builder');
+  }, [aiMergePreview, pushToast, setModeAndSync, syncFromDsl]);
 
   useEffect(() => {
     const shouldOpen = requestedOverlay === 'templates';
@@ -1118,11 +1297,11 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
             <IconButton title="Save lesson" onClick={() => { void performSave('manual'); }}>
               <SaveIcon />
             </IconButton>
-            <IconButton title="Play lesson" onClick={() => onPlay(payload)} variant="primary">
+            <IconButton title="Play lesson" onClick={() => guardValidatedLaunch(onPlay)} variant="primary">
               <PlayIcon />
             </IconButton>
             {onGoLive && (
-              <button type="button" onClick={() => onGoLive(payload)} className="animate-live-pulse border border-red-600 bg-red-600 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-red-500" title="Start live quiz">
+              <button type="button" onClick={() => guardValidatedLaunch(onGoLive)} className="animate-live-pulse border border-red-600 bg-red-600 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-red-500" title="Start live quiz">
                 Live
               </button>
             )}
@@ -1239,30 +1418,7 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
         {mode === 'ai' && (
           <div className="h-full overflow-auto bg-[#f7f7f5]">
             <Suspense fallback={<div className="flex h-full items-center justify-center bg-white text-sm text-zinc-500">Loading AI…</div>}>
-              <AiPanel lessonContext={parsed} onInsertDsl={(generated) => {
-                try {
-                  const merged = mergeGeneratedDslIntoLesson({
-                    title: parsed.title,
-                    settings: parsed.settings,
-                    blocks: parsed.blocks,
-                    lesson: parsed.lesson,
-                  }, generated);
-                  syncFromDsl(merged.dsl);
-                  pushToast({
-                    tone: 'success',
-                    title: 'AI blocks inserted',
-                    message: `${merged.insertedBlockCount} block${merged.insertedBlockCount === 1 ? '' : 's'} added to the lesson.`,
-                  });
-                } catch (error) {
-                  pushToast({
-                    tone: 'error',
-                    title: 'AI insert failed',
-                    message: error?.message || 'The generated content could not be parsed into lesson blocks.',
-                  });
-                  return;
-                }
-                setModeAndSync('builder');
-              }} />
+              <AiPanel lessonContext={parsed} onInsertDsl={previewAiMerge} />
             </Suspense>
           </div>
         )}
@@ -1302,6 +1458,7 @@ export default function Editor({ lesson, routeMode = 'builder', requestedOverlay
           onClose={() => setShowQuizImport(false)}
         />
       )}
+      {aiMergePreview && <AiMergePreviewModal preview={aiMergePreview} onClose={() => setAiMergePreview(null)} onConfirm={confirmAiMerge} />}
 
       {/* State Debug Panel */}
       {showDebugPanel && (

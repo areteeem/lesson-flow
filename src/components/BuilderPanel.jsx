@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 import { TASK_REGISTRY, getTaskDefinition } from '../config/taskRegistry';
-import { addBlockToGroup, cloneBlockTree, createDefaultBlock, deleteBlockFromTree, findBlockById, getTaskCategories, reorderChildrenInGroup, updateBlockField, updateBlockInTree } from '../utils/builder';
+import { addBlockToGroup, cloneBlockTree, createDefaultBlock, deleteBlockFromTree, findBlockById, getTaskCategories, reorderChildrenInGroup, updateBlockInTree } from '../utils/builder';
 import { createRephraseVariants, hasAiBridgeToken } from '../utils/aiBridge';
 import { flattenBlocks, getBlockLabel } from '../utils/lesson';
 import useFavorites from '../hooks/useFavorites';
@@ -68,6 +68,7 @@ function QuickAddDivider({ onAddTask, onAddSlide, onAddGroup }) {
 }
 
 const QUALITY_RING_STORAGE_KEY = 'lesson-flow-builder-quality-ring-v2';
+const EMPTY_ARRAY = [];
 
 function loadQualityRingPrefs() {
   if (typeof window === 'undefined') return { hidden: false, position: { x: null, y: 96 } };
@@ -744,7 +745,7 @@ function cleanText(value = '') {
   return String(value || '')
     .replace(/`{1,3}[^`]*`{1,3}/g, ' ')
     .replace(/\[[^\]]*\]\([^)]*\)/g, ' ')
-    .replace(/[>#*_~|\-]+/g, ' ')
+    .replace(/[>#*_~|-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -820,6 +821,16 @@ function withVariantSuffix(value = '') {
   return `${text} (Variant)`;
 }
 
+function hashTextSeed(value = '') {
+  return Array.from(String(value || '')).reduce((hash, char) => ((hash * 31) + char.charCodeAt(0)) >>> 0, 0);
+}
+
+function pickDeterministicVariant(variants, seedSource) {
+  if (!Array.isArray(variants) || variants.length === 0) return '';
+  const index = hashTextSeed(seedSource) % variants.length;
+  return variants[index] || variants[0];
+}
+
 function createVariantBlock(sourceBlock) {
   const variant = cloneBlockTree(sourceBlock);
 
@@ -879,14 +890,11 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const [batchScope, setBatchScope] = useState('all');
   const [batchMessage, setBatchMessage] = useState('');
   const [showUtilityPanels, setShowUtilityPanels] = useState(false);
-  const [showDuplicateWarning, setShowDuplicateWarning] = useState(true);
+  const [dismissedDuplicateSignature, setDismissedDuplicateSignature] = useState('');
   const [dismissedSuggestionTexts, setDismissedSuggestionTexts] = useState([]);
   const [blockFilter, setBlockFilter] = useState('');
 
-  const [collapsedLibrarySections, setCollapsedLibrarySections] = useState(() => {
-    const initial = {};
-    return initial;
-  });
+  const [collapsedLibrarySectionOverrides, setCollapsedLibrarySectionOverrides] = useState({});
   const [dropTarget, setDropTarget] = useState(null);
   const [prefersCoarsePointer, setPrefersCoarsePointer] = useState(false);
   const [mobileDragItem, setMobileDragItem] = useState(null);
@@ -898,7 +906,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   const longPressRef = useRef(null);
   const quickAddRef = useRef(null);
   const categories = useMemo(() => ['All', ...getTaskCategories()], []);
-  const blocks = lesson.blocks || [];
+  const blocks = lesson.blocks ?? EMPTY_ARRAY;
   const selected = useMemo(() => findBlockById(blocks, selectedId) || flattenBlocks(blocks)[0] || null, [blocks, selectedId]);
   const flatBlocks = useMemo(() => flattenBlocks(blocks), [blocks]);
   const taskBlocks = useMemo(() => flatBlocks.filter((block) => block.type === 'task'), [flatBlocks]);
@@ -952,6 +960,14 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     });
     return next;
   }, [duplicateQuestionGroups]);
+
+  const duplicateQuestionSignature = useMemo(() => (
+    duplicateQuestionGroups
+      .map((group) => `${group.question}:${group.items.map((item) => item.id).join(',')}`)
+      .join('|')
+  ), [duplicateQuestionGroups]);
+
+  const showDuplicateWarning = duplicateQuestionGroups.length > 0 && dismissedDuplicateSignature !== duplicateQuestionSignature;
 
   const readability = useMemo(() => {
     const sourceText = flatBlocks
@@ -1114,38 +1130,37 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     return sections;
   }, [favorites, groupedSlides, groupedTasks]);
 
-  useEffect(() => {
-    setCollapsedLibrarySections((current) => {
-      const next = { ...current };
-      let changed = false;
-      catalogSections.forEach((section) => {
-        if (!(section.id in next)) {
-          next[section.id] = section.id.startsWith('fav-') ? false : true;
-          changed = true;
-        }
-      });
-      return changed ? next : current;
+  const collapsedLibrarySections = useMemo(() => {
+    const next = {};
+    catalogSections.forEach((section) => {
+      next[section.id] = collapsedLibrarySectionOverrides[section.id] ?? !section.id.startsWith('fav-');
     });
-  }, [catalogSections]);
+    return next;
+  }, [catalogSections, collapsedLibrarySectionOverrides]);
 
   const unifiedLibraryEntries = useMemo(() => ([
     ...filteredTasks.map((entry) => ({ ...entry, kind: 'task', groupLabel: entry.category })),
     ...filteredSlides.map((entry) => ({ ...entry, kind: 'slide', groupLabel: entry.layout || 'Slides' })),
   ].sort((left, right) => left.label.localeCompare(right.label))), [filteredSlides, filteredTasks]);
 
-  const trackRecentType = (type) => {
+  const trackRecentType = useCallback((type) => {
     setRecentTypes((prev) => {
       const next = [type, ...prev.filter((t) => t !== type)].slice(0, 6);
       try { sessionStorage.setItem('lf-recent-types', JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
-  };
+  }, []);
 
-  const suggestions = useMemo(() => {
+  const addBlockAndTrack = useCallback((block) => {
+    trackRecentType(block.taskType || block.type);
+    onAddBlock(block);
+  }, [onAddBlock, trackRecentType]);
+
+  const suggestions = (() => {
     const tips = [];
-    const taskTypes = new Set(flattenBlocks(blocks).filter((b) => b.type === 'task').map((b) => b.taskType));
+    const taskTypes = new Set(taskBlocks.map((block) => block.taskType));
     const slideCount = blocks.filter((b) => b.type !== 'task' && b.type !== 'group').length;
-    const taskCount = flattenBlocks(blocks).filter((b) => b.type === 'task').length;
+    const taskCount = taskBlocks.length;
 
     if (blocks.length === 0) {
       tips.push({ text: 'Start by adding a slide or task from the library', action: null });
@@ -1158,26 +1173,9 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
       if (blocks.length > 8 && blocks.every((b) => b.type !== 'group')) tips.push({ text: 'Group related blocks together for better organization', action: null });
     }
     return tips.slice(0, 2);
-  }, [blocks]);
+  })();
 
-  const visibleSuggestions = useMemo(() => {
-    return suggestions.filter((tip) => !dismissedSuggestionTexts.includes(tip.text));
-  }, [dismissedSuggestionTexts, suggestions]);
-
-  useEffect(() => {
-    if (duplicateQuestionGroups.length === 0) {
-      setShowDuplicateWarning(true);
-    }
-  }, [duplicateQuestionGroups.length]);
-
-  useEffect(() => {
-    setDismissedSuggestionTexts((current) => current.filter((text) => suggestions.some((tip) => tip.text === text)));
-  }, [suggestions]);
-
-  const addBlockAndTrack = (block) => {
-    trackRecentType(block.taskType || block.type);
-    onAddBlock(block);
-  };
+  const visibleSuggestions = suggestions.filter((tip) => !dismissedSuggestionTexts.includes(tip.text));
 
   const applyBatchTaskUpdates = () => {
     const numericPoints = Number(batchPoints);
@@ -1268,7 +1266,10 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
   };
 
   const stableRef = useRef({});
-  stableRef.current = { selectedId, onDeleteBlock, blocks, onSelect, lesson, onReplaceLesson, confirm };
+
+  useEffect(() => {
+    stableRef.current = { selectedId, onDeleteBlock, blocks, onSelect, lesson, onReplaceLesson, confirm };
+  }, [blocks, confirm, lesson, onDeleteBlock, onReplaceLesson, onSelect, selectedId]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -1445,16 +1446,6 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     onSelect(moved.id);
   };
 
-  const ungroupTopLevelBlock = (groupId) => {
-    const sourceIndex = blocks.findIndex((block) => block.id === groupId);
-    const source = blocks[sourceIndex];
-    if (sourceIndex === -1 || (source?.type !== 'group' && source?.type !== 'split_group')) return;
-    const nextBlocks = [...blocks];
-    nextBlocks.splice(sourceIndex, 1, ...(source.children || []));
-    replaceBlocks(nextBlocks);
-    onSelect(source.children?.[0]?.id || null);
-  };
-
   const duplicateTopLevelBlock = (blockId) => {
     const sourceIndex = blocks.findIndex((block) => block.id === blockId);
     if (sourceIndex === -1) return;
@@ -1475,35 +1466,6 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     onSelect(variant.id);
   };
 
-  const wrapTopLevelBlockInGroup = (blockId) => {
-    const sourceIndex = blocks.findIndex((block) => block.id === blockId);
-    if (sourceIndex === -1) return;
-    const source = blocks[sourceIndex];
-    if (source.type === 'group' || source.type === 'split_group') return;
-    const group = createDefaultBlock('group');
-    group.title = `${getBlockLabel(source, sourceIndex)} Group`;
-    group.instruction = 'Grouped for multi-step practice.';
-    group.children = [source];
-    group.itemRefs = [source.ref];
-    const nextBlocks = [...blocks];
-    nextBlocks.splice(sourceIndex, 1, group);
-    replaceBlocks(nextBlocks);
-    onSelect(source.id);
-  };
-
-  const duplicateChildBlock = (groupId, childId) => {
-    const parent = findBlockById(blocks, groupId);
-    const sourceIndex = parent?.children?.findIndex((child) => child.id === childId) ?? -1;
-    if (sourceIndex === -1) return;
-    const duplicate = cloneBlockTree(parent.children[sourceIndex]);
-    replaceBlocks(updateBlockInTree(blocks, groupId, (group) => {
-      const children = [...(group.children || [])];
-      children.splice(sourceIndex + 1, 0, duplicate);
-      return { ...group, children, itemRefs: children.map((child) => child.ref) };
-    }));
-    onSelect(duplicate.id);
-  };
-
   const duplicateVariantChildBlock = (groupId, childId) => {
     const parent = findBlockById(blocks, groupId);
     const sourceIndex = parent?.children?.findIndex((child) => child.id === childId) ?? -1;
@@ -1522,31 +1484,13 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
     const sourceText = block.question || block.instruction || block.title || '';
     const variants = createRephraseVariants(sourceText);
     if (variants.length === 0) return;
-    const nextQuestion = variants[Math.floor(Math.random() * variants.length)];
+    const nextQuestion = pickDeterministicVariant(variants, `${block.id}:${sourceText}`);
     const nextBlock = {
       ...block,
       question: nextQuestion,
     };
     replaceBlocks(updateBlockInTree(blocks, block.id, () => nextBlock));
     onSelect(block.id);
-  };
-
-  const wrapChildBlockInGroup = (groupId, childId) => {
-    replaceBlocks(updateBlockInTree(blocks, groupId, (group) => {
-      const sourceIndex = (group.children || []).findIndex((child) => child.id === childId);
-      if (sourceIndex === -1) return group;
-      const source = group.children[sourceIndex];
-      if (source.type === 'group' || source.type === 'split_group') return group;
-      const nestedGroup = createDefaultBlock('group');
-      nestedGroup.title = `${getBlockLabel(source, sourceIndex)} Group`;
-      nestedGroup.instruction = 'Grouped for multi-step practice.';
-      nestedGroup.children = [source];
-      nestedGroup.itemRefs = [source.ref];
-      const children = [...group.children];
-      children.splice(sourceIndex, 1, nestedGroup);
-      return { ...group, children, itemRefs: children.map((child) => child.ref) };
-    }));
-    onSelect(childId);
   };
 
   const moveChildInGroup = (groupId, childId, direction) => {
@@ -1773,7 +1717,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
               <div className="space-y-2">
                 {catalogSections.map((section) => (
                   <section key={section.id}>
-                    <button type="button" onClick={() => setCollapsedLibrarySections((current) => ({ ...current, [section.id]: !current[section.id] }))} className="flex w-full items-center justify-between gap-2 px-1 py-2 text-left">
+                    <button type="button" onClick={() => setCollapsedLibrarySectionOverrides((current) => ({ ...current, [section.id]: !collapsedLibrarySections[section.id] }))} className="flex w-full items-center justify-between gap-2 px-1 py-2 text-left">
                       <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">{section.title}</span>
                       <span className="text-[10px] text-zinc-400">{collapsedLibrarySections[section.id] ? `+ ${section.entries.length}` : `${section.entries.length}`}</span>
                     </button>
@@ -1906,7 +1850,7 @@ export default function BuilderPanel({ lesson, selectedId, onSelect, onReplaceLe
                         <div>
                           Duplicate prompts detected: {duplicateQuestionGroups.length}. <button type="button" onClick={() => runQualityAction('focus_duplicate')} className="underline">Jump to first duplicate</button>
                         </div>
-                        <button type="button" onClick={() => setShowDuplicateWarning(false)} className="shrink-0 text-[10px] font-medium text-amber-700 transition hover:text-amber-900" aria-label="Hide duplicate prompt warning">X</button>
+                        <button type="button" onClick={() => setDismissedDuplicateSignature(duplicateQuestionSignature)} className="shrink-0 text-[10px] font-medium text-amber-700 transition hover:text-amber-900" aria-label="Hide duplicate prompt warning">X</button>
                       </div>
                     )}
                     <div className="mt-2 space-y-1">

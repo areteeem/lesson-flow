@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { serializeBlockField, updateBlockField } from '../utils/builder';
 import { CATEGORY_COLORS, DIALOGUE_COLORS } from '../config/constants';
 import MarkdownComposer from './MarkdownComposer';
@@ -248,7 +248,7 @@ function resizeImageToDataUrl(file, maxWidth = 1280) {
   });
 }
 
-function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
+function MediaPickerModalContent({ onClose, onSelect, currentValue = '' }) {
   const fileRef = useRef(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
@@ -257,15 +257,21 @@ function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
   const [resizeWidth, setResizeWidth] = useState(1280);
   const [library, setLibrary] = useState(() => loadMediaLibrary());
 
-  useEffect(() => {
-    if (open) {
-      setUrlValue(currentValue || '');
-      setError('');
-      setLibrary(loadMediaLibrary());
-    }
-  }, [open, currentValue]);
+  const addToLibrary = useCallback((url) => {
+    setLibrary((current) => {
+      const item = {
+        id: crypto.randomUUID(),
+        url,
+        type: detectMediaType(url),
+        createdAt: Date.now(),
+      };
+      const next = [item, ...current.filter((entry) => entry.url !== url)];
+      saveMediaLibrary(next);
+      return next;
+    });
+  }, []);
 
-  async function handleFile(file) {
+  const handleFile = useCallback(async (file) => {
     if (!file) return;
     setError('');
 
@@ -297,10 +303,9 @@ function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
     };
     reader.onerror = () => setError('Could not read this file.');
     reader.readAsDataURL(file);
-  }
+  }, [addToLibrary, onClose, onSelect, resizeWidth]);
 
   useEffect(() => {
-    if (!open) return undefined;
     const onPaste = async (event) => {
       const files = Array.from(event.clipboardData?.files || []);
       if (files.length > 0) {
@@ -310,21 +315,7 @@ function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [open, resizeWidth]);
-
-  if (!open) return null;
-
-  const addToLibrary = (url) => {
-    const item = {
-      id: crypto.randomUUID(),
-      url,
-      type: detectMediaType(url),
-      createdAt: Date.now(),
-    };
-    const next = [item, ...library.filter((entry) => entry.url !== url)];
-    setLibrary(next);
-    saveMediaLibrary(next);
-  };
+  }, [handleFile]);
 
   const onDrop = async (event) => {
     event.preventDefault();
@@ -453,6 +444,12 @@ function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
       </div>
     </div>
   );
+}
+
+function MediaPickerModal({ open, onClose, onSelect, currentValue = '' }) {
+  if (!open) return null;
+
+  return <MediaPickerModalContent key={currentValue || 'empty'} onClose={onClose} onSelect={onSelect} currentValue={currentValue} />;
 }
 
 function MediaInput({ value, onChange }) {
@@ -1468,14 +1465,10 @@ function DialogueEditor({ block, onChange }) {
   );
 }
 
-export default function BlockEditorForm({ block, onChange, compact = false }) {
-  if (!block) return null;
+function BlockEditorFormContent({ block, onChange, compact = false }) {
   const [showTaskMenu, setShowTaskMenu] = useState(false);
-  const [showExplanation, setShowExplanation] = useState(Boolean((block.explanation || '').trim()));
-
-  useEffect(() => {
-    setShowExplanation(Boolean((block.explanation || '').trim()));
-  }, [block.id, block.explanation]);
+  const [showExplanationOverride, setShowExplanationOverride] = useState(Boolean((block?.explanation || '').trim()));
+  const showExplanation = showExplanationOverride || Boolean((block?.explanation || '').trim());
 
   const area = (field, label, rows = compact ? 3 : 4, help = '') => (
     <Field label={label} help={help}>
@@ -1554,7 +1547,7 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
                   <Toggle
                     checked={showExplanation}
                     onChange={(value) => {
-                      setShowExplanation(value);
+                      setShowExplanationOverride(value);
                       if (!value && (block.explanation || '').trim()) apply(onChange, block, 'explanation', '');
                     }}
                     label="Show description"
@@ -1747,4 +1740,10 @@ export default function BlockEditorForm({ block, onChange, compact = false }) {
       )}
     </div>
   );
+}
+
+export default function BlockEditorForm({ block, onChange, compact = false }) {
+  if (!block) return null;
+
+  return <BlockEditorFormContent key={block.id || block.type || 'block'} block={block} onChange={onChange} compact={compact} />;
 }

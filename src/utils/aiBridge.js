@@ -1,5 +1,7 @@
 import { buildGenerationPrompt } from '../config/dslPromptTemplates';
 import { generateDSL, parseLesson } from '../parser';
+import { validateAiPromptRequest } from './aiPromptValidation.js';
+import { getBlockingDslIssues } from './dslDiagnostics.js';
 
 const APIFREELLM_ENDPOINT = '/api/ai';
 const APIFREELLM_MODEL = 'apifreellm';
@@ -101,8 +103,8 @@ function createLessonHeader(title = 'Untitled Lesson', settings = {}) {
 
   if (lessonTopic) lines.push(`LessonTopic: ${lessonTopic}`);
   if (grammarTopic) lines.push(`GrammarTopic: ${grammarTopic}`);
-  if (focus.length) lines.push(`Focus: ${focus.join(' | ')}`);
-  if (difficulty.length) lines.push(`Difficulty: ${difficulty.join(' | ')}`);
+  if (focus.length) lines.push(`Focus: ${focus.join(', ')}`);
+  if (difficulty.length) lines.push(`Difficulty: ${difficulty.join(', ')}`);
 
   return `${lines.join('\n')}\n\n`;
 }
@@ -127,6 +129,11 @@ export function normalizeAiGeneratedDsl(rawText = '', options = {}) {
   const parsed = parseLesson(candidate);
   if (!Array.isArray(parsed.blocks) || parsed.blocks.length === 0) {
     throw new Error('The AI response could not be converted into lesson blocks.');
+  }
+
+  const blockingIssues = getBlockingDslIssues(parsed.warnings || []);
+  if (blockingIssues.length > 0) {
+    throw new Error(`The AI response produced invalid DSL: ${blockingIssues[0]}`);
   }
 
   const normalizedModel = {
@@ -282,11 +289,17 @@ function createFetchErrorMessage(error) {
 }
 
 export async function generateAiText(options = {}) {
-  const prompt = String(options.prompt || '').trim();
-  const model = String(options.model || APIFREELLM_MODEL).trim() || APIFREELLM_MODEL;
+  const validation = validateAiPromptRequest({
+    message: options.prompt,
+    model: options.model,
+    defaultModel: APIFREELLM_MODEL,
+  });
   const maxRetries = Math.max(0, Math.min(4, Number(options.maxRetries) || 2));
 
-  if (!prompt) throw new Error('AI prompt is empty.');
+  if (!validation.ok) throw new Error(validation.error);
+
+  const prompt = validation.message;
+  const model = validation.model;
 
   let lastError = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

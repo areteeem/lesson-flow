@@ -1,11 +1,12 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import MonacoEditor, { loader } from '@monaco-editor/react';
-import * as monacoInstance from 'monaco-editor';
+import * as monacoInstance from 'monaco-editor/esm/vs/editor/editor.api';
 import { generateDSL, parseLesson } from '../parser';
 import { getSlideTemplate, getTaskTemplate } from '../config/dslPromptTemplates';
 import { TASK_REGISTRY } from '../config/taskRegistry';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 import { useAppDialogs } from '../context/DialogContext';
+import { getDslIssueSeverity } from '../utils/dslDiagnostics.js';
 import { AlertTriangleIcon, CheckIcon, CircleXIcon, CopyIcon, DslIcon, ExportIcon, GridIcon, InfoCircleIcon, QuestionIcon, RefreshIcon, SaveIcon, SearchIcon, SparkIcon, TemplateIcon } from './Icons';
 
 // Use locally installed monaco-editor instead of CDN (CDN is blocked by CSP)
@@ -196,7 +197,6 @@ function registerDslLanguage(monaco) {
       const lineContent = model.getLineContent(position.lineNumber);
       if (!/^#TASK\s*:\s*/i.test(lineContent.trimStart())) return { suggestions: [] };
 
-      const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,
@@ -394,14 +394,7 @@ function toLessonModelFromParsed(parsed) {
 }
 
 function baseSeverityFromMessage(msg) {
-  const lower = String(msg || '').toLowerCase();
-  if (lower.includes('failed to parse') || lower.includes('parse error') || lower.includes('missing required') || lower.includes(' is not in options') || lower.includes(' is not one of the options')) {
-    return 'error';
-  }
-  if (lower.includes('unknown') || lower.includes('ignored') || lower.includes('has no') || lower.includes('auto-repair incomplete')) {
-    return 'warning';
-  }
-  return 'info';
+  return getDslIssueSeverity(msg);
 }
 
 function applyLintPreset(severity, message, preset) {
@@ -680,9 +673,14 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
 
   const issueKey = useCallback((item) => `${item.sev}:${item.lineNum}:${item.msg}`, []);
 
+  const activeDismissedIssueKeys = useMemo(() => {
+    const availableKeys = new Set(classifiedWarnings.map((entry) => issueKey(entry)));
+    return dismissedIssueKeys.filter((key) => availableKeys.has(key));
+  }, [classifiedWarnings, dismissedIssueKeys, issueKey]);
+
   const visibleWarnings = useMemo(() => {
-    return classifiedWarnings.filter((entry) => severityFilters[entry.sev] !== false && !dismissedIssueKeys.includes(issueKey(entry)));
-  }, [classifiedWarnings, dismissedIssueKeys, issueKey, severityFilters]);
+    return classifiedWarnings.filter((entry) => severityFilters[entry.sev] !== false && !activeDismissedIssueKeys.includes(issueKey(entry)));
+  }, [activeDismissedIssueKeys, classifiedWarnings, issueKey, severityFilters]);
 
   const hiddenIssueCount = classifiedWarnings.length - visibleWarnings.length;
 
@@ -845,11 +843,6 @@ export default function DslMonacoEditor({ value, onChange, onLoadTemplate }) {
   useEffect(() => {
     scheduleValidation(value || '');
   }, [lintPreset, scheduleValidation, value]);
-
-  useEffect(() => {
-    const available = new Set(classifiedWarnings.map((entry) => issueKey(entry)));
-    setDismissedIssueKeys((current) => current.filter((key) => available.has(key)));
-  }, [classifiedWarnings, issueKey]);
 
   const insertTemplateSnippet = useCallback((snippet) => {
     const editor = editorRef.current;

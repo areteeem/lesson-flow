@@ -1,28 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { SLIDE_REGISTRY } from '../config/slideRegistry';
 import { TASK_REGISTRY, getTaskDefinition } from '../config/taskRegistry';
 import { getCatalogDsl, getSlideDslExample, getTaskDslExample } from '../utils/builder';
+import { loadCustomTemplates, saveCustomTemplates } from '../utils/customTemplates';
 import { DSL_CORE_SPEC } from '../config/dslPromptTemplates';
-
-const CUSTOM_TEMPLATES_KEY = 'lesson-flow-custom-templates';
-
-function loadCustomTemplates() {
-  try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]'); } catch { return []; }
-}
-
-function saveCustomTemplates(templates) {
-  try {
-    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(templates));
-  } catch {
-    // Ignore storage write failures so the panel does not crash.
-  }
-}
-
-export function addCustomTemplate(name, dsl) {
-  const templates = loadCustomTemplates();
-  templates.push({ id: crypto.randomUUID(), name, dsl, createdAt: Date.now() });
-  saveCustomTemplates(templates);
-}
 
 const INPUT_TEXT_TASKS = ['fill_typing', 'short_answer', 'long_answer', 'dialogue_completion', 'error_correction', 'flash_response', 'memory_recall', 'keyword_expand'];
 
@@ -66,12 +47,6 @@ export default function GuidePanel({ onClose, onApplyPreset }) {
   const [importText, setImportText] = useState('');
   const [importLevel, setImportLevel] = useState('B1');
   const [importCopied, setImportCopied] = useState(false);
-
-  useEffect(() => {
-    if (focus === 'reading' || focus === 'mixed' || templatePreset === 'reading' || templatePreset === 'mixed') {
-      setQuickIncludeReading(true);
-    }
-  }, [focus, templatePreset]);
 
   const availableTasks = useMemo(() => TASK_REGISTRY.filter((entry) => isTaskAllowed(entry, excludeInputTextTasks)), [excludeInputTextTasks]);
 
@@ -426,12 +401,12 @@ ${exampleHighlight}
 Now generate the COMPLETE lesson with all ${quickParts} parts. Each part should have ~${quickTasksPerPart} tasks and relevant slides. Output ONLY the DSL text, nothing else.`;
   }, [quickTopic, quickGrammar, quickLevel, quickHardness, quickDuration, quickParts, quickTasksPerPart, quickIncludeSpeaking, quickIncludeVocabulary, quickIncludeReading, quickIncludeGrammar, quickReadingWordCount]);
 
-  const templateEntries = [
-    ...customTemplates.map((t) => ({ key: `custom-${t.id}`, label: t.name, kind: 'Custom', category: 'My Templates', value: t.dsl, customId: t.id })),
+  const templateEntries = useMemo(() => [
+    ...customTemplates.map((entry) => ({ key: `custom-${entry.id}`, label: entry.name, kind: 'Custom', category: 'My Templates', value: entry.dsl, customId: entry.id })),
     ...SLIDE_REGISTRY.map((entry) => ({ key: `slide-${entry.type}`, label: entry.label, kind: 'Slide', category: 'Slides', value: getSlideDslExample(entry.type) })),
     ...availableTasks.map((entry) => ({ key: `task-${entry.type}`, label: entry.label, kind: 'Task', category: getTaskDefinition(entry.type)?.category || 'Other', value: getTaskDslExample(entry.type) })),
     { key: 'catalog', label: 'All Types Test Lesson', kind: 'Catalog', category: 'Catalog', value: getCatalogDsl() },
-  ];
+  ], [availableTasks, customTemplates]);
 
   const templateCategories = useMemo(() => {
     const cats = ['All'];
@@ -442,7 +417,9 @@ Now generate the COMPLETE lesson with all ${quickParts} parts. Each part should 
     return cats;
   }, [templateEntries]);
 
-  const filteredTemplates = templateFilter === 'All' ? templateEntries : templateEntries.filter((e) => e.category === templateFilter);
+  const filteredTemplates = useMemo(() => (
+    templateFilter === 'All' ? templateEntries : templateEntries.filter((entry) => entry.category === templateFilter)
+  ), [templateEntries, templateFilter]);
 
   const importPrompt = useMemo(() => {
     if (!importText.trim()) return '';
@@ -684,7 +661,13 @@ Output ONLY the DSL text, nothing else.`;
               <div className="grid gap-4 lg:grid-cols-4">
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Focus</span>
-                  <select value={focus} onChange={(event) => setFocus(event.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={focus} onChange={(event) => {
+                    const nextFocus = event.target.value;
+                    setFocus(nextFocus);
+                    if (nextFocus === 'reading' || nextFocus === 'mixed') {
+                      setQuickIncludeReading(true);
+                    }
+                  }} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['grammar', 'vocabulary', 'reading', 'speaking', 'listening', 'writing', 'mixed'].map((entry) => <option key={entry} value={entry}>{entry}</option>)}
                   </select>
                 </label>
@@ -702,7 +685,13 @@ Output ONLY the DSL text, nothing else.`;
                 </label>
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-zinc-700">Preset template</span>
-                  <select value={templatePreset} onChange={(event) => setTemplatePreset(event.target.value)} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
+                  <select value={templatePreset} onChange={(event) => {
+                    const nextPreset = event.target.value;
+                    setTemplatePreset(nextPreset);
+                    if (nextPreset === 'reading' || nextPreset === 'mixed') {
+                      setQuickIncludeReading(true);
+                    }
+                  }} className="w-full border border-zinc-200 px-4 py-3 text-sm outline-none transition focus:border-zinc-900">
                     {['grammar', 'vocabulary', 'reading', 'speaking', 'mixed'].map((entry) => <option key={entry} value={entry}>{entry}</option>)}
                   </select>
                 </label>

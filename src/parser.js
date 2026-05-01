@@ -308,6 +308,10 @@ function splitDelimitedValues(value, { allowComma = false } = {}) {
   return [raw];
 }
 
+function parseInlineSettingList(value) {
+  return dedupeListByNormalized(splitDelimitedValues(value, { allowComma: true }));
+}
+
 function normalizeVisibilityPolicy(policy) {
   const value = String(policy || '').trim();
   if (!value) return 'student_answers_only';
@@ -1302,8 +1306,8 @@ export function parseLesson(dsl, existingBlocks) {
         allowSessionSave: rawData.allowsessionsave === undefined ? true : toBoolean(rawData.allowsessionsave, true),
         grammarTopic: rawData.grammartopic || '',
         lessonTopic: rawData.lessontopic || rawData.topic || '',
-        focus: rawData.focus ? rawData.focus.split(',').map(s => s.trim()).filter(Boolean) : [],
-        difficulty: rawData.difficulty ? rawData.difficulty.split(',').map(s => s.trim()).filter(Boolean) : [],
+        focus: parseInlineSettingList(rawData.focus),
+        difficulty: parseInlineSettingList(rawData.difficulty),
         fontFamily: rawData.fontfamily || '',
         fontSize: rawData.fontsize || '',
         lineHeight: rawData.lineheight || '',

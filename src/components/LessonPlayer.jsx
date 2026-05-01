@@ -4,7 +4,8 @@ import GradingScreen from './GradingScreen';
 import LessonStage from './LessonStage';
 import PrivacyDot from './PrivacyDot';
 import { HamburgerIcon, FullscreenIcon, ExitFullscreenIcon } from './Icons';
-import FontSettingsPanel, { loadFontSettings, getFontCSSVars } from './FontSettingsPanel';
+import FontSettingsPanel from './FontSettingsPanel';
+import { getFontCSSVars, loadFontSettings } from '../utils/fontSettings';
 import { recordDebugEvent } from '../utils/debug';
 import { useAppDialogs } from '../context/DialogContext';
 

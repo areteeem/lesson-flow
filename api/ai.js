@@ -1,5 +1,9 @@
+import process from 'node:process';
+
 const APIFREELLM_ENDPOINT = 'https://apifreellm.com/api/v1/chat';
 const APIFREELLM_MODEL = 'apifreellm';
+
+import { validateAiPromptRequest } from '../src/utils/aiPromptValidation.js';
 
 function sendJson(response, statusCode, payload) {
   response.status(statusCode).json(payload);
@@ -23,12 +27,18 @@ export default async function handler(request, response) {
     });
   }
 
-  const message = String(request.body?.message || '').trim();
-  const model = String(request.body?.model || APIFREELLM_MODEL).trim() || APIFREELLM_MODEL;
+  const validation = validateAiPromptRequest({
+    message: request.body?.message,
+    model: request.body?.model,
+    defaultModel: APIFREELLM_MODEL,
+  });
 
-  if (!message) {
-    return sendJson(response, 400, { success: false, error: 'AI prompt is empty.' });
+  if (!validation.ok) {
+    return sendJson(response, 400, { success: false, error: validation.error });
   }
+
+  const message = validation.message;
+  const model = validation.model;
 
   try {
     const upstream = await fetch(APIFREELLM_ENDPOINT, {

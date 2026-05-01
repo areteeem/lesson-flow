@@ -487,7 +487,7 @@ export default function AiPanel({ onInsertDsl, lessonContext }) {
                     </div>
                   </div>
                   <button type="button" onClick={handleInsert} className="border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-700">
-                    Insert Into DSL
+                    Review Merge
                   </button>
                 </div>
                 <pre className="mt-3 max-h-[28rem] overflow-auto border border-zinc-200 bg-zinc-50 p-3 text-[11px] text-zinc-700">{result}</pre>

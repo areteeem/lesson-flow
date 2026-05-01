@@ -132,7 +132,7 @@ function MiniPreview({ definition, selectedOrder, showDescription }) {
   );
 }
 
-export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType = 'multiple_choice' }) {
+function AddTaskModalContent({ onClose, onConfirm, initialType = 'multiple_choice' }) {
   const categories = useMemo(() => ['All', '★ Favorites', ...getTaskCategories()], []);
   const { favorites, toggle: toggleFavorite, isFavorite } = useFavorites();
   const [query, setQuery] = useState('');
@@ -143,22 +143,12 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
   const [showDescriptions, setShowDescriptions] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
-    setQuery('');
-    setCategory('All');
-    setQueue([initialType]);
-    setActiveType(initialType);
-    setDrafts({ [initialType]: createDefaultBlock(initialType) });
-  }, [initialType, isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
     const onKeyDown = (event) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, onClose]);
+  }, [onClose]);
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -172,8 +162,6 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
   }, [category, favorites, query]);
 
   const activeDraft = drafts[activeType] || createDefaultBlock(activeType);
-
-  if (!isOpen) return null;
 
   const updateDraft = (type, nextBlock) => {
     setDrafts((current) => ({ ...current, [type]: nextBlock }));
@@ -391,4 +379,10 @@ export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType =
       {desktopModal}
     </>
   );
+}
+
+export default function AddTaskModal({ isOpen, onClose, onConfirm, initialType = 'multiple_choice' }) {
+  if (!isOpen) return null;
+
+  return <AddTaskModalContent key={initialType} onClose={onClose} onConfirm={onConfirm} initialType={initialType} />;
 }

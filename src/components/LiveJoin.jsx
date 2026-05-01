@@ -24,6 +24,65 @@ function normalizeLivePaceMode(value) {
   return LIVE_PACE_MODE.TEACHER_LED;
 }
 
+function getConnectionBadge(status, isOffline) {
+  if (isOffline) {
+    return {
+      label: 'Offline',
+      className: 'border-amber-700 bg-amber-900/30 text-amber-200',
+    };
+  }
+
+  if (status === 'connected') {
+    return {
+      label: 'Connected',
+      className: 'border-emerald-700 bg-emerald-900/30 text-emerald-200',
+    };
+  }
+
+  if (status === 'reconnecting' || status === 'joining' || status === 'waiting-sync') {
+    return {
+      label: 'Syncing',
+      className: 'border-sky-700 bg-sky-900/30 text-sky-200',
+    };
+  }
+
+  return {
+    label: 'Attention',
+    className: 'border-zinc-700 bg-zinc-900/40 text-zinc-300',
+  };
+}
+
+function getDeadlineNotice(remainingSeconds) {
+  const numeric = Number(remainingSeconds);
+  if (!Number.isFinite(numeric)) return null;
+  if (numeric <= 0) {
+    return {
+      title: 'Responses closed',
+      detail: 'Time is up for this question. New submissions are locked.',
+      className: 'border-red-300 bg-red-50 text-red-800',
+    };
+  }
+  if (numeric <= 10) {
+    return {
+      title: `Submit now: ${numeric}s left`,
+      detail: 'This question is about to lock.',
+      className: 'border-red-300 bg-red-50 text-red-800',
+    };
+  }
+  if (numeric <= 30) {
+    return {
+      title: `${numeric}s remaining`,
+      detail: 'Finish and submit before the response window closes.',
+      className: 'border-amber-300 bg-amber-50 text-amber-800',
+    };
+  }
+  return {
+    title: `Response deadline: ${numeric}s`,
+    detail: 'The teacher is running this question with a timed response window.',
+    className: 'border-zinc-200 bg-zinc-50 text-zinc-700',
+  };
+}
+
 function getLocalResponseKey(sessionId, playerId) {
   return `lf_live_responses_${sessionId}_${playerId}`;
 }
@@ -40,6 +99,32 @@ function loadLocalResponses(sessionId, playerId) {
 function saveLocalResponses(sessionId, playerId, responses) {
   try {
     localStorage.setItem(getLocalResponseKey(sessionId, playerId), JSON.stringify({ ...responses, _timestamp: Date.now() }));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function getLocalQueueKey(sessionId, playerId) {
+  return `lf_live_queue_${sessionId}_${playerId}`;
+}
+
+function loadLocalQueuedUpdates(sessionId, playerId) {
+  try {
+    const raw = localStorage.getItem(getLocalQueueKey(sessionId, playerId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry === 'object' && typeof entry.blockId === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalQueuedUpdates(sessionId, playerId, queuedUpdates) {
+  try {
+    if (!queuedUpdates || queuedUpdates.length === 0) {
+      localStorage.removeItem(getLocalQueueKey(sessionId, playerId));
+      return;
+    }
+    localStorage.setItem(getLocalQueueKey(sessionId, playerId), JSON.stringify(queuedUpdates));
   } catch {
     // Ignore storage failures.
   }
@@ -81,6 +166,8 @@ export default function LiveJoin({ onExit }) {
   const [localIndex, setLocalIndex] = useState(0);
   const [offlineQueuedUpdates, setOfflineQueuedUpdates] = useState([]);
   const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+  const [queueReplayState, setQueueReplayState] = useState('idle');
+  const [queueReplayAttempt, setQueueReplayAttempt] = useState(0);
 
   const channelRef = useRef(null);
   const activeSessionRef = useRef('');
@@ -88,6 +175,9 @@ export default function LiveJoin({ onExit }) {
   const lastSyncRef = useRef(0);
   const joinAckRef = useRef(false);
   const joinTimeoutRef = useRef(null);
+  const replayTimerRef = useRef(null);
+  const statusRef = useRef(status);
+  const offlineRef = useRef(isOffline);
 
   const blocks = useMemo(() => normalizeVisibleBlocks(session?.lesson?.blocks || []), [session]);
   const paceMode = normalizeLivePaceMode(session?.paceMode || session?.lesson?.settings?.livePaceMode);
@@ -100,6 +190,11 @@ export default function LiveJoin({ onExit }) {
     : Math.max(0, Math.min(localIndex, maxReachableIndex));
   const currentBlock = useMemo(() => blocks[effectiveIndex] || null, [blocks, effectiveIndex]);
   const deadlineClosed = paceMode === LIVE_PACE_MODE.TEACHER_LED && Number(session?.questionDeadlineRemainingSeconds) === 0;
+  const connectionBadge = useMemo(() => getConnectionBadge(status, isOffline), [isOffline, status]);
+  const deadlineNotice = useMemo(() => {
+    if (currentBlock?.type !== 'task') return null;
+    return getDeadlineNotice(session?.questionDeadlineRemainingSeconds);
+  }, [currentBlock?.type, session?.questionDeadlineRemainingSeconds]);
   const myTeam = session?.teamAssignments?.[playerId] || '';
   const isTeamCaptain = Boolean(myTeam && session?.captainsByTeam?.[myTeam] === playerId);
   const isPrivacyMode = session?.lesson?.settings?.livePrivacyMode === true;
@@ -131,6 +226,14 @@ export default function LiveJoin({ onExit }) {
     });
     return balance;
   }, [results, session]);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  useEffect(() => {
+    offlineRef.current = isOffline;
+  }, [isOffline]);
 
   useEffect(() => {
     void ensureSession();
@@ -186,20 +289,79 @@ export default function LiveJoin({ onExit }) {
   }, [hostIndex, joined, maxReachableIndex, paceMode]);
 
   useEffect(() => {
-    if (offlineQueuedUpdates.length === 0) return;
-    if (status !== 'connected' || isOffline || !channelRef.current) return;
+    const sessionId = activeSessionRef.current || pin.trim();
+    if (!sessionId) return;
+    saveLocalQueuedUpdates(sessionId, playerId, offlineQueuedUpdates);
+    if (offlineQueuedUpdates.length === 0) {
+      setQueueReplayState('idle');
+      setQueueReplayAttempt(0);
+    }
+  }, [offlineQueuedUpdates, pin, playerId]);
+
+  useEffect(() => {
+    if (offlineQueuedUpdates.length === 0) return undefined;
+    if (status !== 'connected' || isOffline || !channelRef.current || !joinAckRef.current) return undefined;
+    if (replayTimerRef.current) return undefined;
+
+    const sessionId = activeSessionRef.current || pin.trim();
+    const replayCount = queueReplayAttempt + 1;
+    const replayedAt = Date.now();
+
+    setQueueReplayState('replaying');
+    setQueueReplayAttempt(replayCount);
+    setLiveNotice(`Replaying ${offlineQueuedUpdates.length} queued update${offlineQueuedUpdates.length === 1 ? '' : 's'} (attempt ${replayCount}).`);
 
     offlineQueuedUpdates.forEach((payload) => {
       channelRef.current?.postMessage({
         ...payload,
-        mode: payload.mode || 'replay',
+        mode: payload.mode === 'submit' ? 'submit' : 'change',
         replayed: true,
-        timestamp: Date.now(),
+        replayAttempt: replayCount,
+        timestamp: replayedAt,
       });
     });
-    setLiveNotice(`Replayed ${offlineQueuedUpdates.length} queued update${offlineQueuedUpdates.length === 1 ? '' : 's'}.`);
-    setOfflineQueuedUpdates([]);
-  }, [isOffline, offlineQueuedUpdates, status]);
+
+    replayTimerRef.current = window.setTimeout(() => {
+      replayTimerRef.current = null;
+      if (offlineRef.current || statusRef.current !== 'connected') {
+        setQueueReplayState('pending');
+        return;
+      }
+
+      const channelMode = String(channelRef.current?.mode || '').toLowerCase();
+      if (channelMode !== 'supabase') {
+        setOfflineQueuedUpdates([]);
+        setQueueReplayState('verified');
+        setLiveNotice(`Synced ${offlineQueuedUpdates.length} queued update${offlineQueuedUpdates.length === 1 ? '' : 's'}.`);
+        return;
+      }
+
+      void fetchStudentResponses(sessionId, playerId).then((remoteResponses) => {
+        const remoteKeys = new Set(Object.keys(remoteResponses || {}));
+        setOfflineQueuedUpdates((current) => {
+          const remaining = current.filter((entry) => !remoteKeys.has(entry.blockId));
+          if (remaining.length === 0) {
+            setQueueReplayState('verified');
+            setLiveNotice(`Synced ${current.length} queued update${current.length === 1 ? '' : 's'}.`);
+            return [];
+          }
+          setQueueReplayState('pending');
+          setLiveNotice(`${remaining.length} queued update${remaining.length === 1 ? '' : 's'} still pending. Retry will continue automatically.`);
+          return remaining;
+        });
+      }).catch(() => {
+        setQueueReplayState('pending');
+        setLiveNotice(`Replay attempt ${replayCount} sent. Waiting for confirmation before clearing queued updates.`);
+      });
+    }, 1600);
+
+    return () => {
+      if (replayTimerRef.current) {
+        window.clearTimeout(replayTimerRef.current);
+        replayTimerRef.current = null;
+      }
+    };
+  }, [isOffline, offlineQueuedUpdates, pin, playerId, queueReplayAttempt, status]);
 
   const sendResponseUpdate = (sessionId, blockId, result, mode = 'submit') => {
     if (deadlineClosed && mode !== 'restore') {
@@ -248,8 +410,9 @@ export default function LiveJoin({ onExit }) {
     const shouldQueue = isOffline || status === 'disconnected' || status === 'reconnecting' || status === 'host-not-found' || !joinAckRef.current;
     if (shouldQueue) {
       setOfflineQueuedUpdates((current) => {
-        const deduped = current.filter((entry) => !(entry.blockId === blockId && entry.mode === mode));
+        const deduped = current.filter((entry) => entry.blockId !== blockId);
         const next = [...deduped, payload];
+        setQueueReplayState('pending');
         setLiveNotice(`Offline queue: ${next.length} pending update${next.length === 1 ? '' : 's'}.`);
         return next;
       });
@@ -292,6 +455,16 @@ export default function LiveJoin({ onExit }) {
     const localResponses = loadLocalResponses(sessionId, playerId);
     if (Object.keys(localResponses).length > 0) {
       setResults(localResponses);
+    }
+
+    const queuedResponses = loadLocalQueuedUpdates(sessionId, playerId);
+    if (queuedResponses.length > 0) {
+      setOfflineQueuedUpdates(queuedResponses);
+      setQueueReplayState('pending');
+      setLiveNotice(`${queuedResponses.length} queued update${queuedResponses.length === 1 ? '' : 's'} restored from this device and will retry after sync.`);
+    } else {
+      setOfflineQueuedUpdates([]);
+      setQueueReplayState('idle');
     }
 
     void fetchStudentResponses(sessionId, playerId).then((remoteResponses) => {
@@ -404,6 +577,7 @@ export default function LiveJoin({ onExit }) {
   useEffect(() => {
     return () => {
       if (joinTimeoutRef.current) window.clearTimeout(joinTimeoutRef.current);
+      if (replayTimerRef.current) window.clearTimeout(replayTimerRef.current);
       channelRef.current?.postMessage({ type: 'leave', sessionId: activeSessionRef.current || pin.trim(), playerId });
       channelRef.current?.close();
     };
@@ -502,6 +676,7 @@ export default function LiveJoin({ onExit }) {
         <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate text-sm font-semibold">{name}</span>
           <PrivacyDot state="shared" />
+          <span className={`shrink-0 border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] ${connectionBadge.className}`}>{connectionBadge.label}</span>
           {myTeam && <span className="shrink-0 border border-sky-700 bg-sky-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-300">{myTeam}</span>}
           {isTeamCaptain && <span className="shrink-0 border border-amber-600 bg-amber-900/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-300">Captain</span>}
         </div>
@@ -529,9 +704,10 @@ export default function LiveJoin({ onExit }) {
             {session?.autoModeRemainingSeconds !== null && session?.autoModeRemainingSeconds !== undefined && (
               <div className="mb-2 text-xs text-zinc-500">Auto mode time remaining: {Math.max(0, Number(session.autoModeRemainingSeconds) || 0)}s</div>
             )}
-            {session?.questionDeadlineRemainingSeconds !== null && session?.questionDeadlineRemainingSeconds !== undefined && currentBlock?.type === 'task' && (
-              <div className="mb-2 text-xs text-zinc-500">
-                Response deadline: {Number(session.questionDeadlineRemainingSeconds) > 0 ? `${Math.max(0, Number(session.questionDeadlineRemainingSeconds) || 0)}s` : 'Closed'}
+            {deadlineNotice && (
+              <div className={`mb-3 border px-3 py-2 text-xs ${deadlineNotice.className}`}>
+                <div className="font-semibold uppercase tracking-[0.12em]">{deadlineNotice.title}</div>
+                <div className="mt-1">{deadlineNotice.detail}</div>
               </div>
             )}
             {liveNotice && (
@@ -567,7 +743,15 @@ export default function LiveJoin({ onExit }) {
             )}
             {offlineQueuedUpdates.length > 0 && (
               <div className="mb-3 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                {offlineQueuedUpdates.length} response update{offlineQueuedUpdates.length === 1 ? '' : 's'} queued. They will sync automatically once connection is restored.
+                <div>
+                  {offlineQueuedUpdates.length} response update{offlineQueuedUpdates.length === 1 ? '' : 's'} queued.
+                  {queueReplayState === 'replaying'
+                    ? ` Replay attempt ${queueReplayAttempt} is in progress now.`
+                    : ' They are stored on this device and will retry automatically once connection is restored.'}
+                </div>
+                {queueReplayState === 'pending' && (
+                  <div className="mt-1 text-amber-700">Waiting for a stable connection before clearing the local queue.</div>
+                )}
               </div>
             )}
             <LessonStage

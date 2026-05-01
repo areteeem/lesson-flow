@@ -1,20 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createLessonTemplate } from '../utils/builder';
+import { loadCustomTemplates, saveCustomTemplates } from '../utils/customTemplates';
 import { parseLesson, generateDSL } from '../parser';
 import { CloseIcon, TemplateIcon, TrashIcon } from './Icons';
-
-const CUSTOM_TEMPLATES_KEY = 'lesson-flow-custom-templates';
-function loadCustomTemplates() {
-  try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]'); } catch { return []; }
-}
-function saveCustomTemplates(templates) {
-  try {
-    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(templates));
-  } catch {
-    // Ignore storage write failures so the picker does not crash.
-  }
-}
 
 const BUILTIN_TEMPLATES = [
   {
